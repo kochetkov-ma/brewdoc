@@ -8,20 +8,19 @@ document does not say so".
 
 ## Install
 
-NOT YET PUBLISHED: no PyPI project, no Homebrew formula, no release tag exists yet. The three
-lines below are the intended install surface. Today the working install is from git:
-
-```
-uv tool install git+https://github.com/kochetkov-ma/brewdoc
-uvx --from git+https://github.com/kochetkov-ma/brewdoc brewdoc file.pdf
-```
-
-| channel | command (intended, once published) |
+| channel | command |
 |---|---|
 | pip | `pip install brewdoc` |
 | uvx | `uvx brewdoc file.pdf` |
+| uv tool | `uv tool install brewdoc` |
 | Homebrew | `brew install kochetkov-ma/brew/brewdoc` |
 | Docker | `RUN pip install brewdoc==0.1.0` |
+
+Alternative, straight from git (no PyPI round-trip):
+
+```
+uvx --from git+https://github.com/kochetkov-ma/brewdoc brewdoc file.pdf
+```
 
 Requires Python >= 3.10. Runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
 cryptography) and `python-calamine`.
@@ -49,7 +48,7 @@ One JSON receipt line always goes to stdout first:
 | key | meaning |
 |---|---|
 | `file_ok` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why |
-| `route` | which reader ran: `pdf`, `docx` or `sheet` |
+| `route` | which reader ran: `pdf`, `doc` or `sheet` |
 | `pages`, `tables`, `text_regions` | what was rendered |
 | `dropped` | sanitised items removed on purpose, counted by kind (running heads, page numbers, ...) |
 | `not_carried` | what this route structurally cannot represent - read it before concluding a fact is absent |
@@ -65,6 +64,8 @@ Exit code is non-zero on refusal; the receipt line is still printed.
 | `.pdf` | pdfplumber | needs a text layer; route chosen per region, never per page |
 | `.docx` | stdlib zip + XML | paragraphs and tables |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | one section per sheet, addressed by name; numbers as stored (`85.0`), dates as ISO days |
+
+Planned formats (all stdlib, zero new dependencies), deferred ones and the never-list: `FORMATS.md`.
 
 PDF regions, in the order tried:
 
@@ -105,7 +106,7 @@ No timestamps, no set iteration, no dict ordering. Two renders of one file have 
 
 ## Releasing
 
-Tag-triggered, see `RELEASING.md`. Nothing is published yet.
+Tag-triggered, see `RELEASING.md`.
 
 ## License
 

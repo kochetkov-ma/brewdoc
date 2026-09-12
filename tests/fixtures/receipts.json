@@ -1,0 +1,335 @@
+{
+ "docx/libreoffice-negative-cell-margin-twips.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "docx/poi-ThreeColHead.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 0,
+  "text_regions": 4
+ },
+ "docx/poi-deep-table-cell.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "docx/poi-table-alignment.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 6,
+  "text_regions": 0
+ },
+ "docx/tika-testWORD.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 10
+ },
+ "docx/tika-testWORD_various.docx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "doc",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 28
+ },
+ "ods/calamine-any_sheets.ods": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 4,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "ods/calamine-date.ods": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "ods/calamine-issues.ods": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 6,
+  "tables": 6,
+  "text_regions": 0
+ },
+ "ods/calamine-merged_cells.ods": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "ods/calamine-special_cells.ods": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "pdf/arxiv-2302.13971v1.pdf": {
+  "file_ok": true,
+  "pages": 27,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 7,
+  "text_regions": 85
+ },
+ "pdf/arxiv-2305.18290v3.pdf": {
+  "file_ok": true,
+  "pages": 27,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 4,
+  "text_regions": 77
+ },
+ "pdf/arxiv-2402.00838v4.pdf": {
+  "file_ok": true,
+  "pages": 21,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 6,
+  "text_regions": 115
+ },
+ "pdf/eia-steo-table1.pdf": {
+  "file_ok": true,
+  "pages": 1,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 2
+ },
+ "pdf/fbi-nics-background-checks-2015-11.pdf": {
+  "file_ok": true,
+  "pages": 1,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 1
+ },
+ "pdf/federal-register-2020-17221.pdf": {
+  "file_ok": true,
+  "pages": 15,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 2,
+  "text_regions": 52
+ },
+ "pdf/nist-sp800-145.pdf": {
+  "file_ok": true,
+  "pages": 7,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 2,
+  "text_regions": 25
+ },
+ "pdf/us-patent-223898-scan.pdf": {
+  "file_ok": false,
+  "pages": 0,
+  "rc": 1,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 0,
+  "text_regions": 0
+ },
+ "pdf/us-senate-expenditures.pdf": {
+  "file_ok": true,
+  "pages": 1,
+  "rc": 0,
+  "route": "pdf",
+  "sheets": 0,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xls/calamine-any_sheets.xls": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 4,
+  "tables": 2,
+  "text_regions": 0
+ },
+ "xls/calamine-date.xls": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xls/calamine-merge_cells.xls": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xls/calamine-xls_formula.xls": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 2,
+  "tables": 2,
+  "text_regions": 0
+ },
+ "xls/census-st-est00int-01.xls": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsb/calamine-date.xlsb": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsb/calamine-issue127.xlsb": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 8,
+  "tables": 0,
+  "text_regions": 0
+ },
+ "xlsb/calamine-issues.xlsb": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 6,
+  "tables": 6,
+  "text_regions": 0
+ },
+ "xlsm/calamine-issue221.xlsm": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsm/calamine-issue3.xlsm": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 3,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsm/calamine-vba.xlsm": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 3,
+  "tables": 0,
+  "text_regions": 0
+ },
+ "xlsx/calamine-any_sheets.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 4,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsx/calamine-date.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsx/calamine-inventory-table.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsx/calamine-merge_cells.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ },
+ "xlsx/calamine-temperature-table.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 2,
+  "tables": 2,
+  "text_regions": 0
+ },
+ "xlsx/census-NST-EST2024-POP.xlsx": {
+  "file_ok": true,
+  "pages": 0,
+  "rc": 0,
+  "route": "sheet",
+  "sheets": 1,
+  "tables": 1,
+  "text_regions": 0
+ }
+}

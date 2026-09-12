@@ -1,9 +1,9 @@
 # Releasing
 
-Nothing is published yet: no PyPI project, no trusted publisher, no tag, no Homebrew formula.
-`release.yml` is dormant until the first `v*.*.*` tag is pushed. Future checklist, in order.
+A push of a `v*.*.*` tag runs `release.yml`: build, publish to PyPI through trusted publishing,
+GitHub Release with the sdist and wheel. Checklist, in order.
 
-## One-time setup (manual, not yet done)
+## One-time setup (manual)
 
 | # | step | where |
 |---|---|---|
