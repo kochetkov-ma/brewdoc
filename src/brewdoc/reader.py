@@ -840,11 +840,12 @@ def _implied_grid(edges) -> tuple[list[float], list[float]]:
     return _snap(verticals), _snap(horizontals)
 
 
-def _fold_subscripts(source, box, text: str) -> str:
+def _fold_subscripts(source, box, text: str, chars=None) -> str:
     # Centre-based ownership keeps a glyph crossing a rule in one cell.
     # Subscript tolerance must not reach the next body line.
     x0, top, x1, bottom = box
-    chars = [char for char in source.chars
+    chars = source.chars if chars is None else chars
+    chars = [char for char in chars
              if x0 <= (char["x0"] + char["x1"]) / 2 < x1
              and top <= (char["top"] + char["bottom"]) / 2 < bottom]
     ink = [char for char in chars if char["text"].strip()]
@@ -1042,16 +1043,17 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
             row = next((row for row in rows if abs(row["anchor"] - anchor) <= tolerance), None)
             if row is None:
                 row = {"cells": [""] * (len(xs) - 1), "anchor": anchor, "top": word["top"],
-                       "bottom": word["bottom"], "standalone": False, "left": {}}
+                       "bottom": word["bottom"], "standalone": False, "left": {}, "chars": {}}
                 rows.append(row)
             row["cells"][column] = (row["cells"][column] + " " + word["text"]).strip()
+            row["chars"].setdefault(column, []).extend(word["chars"])
             row["left"][column] = min(row["left"].get(column, word["x0"]), word["x0"])
             row["top"] = min(row["top"], word["top"])
             row["bottom"] = max(row["bottom"], word["bottom"])
             row["standalone"] |= any("bold" in char["fontname"].lower() or char["size"] > height * 1.25
                                      for char in word["chars"])
     rows.sort(key=lambda row: row["anchor"])
-    out = []
+    out, owned = [], []
     for index, row in enumerate(rows):
         filled = [column for column, cell in enumerate(row["cells"]) if cell]
         previous = rows[index - 1] if index else None
@@ -1065,12 +1067,18 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
                                 and edge["x0"] <= xs[column] + RULE_SNAP
                                 and edge["x1"] >= xs[column + 1] - RULE_SNAP for edge in page.edges)):
                 out[-1][column] += " " + row["cells"][column]
+                owned[-1].setdefault(column, []).extend(row["chars"][column])
                 continue
             if (not column and following and following["top"] - row["bottom"] <= height
                     and following["cells"][column] and sum(bool(cell) for cell in following["cells"]) >= 2):
                 following["cells"][column] = row["cells"][column] + " " + following["cells"][column]
+                following["chars"].setdefault(column, []).extend(row["chars"][column])
                 continue
         out.append(row["cells"])
+        owned.append(row["chars"])
+    for cells, columns in zip(out, owned):
+        for column, chars in columns.items():
+            cells[column] = _fold_subscripts(page, bbox, cells[column], chars)
     return out
 
 
