@@ -1,0 +1,68 @@
+{
+  "artifacts": {
+    "annotation": "annotations/xlsx-calamine-inventory-table.json",
+    "markdown": "pass-1/xlsx-calamine-inventory-table/artifacts/document.md",
+    "receipt": "pass-1/xlsx-calamine-inventory-table/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 3,
+      "actual_rows": 5,
+      "all_lexical_differences": [],
+      "compared_positions": 15,
+      "exact_value_spellings": 15,
+      "heading_line": 5,
+      "representative_values": [
+        {
+          "actual": "Item",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!A1",
+          "source_value": "'Item'"
+        },
+        {
+          "actual": "Type",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!B1",
+          "source_value": "'Type'"
+        }
+      ],
+      "sheet": "Sheet1",
+      "source_columns": 3,
+      "source_merges_zero_based": [],
+      "source_rows": 5
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "xlsx-calamine-inventory-table",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "ea4e2aeb7597a459c0f88ec1bcd31f944366c9821a950262439b23444b2ab5f9",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 0,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 1,
+    "tables": 1
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/xlsx/calamine-inventory-table.xlsx",
+  "source_sha256": "d63fa89e938aad9635cd556f683b901cc1c118bf11b494b1156c4711e5329631",
+  "summary": "All fifteen source cells survive with correct header/value alignment and quantities.",
+  "verdict": "success"
+}

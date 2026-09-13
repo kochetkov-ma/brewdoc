@@ -1,0 +1,61 @@
+{
+  "capture_errors": [],
+  "capture_helper": "benchmarks/capture_results.py",
+  "command_template": [
+    "python",
+    "-m",
+    "brewdoc.cli",
+    "{repository_root}/tests/fixtures/pdf/us-senate-expenditures.pdf",
+    "--out",
+    "{capture_directory}/artifacts/document.md"
+  ],
+  "elapsed_seconds": 0.28873708299943246,
+  "error": null,
+  "file_ok": true,
+  "helper_exit": 0,
+  "input": {
+    "format": "pdf",
+    "group": "core",
+    "id": "pdf-us-senate-expenditures",
+    "path": "tests/fixtures/pdf/us-senate-expenditures.pdf",
+    "sha256": "16921f0fc9b2c6039b23b694e0317917118ad7dd2b3a95a88518b7e144df527c",
+    "size_bytes": 53481
+  },
+  "markdown": {
+    "copy_kind": "unchanged original bytes",
+    "path": "artifacts/document.md",
+    "sha256": "4e80f26c102ffcfe887c2d0344fba9824cdf8d293b7a0747c280b817dfd9ce36",
+    "size_bytes": 4401
+  },
+  "pass": 2,
+  "raw_streams_local_only": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "stdout": {
+      "sha256": "ab5f2a747e43522195ce6524194bf43267a0fe0267593e8d2b308641f06a4c07",
+      "size_bytes": 744
+    }
+  },
+  "receipt_kind": "derived portable copy; transformations listed explicitly",
+  "receipt_path": "receipt.json",
+  "receipt_transformations": [
+    {
+      "field": "out",
+      "operation": "replace exact expanded output argument with capture-relative artifacts/document.md"
+    }
+  ],
+  "record_kind": "portable_capture_derivative",
+  "returncode": 0,
+  "schema_version": 1,
+  "signal": null,
+  "started_at_utc": "2026-09-13T13:35:11.996892+00:00",
+  "status": "success",
+  "timeout_seconds": 300.0,
+  "timing_unit": "seconds",
+  "tool": {
+    "name": "brewdoc",
+    "version": "0.1.0"
+  }
+}

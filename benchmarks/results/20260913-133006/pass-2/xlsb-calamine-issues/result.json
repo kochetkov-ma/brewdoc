@@ -1,0 +1,61 @@
+{
+  "capture_errors": [],
+  "capture_helper": "benchmarks/capture_results.py",
+  "command_template": [
+    "python",
+    "-m",
+    "brewdoc.cli",
+    "{repository_root}/tests/fixtures/xlsb/calamine-issues.xlsb",
+    "--out",
+    "{capture_directory}/artifacts/document.md"
+  ],
+  "elapsed_seconds": 0.13187312497757375,
+  "error": null,
+  "file_ok": true,
+  "helper_exit": 0,
+  "input": {
+    "format": "xlsb",
+    "group": "feature_probe",
+    "id": "xlsb-calamine-issues",
+    "path": "tests/fixtures/xlsb/calamine-issues.xlsb",
+    "sha256": "06c648de5529e022ef399a2b6ebc227040e9fdf71a0780e19e614f556bdb53d7",
+    "size_bytes": 19226
+  },
+  "markdown": {
+    "copy_kind": "unchanged original bytes",
+    "path": "artifacts/document.md",
+    "sha256": "bd32a4183e311e6fb649f375cfd46a18101db7cbf59de406724ad0ff4fd671f1",
+    "size_bytes": 495
+  },
+  "pass": 2,
+  "raw_streams_local_only": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "stdout": {
+      "sha256": "6407fe7a9a9f2c67a2f9d0cd80b90a68e942c2a773ba2c3df1baea4da68e3993",
+      "size_bytes": 734
+    }
+  },
+  "receipt_kind": "derived portable copy; transformations listed explicitly",
+  "receipt_path": "receipt.json",
+  "receipt_transformations": [
+    {
+      "field": "out",
+      "operation": "replace exact expanded output argument with capture-relative artifacts/document.md"
+    }
+  ],
+  "record_kind": "portable_capture_derivative",
+  "returncode": 0,
+  "schema_version": 1,
+  "signal": null,
+  "started_at_utc": "2026-09-13T13:35:13.479311+00:00",
+  "status": "success",
+  "timeout_seconds": 300.0,
+  "timing_unit": "seconds",
+  "tool": {
+    "name": "brewdoc",
+    "version": "0.1.0"
+  }
+}

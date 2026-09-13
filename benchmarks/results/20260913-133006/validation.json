@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "checked_at_utc": "2026-09-13T14:05:28.762290+00:00",
+  "capture_records_checked": 62,
+  "markdown_byte_copies_checked": 60,
+  "receipt_objects_checked": 62,
+  "allowed_receipt_field_transformations": {
+    "out": 60,
+    "reason": 2
+  },
+  "original_local_capture_files_unchanged": 246,
+  "source_and_inputs_unchanged": true,
+  "quality_counts_verified": {
+    "warning": 15,
+    "failure": 8,
+    "success": 8
+  },
+  "readme_links_verified": 260,
+  "privacy_scan": "No host absolute paths, ignored-state references or file URIs found in public files.",
+  "authored_prose_style_scan": {
+    "path": "README.md",
+    "exit_code": 0,
+    "findings": []
+  },
+  "manual_review": "All JSON parses; portable capture metadata matches original fields; only the declared receipt transformations occur. Provenance, fixture-license references, input identity, source fingerprints, annotation hashes and full-run selection checked. Actual Markdown and copied source annotations/review evidence were preserved, not rewritten for style."
+}

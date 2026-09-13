@@ -1,0 +1,43 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-nist-sp800-145.json",
+    "markdown": "pass-1/pdf-nist-sp800-145/artifacts/document.md",
+    "receipt": "pass-1/pdf-nist-sp800-145/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-nist-sp800-145/artifacts/document.md:84-86",
+      "finding": "Twelve Markdown columns replace four source columns. DATE is in column 2 while 4/27/2012 is in column 1; TYPE and Editorial are similarly offset. The correction text and value 1 survive but are not under their headers.",
+      "snippet": "|  | DATE |  |  | TYPE |  |  | CHANGE |  |  | PAGE NUMBER |  |",
+      "source": "Page 4, p4-t1: four-column errata table with DATE, TYPE, CHANGE, PAGE NUMBER and one record."
+    },
+    {
+      "actual": "pass-1/pdf-nist-sp800-145/artifacts/document.md:59-64",
+      "finding": "The entire paragraph appears in the table header at line 59; four of its lines repeat as body rows at lines 61-64.",
+      "snippet": "document in order to describe an experimental procedure or concept adequately.",
+      "source": "Page 3: one boxed commercial-entity disclaimer, not a data table."
+    },
+    {
+      "actual": "pass-1/pdf-nist-sp800-145/artifacts/document.md:5-205",
+      "finding": "All seven page sections are present in order. The PaaS paragraph continues from lines 161-162 to 175-178 across the page boundary. All 149 source text lines excluding five standalone folios have normalized text present in the corresponding output page after whitespace, pipe separators and typographic quote normalization. This supports content presence, not fidelity of table mapping or absence of duplication.",
+      "snippet": "Platform as a Service (PaaS). The capability provided to the consumer is to deploy onto the cloud",
+      "source": "All seven pages: title material, acknowledgements, introduction, definitions, and footnotes."
+    },
+    {
+      "actual": "pass-1/pdf-nist-sp800-145/receipt.json (derived); artifacts/document.md:66,88",
+      "finding": "Images and figures are declared unsupported. Numeric folios 1-3 are dropped; Roman ii and iii remain. These presentation limits are separate from the table failures.",
+      "snippet": "\"page_numbers\": 3",
+      "source": "Page 1 institutional raster image and page 2 vector seal; numeric and Roman folios."
+    }
+  ],
+  "id": "pdf-nist-sp800-145",
+  "limitations": [
+    "Whitespace-normalized text presence can hide token spacing changes; line 45 contains 't he' and the disclaimer contains 'Techno logy'.",
+    "No new conversion was run; this review concerns the captured pass-1 artifact only."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "All 7 source pages rendered and inspected, all output lines and both rendered table structures reviewed. The source has one semantic table; the second output table is a prose box.",
+  "schema_version": 1,
+  "summary": "The main prose is substantially preserved in page order, but the errata table loses its four-column mapping and a boxed disclaimer is duplicated as a table.",
+  "verdict": "failure"
+}

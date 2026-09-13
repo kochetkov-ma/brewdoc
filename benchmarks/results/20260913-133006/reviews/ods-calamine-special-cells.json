@@ -1,0 +1,104 @@
+{
+  "artifacts": {
+    "annotation": "annotations/ods-calamine-special-cells.json",
+    "markdown": "pass-1/ods-calamine-special-cells/artifacts/document.md",
+    "receipt": "pass-1/ods-calamine-special-cells/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 1,
+      "actual_rows": 5,
+      "all_lexical_differences": [
+        {
+          "actual": "Split Line",
+          "kind": "lexical_change",
+          "markdown_line": 7,
+          "source_cell": "sheet1!A1",
+          "source_value": "'Split\\nLine'"
+        },
+        {
+          "actual": "Value With spaces",
+          "kind": "lexical_change",
+          "markdown_line": 9,
+          "source_cell": "sheet1!A2",
+          "source_value": "'Value  With spaces'"
+        },
+        {
+          "actual": "Value With 3 spaces",
+          "kind": "lexical_change",
+          "markdown_line": 10,
+          "source_cell": "sheet1!A3",
+          "source_value": "'Value   With 3 spaces'"
+        },
+        {
+          "actual": "Value With spaces before and after",
+          "kind": "lexical_change",
+          "markdown_line": 11,
+          "source_cell": "sheet1!A4",
+          "source_value": "' Value   With spaces before and after '"
+        },
+        {
+          "actual": "Value With 2 spaces before and after",
+          "kind": "lexical_change",
+          "markdown_line": 12,
+          "source_cell": "sheet1!A5",
+          "source_value": "'  Value   With 2 spaces before and after  '"
+        }
+      ],
+      "compared_positions": 5,
+      "exact_value_spellings": 0,
+      "heading_line": 5,
+      "representative_values": [
+        {
+          "actual": "Split Line",
+          "markdown_line": 7,
+          "source_cell": "sheet1!A1",
+          "source_value": "'Split\\nLine'"
+        },
+        {
+          "actual": "Value With spaces",
+          "markdown_line": 9,
+          "source_cell": "sheet1!A2",
+          "source_value": "'Value  With spaces'"
+        }
+      ],
+      "sheet": "sheet1",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 5
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "ods-calamine-special-cells",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "c3c3df8a6932395463e7b147b297ede3fb276f48ea19ed5842e6f52cf274516d",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 0,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 1,
+    "tables": 1
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/ods/calamine-special_cells.ods",
+  "source_sha256": "12384e99c8b023f410de1fc102a5eda9950eb1358d7194028e71bc06cb70b767",
+  "summary": "All five strings survive as words, but every cell loses source whitespace or a line break.",
+  "verdict": "warning"
+}

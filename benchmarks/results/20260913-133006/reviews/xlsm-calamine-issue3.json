@@ -1,0 +1,94 @@
+{
+  "artifacts": {
+    "annotation": "annotations/xlsm-calamine-issue3.json",
+    "markdown": "pass-1/xlsm-calamine-issue3/artifacts/document.md",
+    "receipt": "pass-1/xlsm-calamine-issue3/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 2,
+      "actual_rows": 1,
+      "all_lexical_differences": [],
+      "compared_positions": 2,
+      "exact_value_spellings": 2,
+      "heading_line": 5,
+      "representative_values": [
+        {
+          "actual": "1.0",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!A1",
+          "source_value": "1.0"
+        },
+        {
+          "actual": "a",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!B1",
+          "source_value": "'a'"
+        }
+      ],
+      "sheet": "Sheet1",
+      "source_columns": 2,
+      "source_merges_zero_based": [],
+      "source_rows": 1
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 10,
+      "representative_values": [],
+      "sheet": "Sheet2",
+      "source_columns": 0,
+      "source_merges_zero_based": [],
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 12,
+      "representative_values": [],
+      "sheet": "Sheet3",
+      "source_columns": 0,
+      "source_merges_zero_based": [],
+      "source_rows": 0
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "xlsm-calamine-issue3",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "110e2bb5beb73ef5fc9e14080bfaedc96645cfcc59234bcd0517ca89009b475e",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 0,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 3,
+    "tables": 1
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/xlsm/calamine-issue3.xlsm",
+  "source_sha256": "6d42e269833549a4c5d0118a6b0689cd9c6e6bafc3f1c32ea1bde865333ec9e1",
+  "summary": "Both populated cells and all three sheet names survive; two empty sheets remain empty.",
+  "verdict": "success"
+}

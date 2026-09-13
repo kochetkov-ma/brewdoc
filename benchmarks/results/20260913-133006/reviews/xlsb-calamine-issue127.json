@@ -1,0 +1,146 @@
+{
+  "artifacts": {
+    "annotation": "annotations/xlsb-calamine-issue127.json",
+    "markdown": "pass-1/xlsb-calamine-issue127/artifacts/document.md",
+    "receipt": "pass-1/xlsb-calamine-issue127/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 5,
+      "representative_values": [],
+      "sheet": "Sheet1",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 7,
+      "representative_values": [],
+      "sheet": "Sheet2",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 9,
+      "representative_values": [],
+      "sheet": "Sheet3",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 11,
+      "representative_values": [],
+      "sheet": "Sheet4",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 13,
+      "representative_values": [],
+      "sheet": "Sheet5",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 15,
+      "representative_values": [],
+      "sheet": "Sheet6",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 17,
+      "representative_values": [],
+      "sheet": "Sheet7",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    },
+    {
+      "actual_columns": 0,
+      "actual_rows": 0,
+      "all_lexical_differences": [],
+      "compared_positions": 0,
+      "exact_value_spellings": 0,
+      "heading_line": 19,
+      "representative_values": [],
+      "sheet": "Sheet8",
+      "source_columns": 0,
+      "source_merges_zero_based": null,
+      "source_rows": 0
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "xlsb-calamine-issue127",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "126f1113f7afc876c0b2e40fe9ec6a7ad45f9963bc0fc4920b96da31edd62c24",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 0,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 8,
+    "tables": 0
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/xlsb/calamine-issue127.xlsb",
+  "source_sha256": "7a1eebd5b6d8f560a91babd3831f1133d964b1b094b848dd00c933d905ca0e09",
+  "summary": "All eight empty worksheets survive as ordered headings; no data table is invented.",
+  "verdict": "success"
+}

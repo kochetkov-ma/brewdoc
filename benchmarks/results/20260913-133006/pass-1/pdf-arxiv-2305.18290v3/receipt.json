@@ -1,0 +1,29 @@
+{
+  "broken_ligature_words": 0,
+  "columns_split": 0,
+  "dropped": {
+    "cid_survivors": 157,
+    "control_chars": 0,
+    "ligatures": 0,
+    "nbsp": 0,
+    "non_ascii_replaced": 586,
+    "page_numbers": 26,
+    "pua_glyphs": 8,
+    "running_heads": 7,
+    "soft_hyphens": 0
+  },
+  "file_ok": true,
+  "not_carried": [
+    "images, figures and the text drawn inside them",
+    "a table that spans a page break",
+    "text rotated out of the horizontal reading order"
+  ],
+  "out": "artifacts/document.md",
+  "pages": 27,
+  "reason": "pdf rendered: 27 chapters, 4 tables, 77 text regions, 0 column splits",
+  "route": "pdf",
+  "sheets": 0,
+  "source": "arxiv-2305.18290v3.pdf",
+  "tables": 4,
+  "text_regions": 77
+}

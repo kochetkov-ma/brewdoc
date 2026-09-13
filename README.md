@@ -104,6 +104,13 @@ No timestamps, no set iteration, no dict ordering. Two renders of one file have 
 | 130-page PDF | ~5.5 s |
 | 14-sheet xlsx | ~0.9 s |
 
+## Benchmarks
+
+Browse the [corpus catalog](benchmarks/CATALOG.md), follow the
+[measurement method](benchmarks/METHODOLOGY.md), and inspect the
+[full-run results](benchmarks/results/README.md). Completed runs include actual
+outputs and known failures; capture completion does not mean content quality passed.
+
 ## Releasing
 
 Tag-triggered, see `RELEASING.md`.

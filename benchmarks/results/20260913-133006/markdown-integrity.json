@@ -1,0 +1,487 @@
+{
+  "copies": [
+    {
+      "input_id": "ods-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/ods-calamine-any-sheets/artifacts/document.md",
+      "sha256": "6d8d4396aeadeb755ef457e1de56c52c77213be66b1df91381ea6229ee53fc7e",
+      "size_bytes": 348
+    },
+    {
+      "input_id": "ods-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/ods-calamine-any-sheets/artifacts/document.md",
+      "sha256": "6d8d4396aeadeb755ef457e1de56c52c77213be66b1df91381ea6229ee53fc7e",
+      "size_bytes": 348
+    },
+    {
+      "input_id": "ods-calamine-date",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/ods-calamine-date/artifacts/document.md",
+      "sha256": "cd437651339e19c405372c0dfe4ecfe37544e9d896f11b7b2cc7d253f99c7d49",
+      "size_bytes": 262
+    },
+    {
+      "input_id": "ods-calamine-date",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/ods-calamine-date/artifacts/document.md",
+      "sha256": "cd437651339e19c405372c0dfe4ecfe37544e9d896f11b7b2cc7d253f99c7d49",
+      "size_bytes": 262
+    },
+    {
+      "input_id": "ods-calamine-issues",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/ods-calamine-issues/artifacts/document.md",
+      "sha256": "57f70c4c6ce770601381cf45cdfcd9798bc9a6850f288279af4947cbf49481f6",
+      "size_bytes": 493
+    },
+    {
+      "input_id": "ods-calamine-issues",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/ods-calamine-issues/artifacts/document.md",
+      "sha256": "57f70c4c6ce770601381cf45cdfcd9798bc9a6850f288279af4947cbf49481f6",
+      "size_bytes": 493
+    },
+    {
+      "input_id": "ods-calamine-merged-cells",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/ods-calamine-merged-cells/artifacts/document.md",
+      "sha256": "9792e275cfccc1b427079df8ddf4a8891fbbf90ac070bd3d680b8b2ccf03009a",
+      "size_bytes": 233
+    },
+    {
+      "input_id": "ods-calamine-merged-cells",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/ods-calamine-merged-cells/artifacts/document.md",
+      "sha256": "9792e275cfccc1b427079df8ddf4a8891fbbf90ac070bd3d680b8b2ccf03009a",
+      "size_bytes": 233
+    },
+    {
+      "input_id": "ods-calamine-special-cells",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/ods-calamine-special-cells/artifacts/document.md",
+      "sha256": "c3c3df8a6932395463e7b147b297ede3fb276f48ea19ed5842e6f52cf274516d",
+      "size_bytes": 324
+    },
+    {
+      "input_id": "ods-calamine-special-cells",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/ods-calamine-special-cells/artifacts/document.md",
+      "sha256": "c3c3df8a6932395463e7b147b297ede3fb276f48ea19ed5842e6f52cf274516d",
+      "size_bytes": 324
+    },
+    {
+      "input_id": "pdf-arxiv-2302.13971v1",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-arxiv-2302.13971v1/artifacts/document.md",
+      "sha256": "2975edbac2c57893353cb593aed95f4d4f33322510591af16eeb2b286b1dba45",
+      "size_bytes": 84065
+    },
+    {
+      "input_id": "pdf-arxiv-2302.13971v1",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-arxiv-2302.13971v1/artifacts/document.md",
+      "sha256": "2975edbac2c57893353cb593aed95f4d4f33322510591af16eeb2b286b1dba45",
+      "size_bytes": 84065
+    },
+    {
+      "input_id": "pdf-arxiv-2305.18290v3",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-arxiv-2305.18290v3/artifacts/document.md",
+      "sha256": "a5647fc2ca4b2a742110c49db24305811c24f1d474fee5b6a3cfe397c250c0d1",
+      "size_bytes": 91658
+    },
+    {
+      "input_id": "pdf-arxiv-2305.18290v3",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-arxiv-2305.18290v3/artifacts/document.md",
+      "sha256": "a5647fc2ca4b2a742110c49db24305811c24f1d474fee5b6a3cfe397c250c0d1",
+      "size_bytes": 91658
+    },
+    {
+      "input_id": "pdf-arxiv-2402.00838v4",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md",
+      "sha256": "6a7ddaa17b02207e83a21f5038c3dd12b91dfb9a980f8e568551cc9d2bc1b1ea",
+      "size_bytes": 80542
+    },
+    {
+      "input_id": "pdf-arxiv-2402.00838v4",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-arxiv-2402.00838v4/artifacts/document.md",
+      "sha256": "6a7ddaa17b02207e83a21f5038c3dd12b91dfb9a980f8e568551cc9d2bc1b1ea",
+      "size_bytes": 80542
+    },
+    {
+      "input_id": "pdf-eia-steo-table1",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-eia-steo-table1/artifacts/document.md",
+      "sha256": "806f987e4a30f70d7e5bb08692f43524729fc20eb8fa822e6662aed49754aa46",
+      "size_bytes": 5741
+    },
+    {
+      "input_id": "pdf-eia-steo-table1",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-eia-steo-table1/artifacts/document.md",
+      "sha256": "806f987e4a30f70d7e5bb08692f43524729fc20eb8fa822e6662aed49754aa46",
+      "size_bytes": 5741
+    },
+    {
+      "input_id": "pdf-fbi-nics-background-checks-2015-11",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md",
+      "sha256": "33341bcdc3c46d7f19260c4f0d217d918ac7c4cdc568ad2381c06c5899e723bc",
+      "size_bytes": 7802
+    },
+    {
+      "input_id": "pdf-fbi-nics-background-checks-2015-11",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md",
+      "sha256": "33341bcdc3c46d7f19260c4f0d217d918ac7c4cdc568ad2381c06c5899e723bc",
+      "size_bytes": 7802
+    },
+    {
+      "input_id": "pdf-federal-register-2020-17221",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md",
+      "sha256": "9ce94b80832f4dc033e14acbd364c52b3e20afdefa53d5134382a188eed93e39",
+      "size_bytes": 61807
+    },
+    {
+      "input_id": "pdf-federal-register-2020-17221",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-federal-register-2020-17221/artifacts/document.md",
+      "sha256": "9ce94b80832f4dc033e14acbd364c52b3e20afdefa53d5134382a188eed93e39",
+      "size_bytes": 61807
+    },
+    {
+      "input_id": "pdf-nist-sp800-145",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-nist-sp800-145/artifacts/document.md",
+      "sha256": "4bd04c25115012dd7743ef7946dd82d360798487235ac2885f0d624d65916b69",
+      "size_bytes": 12067
+    },
+    {
+      "input_id": "pdf-nist-sp800-145",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-nist-sp800-145/artifacts/document.md",
+      "sha256": "4bd04c25115012dd7743ef7946dd82d360798487235ac2885f0d624d65916b69",
+      "size_bytes": 12067
+    },
+    {
+      "input_id": "pdf-us-senate-expenditures",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/pdf-us-senate-expenditures/artifacts/document.md",
+      "sha256": "4e80f26c102ffcfe887c2d0344fba9824cdf8d293b7a0747c280b817dfd9ce36",
+      "size_bytes": 4401
+    },
+    {
+      "input_id": "pdf-us-senate-expenditures",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/pdf-us-senate-expenditures/artifacts/document.md",
+      "sha256": "4e80f26c102ffcfe887c2d0344fba9824cdf8d293b7a0747c280b817dfd9ce36",
+      "size_bytes": 4401
+    },
+    {
+      "input_id": "xls-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xls-calamine-any-sheets/artifacts/document.md",
+      "sha256": "066505ff94af568b0ea367d97e767e3fee7392a52b61bdd9447d9b7f3cd83369",
+      "size_bytes": 405
+    },
+    {
+      "input_id": "xls-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xls-calamine-any-sheets/artifacts/document.md",
+      "sha256": "066505ff94af568b0ea367d97e767e3fee7392a52b61bdd9447d9b7f3cd83369",
+      "size_bytes": 405
+    },
+    {
+      "input_id": "xls-calamine-date",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xls-calamine-date/artifacts/document.md",
+      "sha256": "990c065a24416bed9f91ac0aea31acc56a4b0970488f20b8f1d1871708303172",
+      "size_bytes": 238
+    },
+    {
+      "input_id": "xls-calamine-date",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xls-calamine-date/artifacts/document.md",
+      "sha256": "990c065a24416bed9f91ac0aea31acc56a4b0970488f20b8f1d1871708303172",
+      "size_bytes": 238
+    },
+    {
+      "input_id": "xls-calamine-merge-cells",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xls-calamine-merge-cells/artifacts/document.md",
+      "sha256": "1dc0820afa2d74435be3f44f3d3aa52199444c986bc893cebbab7fc6190aa91f",
+      "size_bytes": 256
+    },
+    {
+      "input_id": "xls-calamine-merge-cells",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xls-calamine-merge-cells/artifacts/document.md",
+      "sha256": "1dc0820afa2d74435be3f44f3d3aa52199444c986bc893cebbab7fc6190aa91f",
+      "size_bytes": 256
+    },
+    {
+      "input_id": "xls-calamine-xls-formula",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xls-calamine-xls-formula/artifacts/document.md",
+      "sha256": "1a54df16d0053bf9961c325be8e14831d309b80896eb20e13863abaf677000b5",
+      "size_bytes": 245
+    },
+    {
+      "input_id": "xls-calamine-xls-formula",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xls-calamine-xls-formula/artifacts/document.md",
+      "sha256": "1a54df16d0053bf9961c325be8e14831d309b80896eb20e13863abaf677000b5",
+      "size_bytes": 245
+    },
+    {
+      "input_id": "xls-census-st-est00int-01",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xls-census-st-est00int-01/artifacts/document.md",
+      "sha256": "3b7a9b145d45a3bc1554b845410604e1a5eb03f4c942c5cc562de69ee2f7b549",
+      "size_bytes": 10724
+    },
+    {
+      "input_id": "xls-census-st-est00int-01",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xls-census-st-est00int-01/artifacts/document.md",
+      "sha256": "3b7a9b145d45a3bc1554b845410604e1a5eb03f4c942c5cc562de69ee2f7b549",
+      "size_bytes": 10724
+    },
+    {
+      "input_id": "xlsb-calamine-date",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsb-calamine-date/artifacts/document.md",
+      "sha256": "1659ee2178d186a9df22391c706e449595ef8e357bf7e51e1aee4324ff52444a",
+      "size_bytes": 246
+    },
+    {
+      "input_id": "xlsb-calamine-date",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsb-calamine-date/artifacts/document.md",
+      "sha256": "1659ee2178d186a9df22391c706e449595ef8e357bf7e51e1aee4324ff52444a",
+      "size_bytes": 246
+    },
+    {
+      "input_id": "xlsb-calamine-issue127",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsb-calamine-issue127/artifacts/document.md",
+      "sha256": "126f1113f7afc876c0b2e40fe9ec6a7ad45f9963bc0fc4920b96da31edd62c24",
+      "size_bytes": 243
+    },
+    {
+      "input_id": "xlsb-calamine-issue127",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsb-calamine-issue127/artifacts/document.md",
+      "sha256": "126f1113f7afc876c0b2e40fe9ec6a7ad45f9963bc0fc4920b96da31edd62c24",
+      "size_bytes": 243
+    },
+    {
+      "input_id": "xlsb-calamine-issues",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsb-calamine-issues/artifacts/document.md",
+      "sha256": "bd32a4183e311e6fb649f375cfd46a18101db7cbf59de406724ad0ff4fd671f1",
+      "size_bytes": 495
+    },
+    {
+      "input_id": "xlsb-calamine-issues",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsb-calamine-issues/artifacts/document.md",
+      "sha256": "bd32a4183e311e6fb649f375cfd46a18101db7cbf59de406724ad0ff4fd671f1",
+      "size_bytes": 495
+    },
+    {
+      "input_id": "xlsm-calamine-issue221",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsm-calamine-issue221/artifacts/document.md",
+      "sha256": "2286332b88ee76277349d4e824039966706ca815dce2873a243956018c89c766",
+      "size_bytes": 225
+    },
+    {
+      "input_id": "xlsm-calamine-issue221",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsm-calamine-issue221/artifacts/document.md",
+      "sha256": "2286332b88ee76277349d4e824039966706ca815dce2873a243956018c89c766",
+      "size_bytes": 225
+    },
+    {
+      "input_id": "xlsm-calamine-issue3",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsm-calamine-issue3/artifacts/document.md",
+      "sha256": "110e2bb5beb73ef5fc9e14080bfaedc96645cfcc59234bcd0517ca89009b475e",
+      "size_bytes": 211
+    },
+    {
+      "input_id": "xlsm-calamine-issue3",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsm-calamine-issue3/artifacts/document.md",
+      "sha256": "110e2bb5beb73ef5fc9e14080bfaedc96645cfcc59234bcd0517ca89009b475e",
+      "size_bytes": 211
+    },
+    {
+      "input_id": "xlsm-calamine-vba",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsm-calamine-vba/artifacts/document.md",
+      "sha256": "c1fc263efad97336672e86742d4e65cd9b9ae32dc6e3a0bb400fb3d3a3ffeb02",
+      "size_bytes": 178
+    },
+    {
+      "input_id": "xlsm-calamine-vba",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsm-calamine-vba/artifacts/document.md",
+      "sha256": "c1fc263efad97336672e86742d4e65cd9b9ae32dc6e3a0bb400fb3d3a3ffeb02",
+      "size_bytes": 178
+    },
+    {
+      "input_id": "xlsx-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-calamine-any-sheets/artifacts/document.md",
+      "sha256": "8e8b3f4b54e0db21c5b8da9e22c1a3a2a51dd011ef813d79593c47e49b01d35f",
+      "size_bytes": 350
+    },
+    {
+      "input_id": "xlsx-calamine-any-sheets",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-calamine-any-sheets/artifacts/document.md",
+      "sha256": "8e8b3f4b54e0db21c5b8da9e22c1a3a2a51dd011ef813d79593c47e49b01d35f",
+      "size_bytes": 350
+    },
+    {
+      "input_id": "xlsx-calamine-date",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-calamine-date/artifacts/document.md",
+      "sha256": "4a98fee4fa1b5aff57f5f9236c2e5aa3b3ef94c1588ba1fa5ad3924c96326348",
+      "size_bytes": 246
+    },
+    {
+      "input_id": "xlsx-calamine-date",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-calamine-date/artifacts/document.md",
+      "sha256": "4a98fee4fa1b5aff57f5f9236c2e5aa3b3ef94c1588ba1fa5ad3924c96326348",
+      "size_bytes": 246
+    },
+    {
+      "input_id": "xlsx-calamine-inventory-table",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-calamine-inventory-table/artifacts/document.md",
+      "sha256": "ea4e2aeb7597a459c0f88ec1bcd31f944366c9821a950262439b23444b2ab5f9",
+      "size_bytes": 323
+    },
+    {
+      "input_id": "xlsx-calamine-inventory-table",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-calamine-inventory-table/artifacts/document.md",
+      "sha256": "ea4e2aeb7597a459c0f88ec1bcd31f944366c9821a950262439b23444b2ab5f9",
+      "size_bytes": 323
+    },
+    {
+      "input_id": "xlsx-calamine-merge-cells",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-calamine-merge-cells/artifacts/document.md",
+      "sha256": "b9c6f13c33b6f9d460acbdbec089228656c980606ec9498e4acde7589f87999d",
+      "size_bytes": 258
+    },
+    {
+      "input_id": "xlsx-calamine-merge-cells",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-calamine-merge-cells/artifacts/document.md",
+      "sha256": "b9c6f13c33b6f9d460acbdbec089228656c980606ec9498e4acde7589f87999d",
+      "size_bytes": 258
+    },
+    {
+      "input_id": "xlsx-calamine-temperature-table",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-calamine-temperature-table/artifacts/document.md",
+      "sha256": "9691d4e282ba3a47565b994a42ca1f1389bf018ca30da9ebc4cb728544760bad",
+      "size_bytes": 344
+    },
+    {
+      "input_id": "xlsx-calamine-temperature-table",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-calamine-temperature-table/artifacts/document.md",
+      "sha256": "9691d4e282ba3a47565b994a42ca1f1389bf018ca30da9ebc4cb728544760bad",
+      "size_bytes": 344
+    },
+    {
+      "input_id": "xlsx-census-nst-est2024-pop",
+      "matches_local_capture": true,
+      "pass": 1,
+      "path": "pass-1/xlsx-census-nst-est2024-pop/artifacts/document.md",
+      "sha256": "3ca442500bffcdcbcd8d994828ffaa0dc8db6ec1ec5ec6672f0770c47fc6eb77",
+      "size_bytes": 7010
+    },
+    {
+      "input_id": "xlsx-census-nst-est2024-pop",
+      "matches_local_capture": true,
+      "pass": 2,
+      "path": "pass-2/xlsx-census-nst-est2024-pop/artifacts/document.md",
+      "sha256": "3ca442500bffcdcbcd8d994828ffaa0dc8db6ec1ec5ec6672f0770c47fc6eb77",
+      "size_bytes": 7010
+    }
+  ],
+  "file_count": 60,
+  "schema_version": 1,
+  "verified_at_utc": "2026-09-13T14:03:26.780234+00:00"
+}

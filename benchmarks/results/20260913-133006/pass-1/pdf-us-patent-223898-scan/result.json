@@ -1,0 +1,57 @@
+{
+  "capture_errors": [],
+  "capture_helper": "benchmarks/capture_results.py",
+  "command_template": [
+    "python",
+    "-m",
+    "brewdoc.cli",
+    "{repository_root}/tests/fixtures/pdf/us-patent-223898-scan.pdf",
+    "--out",
+    "{capture_directory}/artifacts/document.md"
+  ],
+  "elapsed_seconds": 0.13092808399233036,
+  "error": null,
+  "file_ok": false,
+  "helper_exit": 1,
+  "input": {
+    "format": "pdf",
+    "group": "core",
+    "id": "pdf-us-patent-223898-scan",
+    "path": "tests/fixtures/pdf/us-patent-223898-scan.pdf",
+    "sha256": "89078727e7a19f85ef5874a9750037d1accc317e5c13489f7fc7bd721392bd2a",
+    "size_bytes": 227921
+  },
+  "markdown": null,
+  "pass": 1,
+  "raw_streams_local_only": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "stdout": {
+      "sha256": "18ad8e35deb636845e28301b6d9aa3d18e30eeda602f2ce5bd7478a44b6a80c2",
+      "size_bytes": 699
+    }
+  },
+  "receipt_kind": "derived portable copy; transformations listed explicitly",
+  "receipt_path": "receipt.json",
+  "receipt_transformations": [
+    {
+      "field": "reason",
+      "operation": "replace exact captured absolute input path with repository-relative input path",
+      "replacement": "tests/fixtures/pdf/us-patent-223898-scan.pdf"
+    }
+  ],
+  "record_kind": "portable_capture_derivative",
+  "returncode": 1,
+  "schema_version": 1,
+  "signal": null,
+  "started_at_utc": "2026-09-13T13:34:17.249584+00:00",
+  "status": "nonzero_exit",
+  "timeout_seconds": 300.0,
+  "timing_unit": "seconds",
+  "tool": {
+    "name": "brewdoc",
+    "version": "0.1.0"
+  }
+}

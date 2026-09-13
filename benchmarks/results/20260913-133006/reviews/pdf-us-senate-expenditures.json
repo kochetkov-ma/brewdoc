@@ -1,0 +1,36 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-us-senate-expenditures.json",
+    "markdown": "pass-1/pdf-us-senate-expenditures/artifacts/document.md",
+    "receipt": "pass-1/pdf-us-senate-expenditures/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-us-senate-expenditures/artifacts/document.md:10",
+      "finding": "All ten compensation records occupy the DOCUMENTNO. cell; the six other fields are blank. Exact first and last amounts 37,499.96 and 1,458.33 survive inside the combined text.",
+      "snippet": "| BAIN,JMATTHEW DISTRICTDIRECTOR 37,499.96 SMITH,ALVAROR",
+      "source": "Page 1, p1-t1: payee, description and amount for each compensation record; first amount is 37,499.96."
+    },
+    {
+      "actual": "pass-1/pdf-us-senate-expenditures/artifacts/document.md:11",
+      "finding": "All 22 source document IDs are present but contained in one first-column cell. Date, payee, service-date, description and amount columns are empty. The first 920.68 and last 411.49 amounts survive as text without cell mapping.",
+      "snippet": "DHAW20190001 05/03/2019 CITIBANK-TRAVELCBACARD 03/04/2019 03/06/2019 STAFFTRANSPORTATION 920.68",
+      "source": "Page 1, p1-t1: 22 travel records, from DHAW20190001 to DHAW20190070, with wrapped descriptions."
+    },
+    {
+      "actual": "pass-1/pdf-us-senate-expenditures/receipt.json (derived); artifacts/document.md:1-11",
+      "finding": "The rotated folio is absent, consistent with the receipt's declared unsupported content. This is separate from the body-table failure.",
+      "snippet": "text rotated out of the horizontal reading order",
+      "source": "Page 1 right-margin folio B-1191, rotated 90 degrees."
+    }
+  ],
+  "id": "pdf-us-senate-expenditures",
+  "limitations": [
+    "Exact values were sampled and all document IDs counted; the review does not assert complete fidelity of every wrapped description or punctuation mark."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "All 1 source page rendered and inspected; every output line and both collapsed body cells reviewed, including all 22 travel identifiers and selected amounts.",
+  "schema_version": 1,
+  "summary": "All compensation records and travel records collapse into two first-column cells; the seven-column table no longer connects records to their fields.",
+  "verdict": "failure"
+}

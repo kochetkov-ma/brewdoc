@@ -1,0 +1,197 @@
+{
+  "counts": {
+    "failure": 8,
+    "success": 8,
+    "warning": 15
+  },
+  "review_scope": "Source evidence, declared page/cell coverage and uncertainty are in each detailed review; not an exit-code or hash quality oracle.",
+  "rows": [
+    {
+      "id": "ods-calamine-any-sheets",
+      "review": "reviews/ods-calamine-any-sheets.json",
+      "summary": "All four sheets and the visible grid survive; visibility and sheet-kind metadata are not represented.",
+      "verdict": "warning"
+    },
+    {
+      "id": "ods-calamine-date",
+      "review": "reviews/ods-calamine-date.json",
+      "summary": "All eight cells survive, but A2 loses its nonzero time. A3/A4 time precision survives.",
+      "verdict": "warning"
+    },
+    {
+      "id": "ods-calamine-issues",
+      "review": "reviews/ods-calamine-issues.json",
+      "summary": "All six grids survive; three Unicode strings change and a midnight datetime becomes a date. Cached formula results survive.",
+      "verdict": "warning"
+    },
+    {
+      "id": "ods-calamine-merged-cells",
+      "review": "reviews/ods-calamine-merged-cells.json",
+      "summary": "All nine cells survive; the A2:A3 vertical span is flattened.",
+      "verdict": "warning"
+    },
+    {
+      "id": "ods-calamine-special-cells",
+      "review": "reviews/ods-calamine-special-cells.json",
+      "summary": "All five strings survive as words, but every cell loses source whitespace or a line break.",
+      "verdict": "warning"
+    },
+    {
+      "id": "pdf-arxiv-2302.13971v1",
+      "review": "reviews/pdf-arxiv-2302.13971v1.json",
+      "summary": "A source paragraph and heading disappear; scientific-number glyphs change and charts become false tables. All 496 reviewed MMLU decimal scores remain.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-arxiv-2305.18290v3",
+      "review": "reviews/pdf-arxiv-2305.18290v3.json",
+      "summary": "Mathematical symbols/operators are replaced or fragmented; inset tables and surrounding prose interleave.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-arxiv-2402.00838v4",
+      "review": "reviews/pdf-arxiv-2402.00838v4.json",
+      "summary": "Tables 3 and 7 lose model identities and averages, duplicate score blocks and gain an extra column. The title and chart become false tables; several two-column sections interleave prose.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-eia-steo-table1",
+      "review": "reviews/pdf-eia-steo-table1.json",
+      "summary": "The numeric body is collapsed into one Markdown row and Q1 values are joined to labels, so the output cannot be used as a faithful table.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-fbi-nics-background-checks-2015-11",
+      "review": "reviews/pdf-fbi-nics-background-checks-2015-11.json",
+      "summary": "Fifty-five geography records become eleven multi-record rows, and the disclaimer is duplicated. The totals row retains its values.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-federal-register-2020-17221",
+      "review": "reviews/pdf-federal-register-2020-17221.json",
+      "summary": "The continued cost table loses the stabilizer action identity and $766,885 total while combining two rows. Three-column prose and the two notices on page 15 interleave. Raster procedure text is absent as declared by the receipt.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-nist-sp800-145",
+      "review": "reviews/pdf-nist-sp800-145.json",
+      "summary": "The main prose is substantially preserved in page order, but the errata table loses its four-column mapping and a boxed disclaimer is duplicated as a table.",
+      "verdict": "failure"
+    },
+    {
+      "id": "pdf-us-patent-223898-scan",
+      "review": "reviews/pdf-us-patent-223898-scan.json",
+      "summary": "Correctly refuses all five image-only pages without producing an empty success artifact or attempting OCR.",
+      "verdict": "warning"
+    },
+    {
+      "id": "pdf-us-senate-expenditures",
+      "review": "reviews/pdf-us-senate-expenditures.json",
+      "summary": "All compensation records and travel records collapse into two first-column cells; the seven-column table no longer connects records to their fields.",
+      "verdict": "failure"
+    },
+    {
+      "id": "xls-calamine-any-sheets",
+      "review": "reviews/xls-calamine-any-sheets.json",
+      "summary": "Four sheets and all exposed numeric chart-sheet values survive; hidden states and the chart object do not.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xls-calamine-date",
+      "review": "reviews/xls-calamine-date.json",
+      "summary": "All six source values survive, including native integers and a multi-day duration.",
+      "verdict": "success"
+    },
+    {
+      "id": "xls-calamine-merge-cells",
+      "review": "reviews/xls-calamine-merge-cells.json",
+      "summary": "All six exposed cells survive; three merged ranges and their blank extents through D4 do not.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xls-calamine-xls-formula",
+      "review": "reviews/xls-calamine-xls-formula.json",
+      "summary": "All five cached numeric results survive in sheet order; formula expressions are absent by contract.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xls-census-st-est00int-01",
+      "review": "reviews/xls-census-st-est00int-01.json",
+      "summary": "All 980 cell positions retain values; three notes change only whitespace. Fifteen merged ranges and multi-row header semantics are flattened.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xlsb-calamine-date",
+      "review": "reviews/xlsb-calamine-date.json",
+      "summary": "All six source values survive, including dates and the multi-day duration.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsb-calamine-issue127",
+      "review": "reviews/xlsb-calamine-issue127.json",
+      "summary": "All eight empty worksheets survive as ordered headings; no data table is invented.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsb-calamine-issues",
+      "review": "reviews/xlsb-calamine-issues.json",
+      "summary": "All six grids survive, including leading blank A1; three Unicode strings are changed by ASCII sanitising.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xlsm-calamine-issue221",
+      "review": "reviews/xlsm-calamine-issue221.json",
+      "summary": "The complete 2 by 2 text grid survives; this file contains no VBA part.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsm-calamine-issue3",
+      "review": "reviews/xlsm-calamine-issue3.json",
+      "summary": "Both populated cells and all three sheet names survive; two empty sheets remain empty.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsm-calamine-vba",
+      "review": "reviews/xlsm-calamine-vba.json",
+      "summary": "Three empty sheets remain ordered and empty; the existing VBA part is not carried.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xlsx-calamine-any-sheets",
+      "review": "reviews/xlsx-calamine-any-sheets.json",
+      "summary": "The visible grid and all four sheet headings survive; the chart object and visibility metadata do not.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xlsx-calamine-date",
+      "review": "reviews/xlsx-calamine-date.json",
+      "summary": "All six source values survive, including the multi-day duration; raw XML dates have no hidden time component.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsx-calamine-inventory-table",
+      "review": "reviews/xlsx-calamine-inventory-table.json",
+      "summary": "All fifteen source cells survive with correct header/value alignment and quantities.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsx-calamine-merge-cells",
+      "review": "reviews/xlsx-calamine-merge-cells.json",
+      "summary": "All six populated-grid positions survive; A1:B1, A2:A4 and B2:D4 spans are flattened.",
+      "verdict": "warning"
+    },
+    {
+      "id": "xlsx-calamine-temperature-table",
+      "review": "reviews/xlsx-calamine-temperature-table.json",
+      "summary": "All twelve source cells survive in both sheet grids, including 22.2222 and 12.5.",
+      "verdict": "success"
+    },
+    {
+      "id": "xlsx-census-nst-est2024-pop",
+      "review": "reviews/xlsx-census-nst-est2024-pop.json",
+      "summary": "All 476 cell positions retain values; two notes change only whitespace. Eleven merged ranges and multi-row header semantics are flattened.",
+      "verdict": "warning"
+    }
+  ],
+  "schema_version": 1
+}

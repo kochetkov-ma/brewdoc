@@ -1,0 +1,295 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-arxiv-2302.13971v1.json",
+    "markdown": "pass-1/pdf-arxiv-2302.13971v1/artifacts/document.md",
+    "receipt": "pass-1/pdf-arxiv-2302.13971v1/receipt.json"
+  },
+  "coverage": {
+    "all_annotated_display_equation_regions": true,
+    "all_numbered_figures": true,
+    "all_numbered_tables": true,
+    "long_text_cells": "all table layouts and row labels; sampled cell content",
+    "numeric_table_values": "visual checks across numeric tables; all 496 Table 16 scores compared exactly",
+    "prose": "sampled",
+    "source_pages_reviewed": 27
+  },
+  "document_id": "pdf-arxiv-2302.13971v1",
+  "limitations": [
+    "No full character-level proof for prose, bibliography or long text cells.",
+    "No chart digitization, OCR, converter fix, rerun, CI or publication."
+  ],
+  "markdown_sha256": "2975edbac2c57893353cb593aed95f4d4f33322510591af16eeb2b286b1dba45",
+  "objects_reviewed": [
+    {
+      "finding": "Aligned fenced text; all seven dataset rows and sampled numeric values retained.",
+      "kind": "table",
+      "label": "Table 1: Pre-training data",
+      "markdown_lines": [
+        131,
+        142
+      ],
+      "source_object_id": "p2-table-1",
+      "source_page": 2
+    },
+    {
+      "finding": "Aligned fenced text; negative exponent signs become question marks in all four learning rates.",
+      "kind": "table",
+      "label": "Table 2: Model sizes and hyperparameters",
+      "markdown_lines": [
+        183,
+        188
+      ],
+      "source_object_id": "p3-table-1",
+      "source_page": 3
+    },
+    {
+      "finding": "Aligned fenced text; score rows retained; shared LLaMA family label isolated between rows.",
+      "kind": "table",
+      "label": "Table 3: Common Sense Reasoning",
+      "markdown_lines": [
+        273,
+        285
+      ],
+      "source_object_id": "p4-table-1",
+      "source_page": 4
+    },
+    {
+      "finding": "Aligned fenced text; shot columns retained; family labels detached between rows.",
+      "kind": "table",
+      "label": "Table 4: NaturalQuestions",
+      "markdown_lines": [
+        338,
+        351
+      ],
+      "source_object_id": "p4-table-2",
+      "source_page": 4
+    },
+    {
+      "finding": "Aligned fenced text; sampled first and last score rows match source.",
+      "kind": "table",
+      "label": "Table 5: TriviaQA",
+      "markdown_lines": [
+        395,
+        405
+      ],
+      "source_object_id": "p5-table-1",
+      "source_page": 5
+    },
+    {
+      "finding": "Aligned fenced text; RACE scores retained; family labels detached between rows.",
+      "kind": "table",
+      "label": "Table 6: Reading Comprehension",
+      "markdown_lines": [
+        414,
+        426
+      ],
+      "source_object_id": "p5-table-2",
+      "source_page": 5
+    },
+    {
+      "finding": "Aligned fenced text; grouped header hierarchy flattened; sampled PaLM/Minerva/LLaMA values retained.",
+      "kind": "table",
+      "label": "Table 7: Quantitative reasoning",
+      "markdown_lines": [
+        467,
+        486
+      ],
+      "source_object_id": "p6-table-1",
+      "source_page": 6
+    },
+    {
+      "finding": "Aligned fenced text; score rows retained; source star markers become question marks and pass-at-k loses k.",
+      "kind": "table",
+      "label": "Table 8: Code generation",
+      "markdown_lines": [
+        520,
+        538
+      ],
+      "source_object_id": "p6-table-2",
+      "source_page": 6
+    },
+    {
+      "finding": "Aligned fenced text; domain score rows retained; shared family labels detached.",
+      "kind": "table",
+      "label": "Table 9: MMLU",
+      "markdown_lines": [
+        574,
+        587
+      ],
+      "source_object_id": "p7-table-1",
+      "source_page": 7
+    },
+    {
+      "finding": "Aligned fenced text; all 11 model/size/score lines retained.",
+      "kind": "table",
+      "label": "Table 10: Instruction finetuning",
+      "markdown_lines": [
+        609,
+        622
+      ],
+      "source_object_id": "p7-table-2",
+      "source_page": 7
+    },
+    {
+      "finding": "Aligned fenced text; four model sizes and Basic/Respectful values retained.",
+      "kind": "table",
+      "label": "Table 11: RealToxicityPrompts",
+      "markdown_lines": [
+        704,
+        719
+      ],
+      "source_object_id": "p8-table-1",
+      "source_page": 8
+    },
+    {
+      "finding": "Aligned fenced text; category and Average rows retained; multiword labels lose spaces.",
+      "kind": "table",
+      "label": "Table 12: CrowS-Pairs",
+      "markdown_lines": [
+        733,
+        747
+      ],
+      "source_object_id": "p9-table-1",
+      "source_page": 9
+    },
+    {
+      "finding": "Aligned fenced text; six pronoun/category rows and four score columns retained.",
+      "kind": "table",
+      "label": "Table 13: WinoGender",
+      "markdown_lines": [
+        836,
+        849
+      ],
+      "source_object_id": "p10-table-1",
+      "source_page": 10
+    },
+    {
+      "finding": "Aligned fenced text; seven model score rows retained; family labels detached.",
+      "kind": "table",
+      "label": "Table 14: TruthfulQA",
+      "markdown_lines": [
+        852,
+        865
+      ],
+      "source_object_id": "p10-table-2",
+      "source_page": 10
+    },
+    {
+      "finding": "Aligned fenced text; six model rows retained; stacked headers and CO2 subscript detach.",
+      "kind": "table",
+      "label": "Table 15: Carbon footprint",
+      "markdown_lines": [
+        946,
+        961
+      ],
+      "source_object_id": "p11-table-1",
+      "source_page": 11
+    },
+    {
+      "finding": "Aligned fenced text; all 496 decimal score tokens match source row-major order; subject words lose spaces.",
+      "kind": "table",
+      "label": "Table 16: Detailed MMLU",
+      "markdown_lines": [
+        1583,
+        1649
+      ],
+      "source_object_id": "p18-table-1",
+      "source_page": 18
+    },
+    {
+      "finding": "False table from chart grid; legend split and curves absent; neighboring left-column prose lost.",
+      "kind": "line_chart",
+      "label": "Figure 1: Training loss over train tokens",
+      "markdown_lines": [
+        194,
+        245
+      ],
+      "source_object_id": "p3-figure-1",
+      "source_page": 3
+    },
+    {
+      "finding": "False table and stray ticks; six line-chart panel relationships absent.",
+      "kind": "multi_panel_line_chart",
+      "label": "Figure 2: Evolution of performance during training",
+      "markdown_lines": [
+        662,
+        673
+      ],
+      "source_object_id": "p8-figure-1",
+      "source_page": 8
+    },
+    {
+      "finding": "Prompt/target text retained but paired examples interleave across each output line.",
+      "kind": "text_example_diagram",
+      "label": "Figure 3: Formatted dataset example",
+      "markdown_lines": [
+        1569,
+        1574
+      ],
+      "source_object_id": "p17-figure-1",
+      "source_page": 17
+    },
+    {
+      "finding": "Simple expression remains interpretable; subscripts flatten onto separate lines for carbon formulas.",
+      "kind": "equation_region",
+      "label": "Unnumbered answer-likelihood normalization formula",
+      "markdown_page_lines": [
+        270,
+        358
+      ],
+      "source_object_id": "p4-figure-1",
+      "source_page": 4
+    },
+    {
+      "finding": "Simple expression remains interpretable; subscripts flatten onto separate lines for carbon formulas.",
+      "kind": "equation_region",
+      "label": "Carbon-emission conversion formula",
+      "markdown_page_lines": [
+        833,
+        942
+      ],
+      "source_object_id": "p10-figure-1",
+      "source_page": 10
+    },
+    {
+      "finding": "Simple expression remains interpretable; subscripts flatten onto separate lines for carbon formulas.",
+      "kind": "equation_region",
+      "label": "Energy consumption formula",
+      "markdown_page_lines": [
+        833,
+        942
+      ],
+      "source_object_id": "p10-figure-2",
+      "source_page": 10
+    }
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "schema_version": 1,
+  "source_sha256": "2e663675ae36ad12adb2f5a05281bac2747ecf8d23d92bedd9f937a89fee7136",
+  "validation": [
+    "27 consecutive annotated pages, source hash match, all region boxes within page bounds",
+    {
+      "case": "Table 16 all decimal score tokens",
+      "count": 496,
+      "markdown_lines": [
+        1585,
+        1646
+      ],
+      "sequence_equal": true,
+      "source_crop_pt": [
+        90,
+        130,
+        505,
+        750
+      ]
+    },
+    {
+      "case": "Page 3 dropped narrative continuation",
+      "markdown_contains_architecture_heading_after_space_removal": false,
+      "markdown_contains_roughly_1_4T_after_space_removal": false,
+      "source_region_text": "Overall, our entire training dataset contains\nroughly1.4Ttokensaftertokenization. Formostof\nourtrainingdata,eachtokenisusedonlyoncedur-\ning training, with the exception of the Wikipedia\nand Books domains, over which we perform ap-\nproximatelytwoepochs."
+    }
+  ],
+  "verdict": "failure",
+  "verdict_scope": "Faithful technical document conversion; partial prose extraction remains useful with source checks."
+}

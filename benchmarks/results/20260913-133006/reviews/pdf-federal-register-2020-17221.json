@@ -1,0 +1,78 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-federal-register-2020-17221.json",
+    "markdown": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md",
+    "receipt": "pass-1/pdf-federal-register-2020-17221/receipt.json"
+  },
+  "capture": {
+    "elapsed_seconds": 1.199157583003398,
+    "file_ok": true,
+    "markdown_sha256": "9ce94b80832f4dc033e14acbd364c52b3e20afdefa53d5134382a188eed93e39",
+    "pages": 15,
+    "receipt_tables": 2,
+    "returncode": 0
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:475-479",
+      "finding": "All three row identities and cost fields survive, including $85, $0 and $6,205 for each row. The wrapped MDS action label remains in one cell.",
+      "snippet": "| FCC OPS installation and verification .. | 1 work-hour x $85 per hour = $85 ......",
+      "source": "Page 5, Estimated Costs: five columns, three action rows."
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:487-490",
+      "finding": "The first action label and $766,885 disappear. First and second row labor/parts/per-product fields combine into one row; the AOA row repeats its values below. This is a within-page mapping failure, separate from unsupported cross-page table joining.",
+      "snippet": "|  | Up to 79 work-hours x $85 per hour = Up to $6,715. 40 work-hours x $85 per hour = $3,400. |",
+      "source": "Page 6, Estimated Costs continued: Stabilizer wiring change; up to $6,715 labor, $3,790 parts, $10,505 per product, $766,885 U.S. total."
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:638-773; pass-1/pdf-federal-register-2020-17221/receipt.json (derived)",
+      "finding": "All raster figure bodies/captions are absent; page 8 contains only reversed furniture text. The receipt says images, figures and text inside them are not_carried, so this is a declared limitation. file_ok:true must not be interpreted as complete content preservation.",
+      "snippet": "## Page 8\n\nSLASOPORP\nhtiw",
+      "source": "Pages 7-14: Figures 1-10, eleven text-bearing raster objects; Figure 2 spans pages 8-9."
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:100-116",
+      "finding": "Lines combine the left, middle and right columns. The source reading order is not retained. Pages 3-5 and 14 also show interleaving.",
+      "snippet": "Hatta International Airport in Jakarta, altitude disagree alert,5and may affect and the Ethiopian Civil Aviation",
+      "source": "Page 2: three separate prose columns with independent footnotes."
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:777-799;904-921",
+      "finding": "The Pilatus action and summary are inserted into the Boeing continuation before the Pilatus title/docket appears. This mixes distinct notices, not merely page furniture.",
+      "snippet": "this AD. Information may be emailed to: 9- ACTION: Notice of proposed rulemaking Comments will be available in the AD",
+      "source": "Page 15: Boeing notice ends in left column, followed by a new Pilatus notice that continues through the middle/right columns."
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:395;656-659",
+      "finding": "Some furniture survives despite receipt running_heads=83 and page_numbers=1. Reversed SLASOPORP/htiw text remains on otherwise empty output page 8.",
+      "snippet": "47702     Federal Register/Vol. 85, No. 152/Thursday, August 6, 2020/Proposed Rules",
+      "source": "Page 5 running head and printed folio 47702; page 8 rotated production footer."
+    }
+  ],
+  "id": "pdf-federal-register-2020-17221",
+  "limitations": [
+    "All 15 source pages visually reviewed and every output page chapter accounted for; all cost-table rows and eleven raster figure instances compared. Narrative review sampled pages 1-6 and 13-15, without exhaustive word-level alignment.",
+    "No OCR, chart reconstruction or new conversion was performed. Missing raster text is an explicit product limitation; the source still requires image-aware review.",
+    "Page 15 contains a second public notice already present in the original source PDF; it was not introduced by the tool."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "Full source page/object inventory; both cost-table segments and all raster figures checked; sampled narrative and document-boundary reading order.",
+  "schema_version": 1,
+  "summary": "The continued cost table loses the stabilizer action identity and $766,885 total while combining two rows. Three-column prose and the two notices on page 15 interleave. Raster procedure text is absent as declared by the receipt.",
+  "table_review": [
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:475-479",
+      "finding": "Five headers and all three action rows checked; all labor, parts, per-product and U.S.-total values retained in their columns.",
+      "source": "Page 5, Estimated Costs first segment",
+      "verdict": "success"
+    },
+    {
+      "actual": "pass-1/pdf-federal-register-2020-17221/artifacts/document.md:487-490",
+      "finding": "Both source rows checked. Stabilizer row label and U.S. total lost, middle fields merged with AOA values, AOA values duplicated. The AOA row itself retains $3,400/$0/$3,400/$248,200.",
+      "source": "Page 6, Estimated Costs continued segment",
+      "verdict": "failure"
+    }
+  ],
+  "verdict": "failure"
+}

@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "document_id": "xls-calamine-xls-formula",
+  "source_sha256": "553f0417bacbb34c7755cbe7334ecc63f850cb099d02af503143a9c679278a87",
+  "title": "Legacy workbook same-sheet and cross-sheet formulas",
+  "topics": [
+    "spreadsheet parser features",
+    "cached-numeric-formula-values",
+    "same-sheet-formula",
+    "cross-sheet-formula"
+  ],
+  "language": "und",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations. Second pass: complete BIFF8/BIFF12 sheet record inventory using Microsoft record specifications; olefile 0.47 reads XLS OLE streams and xlrd 2.0.2 independently decompiles XLS formula tokens in an isolated uv environment.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A4",
+      "value_grid_dimensions": {
+        "rows": 4,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "float": 4
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 3,
+        "status": "source-inspected",
+        "evidence": "Complete Workbook sheet substream scan; BIFF8 Formula=0x0006; cached Xnum read directly and formula tokens independently decompiled by xlrd 2.0.2.",
+        "cached_values": [
+          {
+            "cell": "A2",
+            "formula": "A1*2.0",
+            "cached_value": 20,
+            "record_offset": 15206,
+            "record_type": "Formula",
+            "token_bytes": "44000000c01e020005"
+          },
+          {
+            "cell": "A3",
+            "formula": "2.0*Sheet2!A1:A1",
+            "cached_value": 110,
+            "record_offset": 15241,
+            "record_type": "Formula",
+            "token_bytes": "1e02005a0000000000c005"
+          },
+          {
+            "cell": "A4",
+            "formula": "A1+Sheet2!A1:A1",
+            "cached_value": 65,
+            "record_offset": 15278,
+            "record_type": "Formula",
+            "token_bytes": "44000000c05a0000000000c003"
+          }
+        ]
+      },
+      "edge_cases": [
+        {
+          "tag": "cached-formula-values",
+          "locations": [
+            "A2",
+            "A3",
+            "A4"
+          ],
+          "examples": [
+            {
+              "cell": "A2",
+              "record_type": "Formula",
+              "value": 20
+            },
+            {
+              "cell": "A3",
+              "record_type": "Formula",
+              "value": 110
+            },
+            {
+              "cell": "A4",
+              "record_type": "Formula",
+              "value": 65
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 10
+        }
+      ],
+      "binary_evidence": {
+        "source_part": "Workbook",
+        "substream_start": 14778,
+        "substream_end": 15425,
+        "record_count": 42,
+        "record_counts": {
+          "0x6": 3,
+          "0xe5": 0,
+          "0x5d": 0,
+          "0x7f": 0,
+          "0xe9": 0,
+          "0xec": 0,
+          "0x866": 0,
+          "0x868": 0,
+          "0x871": 0,
+          "0x872": 0,
+          "0x877": 0,
+          "0x878": 0,
+          "0x1002": 0,
+          "0x1003": 0,
+          "0x100d": 0,
+          "0x103c": 0,
+          "0x8a6": 0
+        },
+        "officeart_records": []
+      },
+      "object_presence_evidence": "No Obj, ImData, BkHim, HFPicture, PicF, Feature11 or Feature12 records; no OfficeArt picture store entries/BLIPs. Chart records are listed separately."
+    },
+    {
+      "index": 2,
+      "name": "Sheet2",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A1",
+      "value_grid_dimensions": {
+        "rows": 1,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "float": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "status": "source-inspected",
+        "evidence": "Complete Workbook sheet substream scan; BIFF8 Formula=0x0006; cached Xnum read directly and formula tokens independently decompiled by xlrd 2.0.2.",
+        "cached_values": []
+      },
+      "edge_cases": [],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 55
+        }
+      ],
+      "binary_evidence": {
+        "source_part": "Workbook",
+        "substream_start": 15425,
+        "substream_end": 15863,
+        "record_count": 34,
+        "record_counts": {
+          "0x6": 0,
+          "0xe5": 0,
+          "0x5d": 0,
+          "0x7f": 0,
+          "0xe9": 0,
+          "0xec": 0,
+          "0x866": 0,
+          "0x868": 0,
+          "0x871": 0,
+          "0x872": 0,
+          "0x877": 0,
+          "0x878": 0,
+          "0x1002": 0,
+          "0x1003": 0,
+          "0x100d": 0,
+          "0x103c": 0,
+          "0x8a6": 0
+        },
+        "officeart_records": []
+      },
+      "object_presence_evidence": "No Obj, ImData, BkHim, HFPicture, PicF, Feature11 or Feature12 records; no OfficeArt picture store entries/BLIPs. Chart records are listed separately."
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit.",
+    "Structural inventory is complete for sheet values, formula counts/caches, merges and table/chart/image presence. It is not a full binary-format conformance or rendering audit.",
+    "XLS formula expressions use xlrd decompiler spelling, which can show a single-cell area as A1:A1 and integer constants as 2.0."
+  ],
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  },
+  "vba_part_present": false,
+  "binary_workbook_evidence": {
+    "biff_version": "BIFF8",
+    "ole_stream": "Workbook",
+    "global_object_record_counts": {
+      "0xeb": 0,
+      "0xec": 0,
+      "0x5d": 0,
+      "0x7f": 0,
+      "0xe9": 0,
+      "0x866": 0
+    },
+    "global_officeart_records": []
+  }
+}

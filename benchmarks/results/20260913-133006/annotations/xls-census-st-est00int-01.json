@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "document_id": "xls-census-st-est00int-01",
+  "source_sha256": "4a4c056771eb4abd82900b13bc3b9173571ca43e52ad67b3b170a034dce874ee",
+  "title": "Table 1. Intercensal Estimates of the Resident Population for the United States, Regions, States, and Puerto Rico: April 1, 2000 to July 1, 2010",
+  "topics": [
+    "United States population",
+    "states and regions",
+    "population estimates"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations. Second pass: complete BIFF8/BIFF12 sheet record inventory using Microsoft record specifications; olefile 0.47 reads XLS OLE streams and xlrd 2.0.2 independently decompiles XLS formula tokens in an isolated uv environment.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "ST-EST00INT-01.xls",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:N70",
+      "value_grid_dimensions": {
+        "rows": 70,
+        "columns": 14
+      },
+      "cell_type_counts": {
+        "blank": 157,
+        "float": 120,
+        "int": 631,
+        "str": 72
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [
+          61
+        ],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [
+        "A1:N1",
+        "A2:N2",
+        "A3:A4",
+        "B3:B4",
+        "C3:L3",
+        "M3:M4",
+        "N3:N4",
+        "A69:N69",
+        "A70:N70",
+        "A63:N63",
+        "A64:N64",
+        "A65:N65",
+        "A66:N66",
+        "A67:N67",
+        "A68:N68"
+      ],
+      "tables": [
+        {
+          "kind": "document_table",
+          "name": null,
+          "range": "A3:N62",
+          "title_range": "A2",
+          "header_range": "A3:N4",
+          "body_ranges": [
+            "A5:N60",
+            "A62:N62"
+          ],
+          "row_header_ranges": [
+            "A5:A60",
+            "A62"
+          ],
+          "notes_range": "A63:A70",
+          "evidence": "Source A1 explicitly identifies row headers and header rows; value inspection confirms body and note boundaries."
+        }
+      ],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "status": "source-inspected",
+        "evidence": "Complete Workbook sheet substream scan; BIFF8 Formula=0x0006; cached Xnum read directly and formula tokens independently decompiled by xlrd 2.0.2.",
+        "cached_values": []
+      },
+      "edge_cases": [
+        {
+          "tag": "blank-rows",
+          "locations": [
+            "61"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "embedded-newline",
+          "locations": [
+            "A63",
+            "A65"
+          ],
+          "examples": [
+            {
+              "cell": "A63",
+              "value": "1 The April 1, 2000 Population Estimates base reflects changes to the Census 2000 population from the Count Question Resolution program, legal boundary updates, and other\ngeographic program revisions."
+            },
+            {
+              "cell": "A65",
+              "value": "3 The values for July 1, 2010 were produced by applying estimates of change in the population between April 1 and July 1 of 2010 to the 2010 Census counts.  Further details \non this methodology are available at http://www.census.gov/popest/methodology/intercensal_nat_meth.pdf."
+            }
+          ]
+        },
+        {
+          "tag": "repeated-spaces",
+          "locations": [
+            "A65"
+          ],
+          "examples": [
+            {
+              "cell": "A65",
+              "value": "3 The values for July 1, 2010 were produced by applying estimates of change in the population between April 1 and July 1 of 2010 to the 2010 Census counts.  Further details \non this methodology are available at http://www.census.gov/popest/methodology/intercensal_nat_meth.pdf."
+            }
+          ]
+        },
+        {
+          "tag": "edge-whitespace",
+          "locations": [
+            "A70"
+          ],
+          "examples": [
+            {
+              "cell": "A70",
+              "value": "Release Date: September 2011 "
+            }
+          ]
+        },
+        {
+          "tag": "merged-cells",
+          "locations": [
+            "A1:N1",
+            "A2:N2",
+            "A3:A4",
+            "B3:B4",
+            "C3:L3",
+            "M3:M4",
+            "N3:N4",
+            "A69:N69",
+            "A70:N70",
+            "A63:N63",
+            "A64:N64",
+            "A65:N65",
+            "A66:N66",
+            "A67:N67",
+            "A68:N68"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "two-row-header-with-footnotes",
+          "locations": [
+            "A3:N4",
+            "A63:A70"
+          ],
+          "examples": [
+            {
+              "cell": "A3",
+              "value": "Geographic Area"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "str",
+          "value": "table with row headers in column A and column headers in rows 3 through 4. (leading dots indicate sub-parts)"
+        },
+        {
+          "cell": "C4",
+          "type": "float",
+          "value": 2000
+        },
+        {
+          "cell": "B5",
+          "type": "int",
+          "value": 281424600
+        }
+      ],
+      "binary_evidence": {
+        "source_part": "Workbook",
+        "substream_start": 14728,
+        "substream_end": 31634,
+        "record_count": 259,
+        "record_counts": {
+          "0x6": 0,
+          "0xe5": 1,
+          "0x5d": 0,
+          "0x7f": 0,
+          "0xe9": 0,
+          "0xec": 0,
+          "0x866": 0,
+          "0x868": 0,
+          "0x871": 0,
+          "0x872": 0,
+          "0x877": 0,
+          "0x878": 0,
+          "0x1002": 0,
+          "0x1003": 0,
+          "0x100d": 0,
+          "0x103c": 0,
+          "0x8a6": 0
+        },
+        "officeart_records": []
+      },
+      "object_presence_evidence": "No Obj, ImData, BkHim, HFPicture, PicF, Feature11 or Feature12 records; no OfficeArt picture store entries/BLIPs. Chart records are listed separately."
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit.",
+    "Structural inventory is complete for sheet values, formula counts/caches, merges and table/chart/image presence. It is not a full binary-format conformance or rendering audit.",
+    "XLS formula expressions use xlrd decompiler spelling, which can show a single-cell area as A1:A1 and integer constants as 2.0."
+  ],
+  "title_basis": "Source cell A2.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  },
+  "vba_part_present": false,
+  "binary_workbook_evidence": {
+    "biff_version": "BIFF8",
+    "ole_stream": "Workbook",
+    "global_object_record_counts": {
+      "0xeb": 0,
+      "0xec": 0,
+      "0x5d": 0,
+      "0x7f": 0,
+      "0xe9": 0,
+      "0x866": 0
+    },
+    "global_officeart_records": []
+  }
+}

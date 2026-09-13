@@ -1,0 +1,337 @@
+{
+  "annotation_manifest_schema_version": 2,
+  "annotations": [
+    {
+      "id": "ods-calamine-any-sheets",
+      "path": "annotations/ods-calamine-any-sheets.json",
+      "sha256": "a37d47d822a492ddbbe0716aa1f0b76338e9f2766344118e6225aa472aa33943",
+      "size_bytes": 7159
+    },
+    {
+      "id": "ods-calamine-date",
+      "path": "annotations/ods-calamine-date.json",
+      "sha256": "2bb4b6b035482fbf2a0f15f7a16fc5cb70124d7cdeee751d57efd2cd88f7140c",
+      "size_bytes": 3308
+    },
+    {
+      "id": "ods-calamine-issues",
+      "path": "annotations/ods-calamine-issues.json",
+      "sha256": "c7f359a67f0d455d921867d65cfa92983f0954657c8430e410c536f786eae06e",
+      "size_bytes": 10723
+    },
+    {
+      "id": "ods-calamine-merged-cells",
+      "path": "annotations/ods-calamine-merged-cells.json",
+      "sha256": "7b874290daea909b1ba29e0188c610c57fe73e091e61480afe2ab42d38497055",
+      "size_bytes": 2701
+    },
+    {
+      "id": "ods-calamine-special-cells",
+      "path": "annotations/ods-calamine-special-cells.json",
+      "sha256": "9d30cfb4b3a6d4e5930584d8aeb9da1470d65667461f3dea56454a7f1eccad24",
+      "size_bytes": 3612
+    },
+    {
+      "id": "pdf-arxiv-2302.13971v1",
+      "path": "annotations/pdf-arxiv-2302.13971v1.json",
+      "sha256": "d64a6da6589398c6fee16cfea7ef2d491051c78fc8d6783f0ee1d67b0bc09c30",
+      "size_bytes": 31333
+    },
+    {
+      "id": "pdf-arxiv-2305.18290v3",
+      "path": "annotations/pdf-arxiv-2305.18290v3.json",
+      "sha256": "da89e112418cb9d88ded7f9ef53ae21b282b058a1dbce727f523c394c3d2e201",
+      "size_bytes": 44151
+    },
+    {
+      "id": "pdf-arxiv-2402.00838v4",
+      "path": "annotations/pdf-arxiv-2402.00838v4.json",
+      "sha256": "61220f6c8e9c18614d722fdef9e129ad99f4efaf9f8fab4c15091e056d43aa86",
+      "size_bytes": 31987
+    },
+    {
+      "id": "pdf-eia-steo-table1",
+      "path": "annotations/pdf-eia-steo-table1.json",
+      "sha256": "0f16709802ae981c3a52f7d6b39b9447c75ee2781e41f1c427430bd9dec76ad8",
+      "size_bytes": 3265
+    },
+    {
+      "id": "pdf-fbi-nics-background-checks-2015-11",
+      "path": "annotations/pdf-fbi-nics-background-checks-2015-11.json",
+      "sha256": "54aee00a827189d2e943659078fde520b6f1ca6ea1df8802a326104ba424a0ee",
+      "size_bytes": 3172
+    },
+    {
+      "id": "pdf-federal-register-2020-17221",
+      "path": "annotations/pdf-federal-register-2020-17221.json",
+      "sha256": "c7b28624a0951accf0c53702f6fcde58a21b38ad8d5aee39bf70f1a294b34b07",
+      "size_bytes": 20275
+    },
+    {
+      "id": "pdf-nist-sp800-145",
+      "path": "annotations/pdf-nist-sp800-145.json",
+      "sha256": "28d3acdf1e30680a716155e79c5401fd4cc07c1721d9001eeb368e08b3798cbd",
+      "size_bytes": 12278
+    },
+    {
+      "id": "pdf-us-patent-223898-scan",
+      "path": "annotations/pdf-us-patent-223898-scan.json",
+      "sha256": "8c7eea5500b6d9c5b588d56a3365029e4e5dc0f8a2e4bc1ad8f342d3fbbf379f",
+      "size_bytes": 11083
+    },
+    {
+      "id": "pdf-us-senate-expenditures",
+      "path": "annotations/pdf-us-senate-expenditures.json",
+      "sha256": "dc26039d62d04fab2fc052ffd871d15feb72ec23abc7dae02af3b1984c56b910",
+      "size_bytes": 2467
+    },
+    {
+      "id": "xls-calamine-any-sheets",
+      "path": "annotations/xls-calamine-any-sheets.json",
+      "sha256": "a5332ab4be562c7766d148c0bd2d77c9d3ef904fb99d8967d42aae1568b60751",
+      "size_bytes": 11401
+    },
+    {
+      "id": "xls-calamine-date",
+      "path": "annotations/xls-calamine-date.json",
+      "sha256": "a8400f3541e8544d611927b9e1778730d9d633bcb0ec9e32f092ae755886ff45",
+      "size_bytes": 6064
+    },
+    {
+      "id": "xls-calamine-merge-cells",
+      "path": "annotations/xls-calamine-merge-cells.json",
+      "sha256": "74aa3612a2e9520022cccb19441c3e2f83a054fdfb76a476e7dc0360250b8039",
+      "size_bytes": 4615
+    },
+    {
+      "id": "xls-calamine-xls-formula",
+      "path": "annotations/xls-calamine-xls-formula.json",
+      "sha256": "d3d338807c925fed463c4c278d5b6c483184312c7cbbd64e3d9c8a6c36f99dbb",
+      "size_bytes": 7256
+    },
+    {
+      "id": "xls-census-st-est00int-01",
+      "path": "annotations/xls-census-st-est00int-01.json",
+      "sha256": "74d75e9d96de6876e02f8c44c1d14a966e0217b250bbd01228167484e06ccdaa",
+      "size_bytes": 7754
+    },
+    {
+      "id": "xlsb-calamine-date",
+      "path": "annotations/xlsb-calamine-date.json",
+      "sha256": "bcc661d984e0002c11ff1cd90f754bfbeb53a8b2727c29c8745f33b5b0e738f5",
+      "size_bytes": 4476
+    },
+    {
+      "id": "xlsb-calamine-issue127",
+      "path": "annotations/xlsb-calamine-issue127.json",
+      "sha256": "07daea8cc9f71f04ca0bd35c5f5635c0e56eb1eae792b8ffac7ca7f5c735a4c4",
+      "size_bytes": 15531
+    },
+    {
+      "id": "xlsb-calamine-issues",
+      "path": "annotations/xlsb-calamine-issues.json",
+      "sha256": "af3d77c0aae3b46ddad36187cde549b28e9854b3328fb6fbe75a0b6d349a7a42",
+      "size_bytes": 16717
+    },
+    {
+      "id": "xlsm-calamine-issue221",
+      "path": "annotations/xlsm-calamine-issue221.json",
+      "sha256": "f5cd2a2b53dc54fda62dec88eedafbccb118d5a24a65a05f27a75bb08b6fc0c1",
+      "size_bytes": 2370
+    },
+    {
+      "id": "xlsm-calamine-issue3",
+      "path": "annotations/xlsm-calamine-issue3.json",
+      "sha256": "0ca246953d13b9c6eebd593c125bb34462b96cab49b07b1891eaedbcaf55964a",
+      "size_bytes": 4582
+    },
+    {
+      "id": "xlsm-calamine-vba",
+      "path": "annotations/xlsm-calamine-vba.json",
+      "sha256": "a7fd5bc42608481897aa6c38c4961fd6c07f7e926a179dd5a0fc239d0a48fbf7",
+      "size_bytes": 4428
+    },
+    {
+      "id": "xlsx-calamine-any-sheets",
+      "path": "annotations/xlsx-calamine-any-sheets.json",
+      "sha256": "74c33007254ca980fddf4174547aace76951d0dbe597020203f3affd2232bec2",
+      "size_bytes": 7111
+    },
+    {
+      "id": "xlsx-calamine-date",
+      "path": "annotations/xlsx-calamine-date.json",
+      "sha256": "078ce1fb79fb88b6fb2c6683810781d830ca31a98f6017d3202aeb1f732b6caf",
+      "size_bytes": 2969
+    },
+    {
+      "id": "xlsx-calamine-inventory-table",
+      "path": "annotations/xlsx-calamine-inventory-table.json",
+      "sha256": "31953ef71f83cacb528016c9884e270a5edd574c2aaba4a8f00d5632843d04dc",
+      "size_bytes": 2829
+    },
+    {
+      "id": "xlsx-calamine-merge-cells",
+      "path": "annotations/xlsx-calamine-merge-cells.json",
+      "sha256": "0098b1b944fc35e3171fc282c895152fc8da043cfadc2f3cbc29a2620d375989",
+      "size_bytes": 2916
+    },
+    {
+      "id": "xlsx-calamine-temperature-table",
+      "path": "annotations/xlsx-calamine-temperature-table.json",
+      "sha256": "cb4dbcb3af166d63507803fdc59badca2969f4dc2d4872031d6110383a4ac364",
+      "size_bytes": 4739
+    },
+    {
+      "id": "xlsx-census-nst-est2024-pop",
+      "path": "annotations/xlsx-census-nst-est2024-pop.json",
+      "sha256": "6ffa4633c9e0ea5f2974619220032416c002b0dcbe9e7ff9b801708da175c6e6",
+      "size_bytes": 5569
+    }
+  ],
+  "architecture": "arm64",
+  "brewdoc_import_path": "src/brewdoc/__init__.py",
+  "brewdoc_version": "0.1.0",
+  "capture_branch": "main",
+  "capture_command_template": [
+    "python",
+    "benchmarks/capture_results.py",
+    "--input",
+    "{repository_relative_input}",
+    "--output-dir",
+    "{new_capture_directory}",
+    "--tool",
+    "brewdoc",
+    "--tool-version",
+    "0.1.0",
+    "--timeout",
+    "300",
+    "--",
+    "python",
+    "-m",
+    "brewdoc.cli",
+    "{input}",
+    "--out",
+    "{output_dir}/document.md"
+  ],
+  "capture_helper": "benchmarks/capture_results.py",
+  "capture_manifest_schema_version": 1,
+  "capture_timeout_seconds": 300,
+  "captured_at_utc": "2026-09-13T13:33:54.093255+00:00",
+  "input_order": "ascending input ID, same order for both passes",
+  "manifest_note": "Version 2 adds source annotations and provenance to the same 31 input IDs, paths, sizes and hashes. Exported annotation_path fields are bundle-relative. Source input paths remain repository-relative.",
+  "os_name": "macOS",
+  "os_version": "15.7.7",
+  "packages": [
+    {
+      "name": "brewdoc",
+      "version": "0.1.0"
+    },
+    {
+      "name": "cffi",
+      "version": "2.1.1"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.1"
+    },
+    {
+      "name": "cryptography",
+      "version": "50.0.1"
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.0"
+    },
+    {
+      "name": "packaging",
+      "version": "26.3"
+    },
+    {
+      "name": "pdfminer.six",
+      "version": "20260107"
+    },
+    {
+      "name": "pdfplumber",
+      "version": "0.11.10"
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0"
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0"
+    },
+    {
+      "name": "pycparser",
+      "version": "3.0"
+    },
+    {
+      "name": "Pygments",
+      "version": "2.21.0"
+    },
+    {
+      "name": "pypdfium2",
+      "version": "5.13.0"
+    },
+    {
+      "name": "pytest",
+      "version": "9.1.1"
+    },
+    {
+      "name": "python-calamine",
+      "version": "0.8.2"
+    }
+  ],
+  "pass_order": [
+    1,
+    2
+  ],
+  "privacy_note": "Host paths, raw process commands, raw stdout and local environment records are not exported. No raw stderr is copied; all captured stderr streams are empty.",
+  "python_build": "3.12.3 (v3.12.3:f6650f9ad7, Apr  9 2024, 08:18:47) [Clang 13.0.0 (clang-1300.0.29.30)]",
+  "python_version": "3.12.3",
+  "schema_version": 1,
+  "scoped_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "source_and_inputs_reverified_unchanged_at_export": true,
+  "source_fingerprints": [
+    {
+      "path": "src/brewdoc/__init__.py",
+      "sha256": "c10d400869ad755f05934b85defb1af58707dc63c7f31b19a3561a420068cb32",
+      "size_bytes": 350
+    },
+    {
+      "path": "src/brewdoc/cli.py",
+      "sha256": "79bab2d2a82497c2fd9f4d5c89b9617b87c7d83b507e0d0f09e2710ca9297eaa",
+      "size_bytes": 324
+    },
+    {
+      "path": "src/brewdoc/reader.py",
+      "sha256": "a8828e9cba5f755e7977553720ac28deb1ae0a3ac01ae4e47389ab6718b253cb",
+      "size_bytes": 60006
+    },
+    {
+      "path": "benchmarks/capture_results.py",
+      "sha256": "d19fe64fa0c9e6c30b2189ac90ea838c7db7eb6eb3b0a34e2962eda16a25e44c",
+      "size_bytes": 6672
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "af3f9be49666bcec77b33de54e1ca75395535e31e2be4c4d4e59e6d3d48f3ecf",
+      "size_bytes": 1950
+    },
+    {
+      "path": "uv.lock",
+      "sha256": "e0ac842c61ac8f5c30c86afd1e93e1948911c6774baf6bcd79ef6f9dfe08b31c",
+      "size_bytes": 189187
+    },
+    {
+      "path": ".python-version",
+      "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "size_bytes": 5
+    }
+  ],
+  "source_revision": "56102bd20e0e05d9fea104c88d241f7cc682c291",
+  "source_state": "Tracked scoped diff was empty. The capture helper and corpus were untracked at capture; exact measured file identities are listed. Capture branch is historical, independent of publication branch.",
+  "timing": "wall seconds per subprocess, including startup/import/conversion/output/cleanup; no profiler; no cold/warm claim; peak memory not measured",
+  "working_directory": "repository root"
+}

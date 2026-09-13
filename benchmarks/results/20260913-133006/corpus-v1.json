@@ -1,0 +1,596 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "id": "ods-calamine-any-sheets",
+      "path": "tests/fixtures/ods/calamine-any_sheets.ods",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.ods",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "1aef869b5e34ad735010ca37a27fcf081824fd45d2af351542a74d03e3fed01d",
+      "size_bytes": 5813,
+      "format": "ods",
+      "variant": "ODF spreadsheet",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "sheet-order",
+        "hidden-worksheets",
+        "empty-sheets",
+        "interior-blank-row"
+      ]
+    },
+    {
+      "id": "ods-calamine-date",
+      "path": "tests/fixtures/ods/calamine-date.ods",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.ods",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "d65f3198bc73f2fad356e1b097215fc2f9a833fb802638217e5adc27fbba0466",
+      "size_bytes": 11886,
+      "format": "ods",
+      "variant": "ODF spreadsheet",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "date-cell",
+        "datetime-cell",
+        "time-cells",
+        "fractional-seconds",
+        "float-cells"
+      ]
+    },
+    {
+      "id": "ods-calamine-issues",
+      "path": "tests/fixtures/ods/calamine-issues.ods",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.ods",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "35b60d34e30e80b9931b5001ae9d8ff6ce0ac719983af8197a00ee59e01f07df",
+      "size_bytes": 4095,
+      "format": "ods",
+      "variant": "ODF spreadsheet",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "datetime-cell",
+        "unicode-text",
+        "leading-blank-row",
+        "cached-string-boolean-numeric-formula-values"
+      ]
+    },
+    {
+      "id": "ods-calamine-merged-cells",
+      "path": "tests/fixtures/ods/calamine-merged_cells.ods",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merged_cells.ods",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "64c7c278e497d32a7a54fe4c06d1db5e01a4741ed0fb7bde2817579d483c7301",
+      "size_bytes": 8650,
+      "format": "ods",
+      "variant": "ODF spreadsheet",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "vertical-merge",
+        "covered-cell",
+        "merge-absent-from-binding-metadata"
+      ]
+    },
+    {
+      "id": "ods-calamine-special-cells",
+      "path": "tests/fixtures/ods/calamine-special_cells.ods",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/special_cells.ods",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "12384e99c8b023f410de1fc102a5eda9950eb1358d7194028e71bc06cb70b767",
+      "size_bytes": 12051,
+      "format": "ods",
+      "variant": "ODF spreadsheet",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "string-cells",
+        "embedded-newline",
+        "repeated-interior-spaces",
+        "leading-and-trailing-spaces"
+      ]
+    },
+    {
+      "id": "pdf-arxiv-2302.13971v1",
+      "path": "tests/fixtures/pdf/arxiv-2302.13971v1.pdf",
+      "source_url": "https://arxiv.org/abs/2302.13971v1",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "sha256": "2e663675ae36ad12adb2f5a05281bac2747ecf8d23d92bedd9f937a89fee7136",
+      "size_bytes": 726566,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "two-column-prose",
+        "horizontal-only-table-rules",
+        "figures"
+      ]
+    },
+    {
+      "id": "pdf-arxiv-2305.18290v3",
+      "path": "tests/fixtures/pdf/arxiv-2305.18290v3.pdf",
+      "source_url": "https://arxiv.org/abs/2305.18290v3",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "sha256": "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a",
+      "size_bytes": 1299212,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "single-column-prose",
+        "equations",
+        "references",
+        "running-heads"
+      ]
+    },
+    {
+      "id": "pdf-arxiv-2402.00838v4",
+      "path": "tests/fixtures/pdf/arxiv-2402.00838v4.pdf",
+      "source_url": "https://arxiv.org/abs/2402.00838v4",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "sha256": "121e82248da601e8e4d4da5fa9b4486660ecf0f5a0fae5292b7af3c656c2385d",
+      "size_bytes": 562224,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "two-column-prose",
+        "footnotes",
+        "figures"
+      ]
+    },
+    {
+      "id": "pdf-eia-steo-table1",
+      "path": "tests/fixtures/pdf/eia-steo-table1.pdf",
+      "source_url": "https://www.eia.gov/outlooks/steo/tables/pdf/1tab.pdf",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "c83236d12a071cc75b5717429ed52f93b3c9b9d78c4d2cc08a666db261a00dbf",
+      "size_bytes": 167515,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "grouped-year-quarter-headers",
+        "dot-leaders",
+        "unruled-table-body",
+        "footer-notes"
+      ]
+    },
+    {
+      "id": "pdf-fbi-nics-background-checks-2015-11",
+      "path": "tests/fixtures/pdf/fbi-nics-background-checks-2015-11.pdf",
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/nics-background-checks-2015-11.pdf",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "4f0ae6e017b0e97de211da8fd97316e55bd927af5740d6ce95e1b7b1539f9407",
+      "size_bytes": 90468,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "landscape-page",
+        "25-column-ruled-grid",
+        "grouped-headers",
+        "footer-notes"
+      ]
+    },
+    {
+      "id": "pdf-federal-register-2020-17221",
+      "path": "tests/fixtures/pdf/federal-register-2020-17221.pdf",
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/federal-register-2020-17221.pdf",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "ac419e4e084ea7a7a33a7be3f129dd07bc705b1a9e45ad751e33357f17d60f5c",
+      "size_bytes": 713992,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "three-column-prose",
+        "running-heads",
+        "footnotes",
+        "image-content-on-text-bearing-pages"
+      ]
+    },
+    {
+      "id": "pdf-nist-sp800-145",
+      "path": "tests/fixtures/pdf/nist-sp800-145.pdf",
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "7b0c1a9fdfc67218b8ba2098f448c100c27070db91736b3c87fed63bfa21d418",
+      "size_bytes": 85781,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "single-column-prose",
+        "indented-definitions",
+        "footnote",
+        "page-folios"
+      ]
+    },
+    {
+      "id": "pdf-us-patent-223898-scan",
+      "path": "tests/fixtures/pdf/us-patent-223898-scan.pdf",
+      "source_url": "https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/0223898",
+      "license": "US patent text and drawings, not subject to copyright",
+      "license_url": "https://www.uspto.gov/terms-use-uspto-websites",
+      "sha256": "89078727e7a19f85ef5874a9750037d1accc317e5c13489f7fc7bd721392bd2a",
+      "size_bytes": 227921,
+      "format": "pdf",
+      "variant": "image-only PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "five-image-only-pages",
+        "no-text-layer"
+      ]
+    },
+    {
+      "id": "pdf-us-senate-expenditures",
+      "path": "tests/fixtures/pdf/us-senate-expenditures.pdf",
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/senate-expenditures.pdf",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "16921f0fc9b2c6039b23b694e0317917118ad7dd2b3a95a88518b7e144df527c",
+      "size_bytes": 53481,
+      "format": "pdf",
+      "variant": "text PDF",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "landscape-page",
+        "grouped-date-subheader",
+        "table-body-without-row-separators"
+      ]
+    },
+    {
+      "id": "xls-calamine-any-sheets",
+      "path": "tests/fixtures/xls/calamine-any_sheets.xls",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xls",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "efb61c9a60b826b18b251cd74bb80819fcf8eb566e74ef6130709dcd2f7e0590",
+      "size_bytes": 38400,
+      "format": "xls",
+      "variant": "BIFF8",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-values"
+      ]
+    },
+    {
+      "id": "xls-calamine-date",
+      "path": "tests/fixtures/xls/calamine-date.xls",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xls",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "e3eb3391a371cc1e0b85d94b9f1dd94bbcedf19733ed0ca449e2d269af758e9e",
+      "size_bytes": 5632,
+      "format": "xls",
+      "variant": "BIFF8",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "integer-cells"
+      ]
+    },
+    {
+      "id": "xls-calamine-merge-cells",
+      "path": "tests/fixtures/xls/calamine-merge_cells.xls",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xls",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "8900c1ed9184c3af774f56cc5d459377219603dd37cbfaa911fb6f759c780597",
+      "size_bytes": 19456,
+      "format": "xls",
+      "variant": "BIFF8",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ]
+    },
+    {
+      "id": "xls-calamine-xls-formula",
+      "path": "tests/fixtures/xls/calamine-xls_formula.xls",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/xls_formula.xls",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "553f0417bacbb34c7755cbe7334ecc63f850cb099d02af503143a9c679278a87",
+      "size_bytes": 25600,
+      "format": "xls",
+      "variant": "BIFF8",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "cached-numeric-formula-values",
+        "same-sheet-formula",
+        "cross-sheet-formula"
+      ]
+    },
+    {
+      "id": "xls-census-st-est00int-01",
+      "path": "tests/fixtures/xls/census-st-est00int-01.xls",
+      "source_url": "https://www2.census.gov/programs-surveys/popest/tables/2000-2010/intercensal/state/st-est00int-01.xls",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "4a4c056771eb4abd82900b13bc3b9173571ca43e52ad67b3b170a034dce874ee",
+      "size_bytes": 35328,
+      "format": "xls",
+      "variant": "BIFF8",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "title-rows",
+        "two-row-header",
+        "merged-ranges",
+        "footnotes",
+        "interior-blank-row",
+        "integer-and-float-cells"
+      ]
+    },
+    {
+      "id": "xlsb-calamine-date",
+      "path": "tests/fixtures/xlsb/calamine-date.xlsb",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsb",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "68d36adf4d4de3890209e786eeb89a98778d25158628f83e96587e652fbb4eca",
+      "size_bytes": 7711,
+      "format": "xlsb",
+      "variant": "binary workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ]
+    },
+    {
+      "id": "xlsb-calamine-issue127",
+      "path": "tests/fixtures/xlsb/calamine-issue127.xlsb",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue127.xlsb",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "7a1eebd5b6d8f560a91babd3831f1133d964b1b094b848dd00c933d905ca0e09",
+      "size_bytes": 13868,
+      "format": "xlsb",
+      "variant": "binary workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "eight-empty-sheets",
+        "sheet-order"
+      ]
+    },
+    {
+      "id": "xlsb-calamine-issues",
+      "path": "tests/fixtures/xlsb/calamine-issues.xlsb",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.xlsb",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "06c648de5529e022ef399a2b6ebc227040e9fdf71a0780e19e614f556bdb53d7",
+      "size_bytes": 19226,
+      "format": "xlsb",
+      "variant": "binary workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "date-cell",
+        "unicode-text",
+        "leading-blank-row"
+      ]
+    },
+    {
+      "id": "xlsm-calamine-issue221",
+      "path": "tests/fixtures/xlsm/calamine-issue221.xlsm",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue221.xlsm",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "4757c73be0ad3e0cb789dcf6c170df7ddf10160618986af41614278dc8ce6498",
+      "size_bytes": 7660,
+      "format": "xlsm",
+      "variant": "macro-enabled OOXML",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "2-by-2-text-grid",
+        "no-vba-part"
+      ]
+    },
+    {
+      "id": "xlsm-calamine-issue3",
+      "path": "tests/fixtures/xlsm/calamine-issue3.xlsm",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue3.xlsm",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "6d42e269833549a4c5d0118a6b0689cd9c6e6bafc3f1c32ea1bde865333ec9e1",
+      "size_bytes": 8266,
+      "format": "xlsm",
+      "variant": "macro-enabled OOXML",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "sheet-order",
+        "float-and-text-cells",
+        "two-empty-sheets",
+        "no-vba-part"
+      ]
+    },
+    {
+      "id": "xlsm-calamine-vba",
+      "path": "tests/fixtures/xlsm/calamine-vba.xlsm",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/vba.xlsm",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+      "size_bytes": 12752,
+      "format": "xlsm",
+      "variant": "macro-enabled OOXML",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "three-empty-sheets",
+        "vba-part-present"
+      ]
+    },
+    {
+      "id": "xlsx-calamine-any-sheets",
+      "path": "tests/fixtures/xlsx/calamine-any_sheets.xlsx",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xlsx",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "fba48e0141f847d80738a4417f0a336cba92e4ac692d8dd7516eac41e32c9e4f",
+      "size_bytes": 14804,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-empty-grid"
+      ]
+    },
+    {
+      "id": "xlsx-calamine-date",
+      "path": "tests/fixtures/xlsx/calamine-date.xlsx",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsx",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "0440916ec1b76ee4dd54955d59c2f42b266e9f5e4fccafb8cc1ed875908b26d2",
+      "size_bytes": 4659,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ]
+    },
+    {
+      "id": "xlsx-calamine-inventory-table",
+      "path": "tests/fixtures/xlsx/calamine-inventory-table.xlsx",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/inventory-table.xlsx",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "d63fa89e938aad9635cd556f683b901cc1c118bf11b494b1156c4711e5329631",
+      "size_bytes": 8347,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "text-cells",
+        "integer-valued-floats",
+        "excel-table-part"
+      ]
+    },
+    {
+      "id": "xlsx-calamine-merge-cells",
+      "path": "tests/fixtures/xlsx/calamine-merge_cells.xlsx",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xlsx",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "34f6b2779f49991859045791d8be0c5027e09b395f067c4363e38813d1e6431c",
+      "size_bytes": 8948,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ]
+    },
+    {
+      "id": "xlsx-calamine-temperature-table",
+      "path": "tests/fixtures/xlsx/calamine-temperature-table.xlsx",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/temperature-table.xlsx",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "2770aa2fdf782414e83ee80c7b25b4a102204a28a19f15fe5177661e1174eb4b",
+      "size_bytes": 11478,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "two-sheets",
+        "fractional-floats",
+        "two-excel-table-parts"
+      ]
+    },
+    {
+      "id": "xlsx-census-nst-est2024-pop",
+      "path": "tests/fixtures/xlsx/census-NST-EST2024-POP.xlsx",
+      "source_url": "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/state/totals/NST-EST2024-POP.xlsx",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "4a98cd464d3f9e122e74b47b38f1584e78e9077f4b36be1cabf7a79ab5942852",
+      "size_bytes": 15507,
+      "format": "xlsx",
+      "variant": "OOXML workbook",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": [
+        "title-rows",
+        "two-row-header",
+        "merged-ranges",
+        "footnotes",
+        "interior-blank-row",
+        "large-integer-valued-floats"
+      ]
+    }
+  ],
+  "gaps": [
+    "Every input is already used by the test suite; no held-out quality set is present.",
+    "Original-document XLSM, XLSB and ODS coverage is absent; these variants use upstream parser fixtures.",
+    "No wholly unruled standalone PDF table, mixed PDF with an entirely textless page, nonzero page-box origin, encrypted PDF or malformed PDF is confirmed.",
+    "No workbook establishes leading empty columns, ragged Python rows, error cells, missing or stale formula caches, XLSX/XLSM formula cells or XLSB formula encoding.",
+    "No workbook establishes 1904 dates, old BIFF generations, strict OOXML, password handling, malformed archives or large sparse-sheet scaling.",
+    "Features describe inputs, not correct extraction. OCR, formula calculation, VBA execution and chart extraction are outside brewdoc acceptance."
+  ]
+}

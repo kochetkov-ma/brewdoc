@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-us-senate-expenditures",
+  "source_sha256": "16921f0fc9b2c6039b23b694e0317917118ad7dd2b3a95a88518b7e144df527c",
+  "title": "United States Senate expenditures, page B-1191",
+  "topics": [
+    "government expenditure",
+    "staff compensation",
+    "travel payments"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 792,
+      "height_pt": 612,
+      "text_char_count": 3880,
+      "layout": {
+        "columns": 1,
+        "orientation": "landscape"
+      },
+      "content_types": [
+        "table",
+        "rotated_text"
+      ],
+      "tables": [
+        {
+          "id": "p1-t1",
+          "label": "Expenditure detail",
+          "bbox_pt": [
+            69.97,
+            99.11,
+            711.95,
+            509.11
+          ],
+          "structure": {
+            "columns": 7,
+            "header_rows": 2,
+            "body_rows": null,
+            "description": "Document number, date posted, payee name, service start/end dates, description and amount. Start/end share a parent heading. Header and body have separate outer boxes; the body lacks internal column borders and per-record row rules. A dotted horizontal separator divides compensation entries from travel entries."
+          },
+          "notes": "First body entries leave document and date fields blank. Travel descriptions wrap onto additional lines. Exact record count is not assigned from wrapped text lines."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "rotated_text",
+          "label": "B-1191",
+          "location": "right margin",
+          "bbox_pt": [
+            731.07,
+            286.62,
+            742.89,
+            325.37
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "layout",
+          "label": "Wide blank top margin",
+          "location": "above table",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Source layout and content inventory, not a transcription or converter quality verdict.",
+    "Null bounds identify objects whose exact boundary was not measured."
+  ]
+}
