@@ -9,16 +9,18 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.1.0
         with:
+          version: "0.12.13"
           python-version: "3.12"
       - name: tag must equal v + project.version
         run: |
           VERSION=$(uv run --no-project python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           [ "$GITHUB_REF_NAME" = "v$VERSION" ] || { echo "tag $GITHUB_REF_NAME != v$VERSION"; exit 1; }
+      - run: uv lock --check
       - run: uv build
       - uses: actions/upload-artifact@v7.0.1
         with:
@@ -28,7 +30,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi
     permissions:
       id-token: write
@@ -42,7 +44,7 @@ jobs:
 
   github-release:
     needs: [build, publish]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

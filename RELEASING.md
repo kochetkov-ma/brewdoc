@@ -19,7 +19,7 @@ No API token is stored anywhere: `pypa/gh-action-pypi-publish` exchanges the wor
 
 | # | step |
 |---|---|
-| 1 | Bump `project.version` in `pyproject.toml`, refresh `uv.lock` (`uv lock`), commit on `main` |
-| 2 | Tag and push: `git tag vX.Y.Z && git push origin refs/tags/vX.Y.Z` (the tag must equal `v` + `project.version`; `release.yml` refuses a mismatch) |
+| 1 | Discover existing tags and select the release version. On a `chore/release-X.Y.Z` branch, bump `project.version` and refresh `uv.lock` (`uv lock`). Validate, open a PR and squash merge it into `main`. |
+| 2 | When publication is authorized, verify the clean release checkout is the merged `main` commit. Tag and push: `git tag vX.Y.Z && git push origin refs/tags/vX.Y.Z` (the tag must equal `v` + `project.version`; `release.yml` refuses a mismatch). |
 | 3 | Watch `release.yml`: build (sdist + wheel), publish to PyPI, GitHub Release with `dist/*` attached |
 | 4 | Verify: `uvx brewdoc==X.Y.Z --self-check` |
