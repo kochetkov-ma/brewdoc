@@ -69,3 +69,4 @@ build-constraint-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["corpus: real document fixtures and corpus provenance checks"]
