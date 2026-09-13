@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-eia-steo-table1",
+  "source_sha256": "c83236d12a071cc75b5717429ed52f93b3c9b9d78c4d2cc08a666db261a00dbf",
+  "title": "Table 1. U.S. Energy Markets Summary, September 2026",
+  "topics": [
+    "energy production",
+    "energy consumption",
+    "energy prices",
+    "macroeconomic forecasts",
+    "weather"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 4647,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "table",
+        "footnotes",
+        "source_notes"
+      ],
+      "tables": [
+        {
+          "id": "p1-t1",
+          "label": "Table 1. U.S. Energy Markets Summary",
+          "bbox_pt": [
+            18.48,
+            36.84,
+            550.18,
+            546.67
+          ],
+          "structure": {
+            "columns": 16,
+            "header_rows": 2,
+            "body_rows": null,
+            "description": "One label column, twelve quarterly columns grouped by three years, and three annual columns. Numeric body has no per-row grid; some labels occupy two lines and macroeconomic series include growth-rate subrows. Five bold section labels and shaded forecast areas."
+          },
+          "notes": "Header rules and a strong vertical divider before annual totals. Dot leaders connect unit labels to data. Long labels and some numbers appear crowded or clipped in the source render; no completion of those strings is attempted."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Table title and EIA September 2026 issue",
+          "location": "top",
+          "bbox_pt": [
+            20.04,
+            19.71,
+            317.33,
+            36.63
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "footnotes",
+          "label": "Lettered notes a-d",
+          "location": "immediately below table",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "notes",
+          "label": "Completion date, missing-value notation, shading explanation and inflation basis",
+          "location": "lower page",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "source_notes",
+          "label": "Historical data sources, forecasts and weather sources",
+          "location": "bottom",
+          "bbox_pt": [
+            19.8,
+            645,
+            590.28,
+            699.66
+          ],
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": [
+        "Exact number of semantic body records is not assigned because metric labels and growth-rate subrows have different row structures."
+      ]
+    }
+  ],
+  "limitations": [
+    "Source layout and content inventory, not a transcription or converter quality verdict.",
+    "Null bounds identify objects whose exact boundary was not measured."
+  ]
+}

@@ -1,0 +1,1194 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-arxiv-2402.00838v4",
+  "source_sha256": "121e82248da601e8e4d4da5fa9b4486660ecf0f5a0fae5292b7af3c656c2385d",
+  "title": "OLMo: Accelerating the Science of Language Models",
+  "topics": [
+    "open language models",
+    "training data",
+    "model architecture",
+    "model evaluation",
+    "energy use and carbon emissions"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2676,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "logo"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "title-logo",
+          "label": "OLMo title wordmark",
+          "kind": "vector_logo",
+          "bbox_pt": [
+            130.6,
+            75.4,
+            174.4,
+            101
+          ],
+          "notes": "Colored unnumbered wordmark forming the first word of the title."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Full-width title and author/affiliation block above two-column abstract and introduction"
+        },
+        {
+          "description": "Colored vector OLMo wordmark forms part of title"
+        },
+        {
+          "description": "Rotated arXiv identifier and date in left margin"
+        },
+        {
+          "description": "Superscript author affiliations; linked citations"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 2,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3910,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column prose; numbered architecture list continues on page 3"
+        },
+        {
+          "description": "Section and subsection headings; footnotes beneath each column"
+        },
+        {
+          "description": "Inline mathematical fraction"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 3,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3509,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "table-1",
+          "label": "Table 1",
+          "bbox_pt": [
+            97,
+            70,
+            499,
+            119.2
+          ],
+          "structure": {
+            "description": "9 columns; one header row and 2 model rows; horizontal top/header/bottom rules and one vertical separator after Tokens."
+          },
+          "notes": "Full-width training settings; scientific notation, approximate batch sizes and yes/no weight tying."
+        },
+        {
+          "id": "table-2",
+          "label": "Table 2",
+          "bbox_pt": [
+            306.4,
+            183.9,
+            524.6,
+            306.4
+          ],
+          "structure": {
+            "description": "5 columns; multiline header, 6 source rows and a bold Total row; horizontal rules without vertical separators."
+          },
+          "notes": "Right-column Dolma composition; text types, UTF-8 bytes, document and token counts with units in header."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Full-width Table 1 above two-column prose and right-column Table 2"
+        },
+        {
+          "description": "Numbered architecture list continues from page 2"
+        },
+        {
+          "description": "Table captions and linked citations"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 4,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3896,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column prose with section, subsection and inline bold headings"
+        },
+        {
+          "description": "Reading order is left column then right column"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 5,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3687,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column prose; bulleted hardware list in right column"
+        },
+        {
+          "description": "Footnotes and URLs beneath both columns"
+        },
+        {
+          "description": "Inline mathematical exponent"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 6,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3392,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "table-3",
+          "label": "Table 3",
+          "bbox_pt": [
+            80.1,
+            70,
+            509.8,
+            255.3
+          ],
+          "structure": {
+            "description": "10 columns; multiline task header and 11 model rows; partial vertical separators, sparse horizontal rules, 2 blue highlighted rows."
+          },
+          "notes": "Full-width zero-shot evaluation; 8 task scores and average. OLMo rows are highlighted."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Full-width Table 3 above two-column evaluation prose"
+        },
+        {
+          "description": "Colored OLMo rows; multiline task labels"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 7,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2910,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "chart"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-1",
+          "label": "Figure 1",
+          "kind": "multi_panel_line_chart",
+          "bbox_pt": [
+            117.2,
+            78.8,
+            478.8,
+            291.6
+          ],
+          "notes": "8 colored dashed accuracy curves in a 2 by 4 panel layout; shared Tokens Seen (billions) and Accuracy labels.",
+          "panels": [
+            {
+              "id": "figure-1-panel-1",
+              "label": "arc_c",
+              "kind": "line_chart",
+              "bbox_pt": [
+                124.6,
+                78.8,
+                209.4,
+                172.4
+              ]
+            },
+            {
+              "id": "figure-1-panel-2",
+              "label": "arc_e",
+              "kind": "line_chart",
+              "bbox_pt": [
+                214.1,
+                78.8,
+                299,
+                172.4
+              ]
+            },
+            {
+              "id": "figure-1-panel-3",
+              "label": "boolq",
+              "kind": "line_chart",
+              "bbox_pt": [
+                303.7,
+                78.8,
+                388.5,
+                172.4
+              ]
+            },
+            {
+              "id": "figure-1-panel-4",
+              "label": "hellaswag",
+              "kind": "line_chart",
+              "bbox_pt": [
+                392.6,
+                78.8,
+                477.4,
+                172.4
+              ]
+            },
+            {
+              "id": "figure-1-panel-5",
+              "label": "obqa",
+              "kind": "line_chart",
+              "bbox_pt": [
+                124.6,
+                186.6,
+                209.4,
+                280.2
+              ]
+            },
+            {
+              "id": "figure-1-panel-6",
+              "label": "piqa",
+              "kind": "line_chart",
+              "bbox_pt": [
+                214.1,
+                186.6,
+                299,
+                280.2
+              ]
+            },
+            {
+              "id": "figure-1-panel-7",
+              "label": "sciq",
+              "kind": "line_chart",
+              "bbox_pt": [
+                303.7,
+                186.6,
+                388.5,
+                280.2
+              ]
+            },
+            {
+              "id": "figure-1-panel-8",
+              "label": "winogrande",
+              "kind": "line_chart",
+              "bbox_pt": [
+                392.6,
+                186.6,
+                477.4,
+                280.2
+              ]
+            }
+          ]
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Full-width Figure 1 above two-column prose"
+        },
+        {
+          "description": "Rotated axis labels; footnote in right column"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 8,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2617,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table",
+        "chart"
+      ],
+      "tables": [
+        {
+          "id": "table-4",
+          "label": "Table 4",
+          "bbox_pt": [
+            72.1,
+            434.4,
+            288.9,
+            546.9
+          ],
+          "structure": {
+            "description": "5 columns; multiline header and 9 model rows; partial vertical separator and horizontal group rules; final 2 rows blue."
+          },
+          "notes": "Left-column instruction-tuning evaluation. Hyphen denotes unavailable score; superscript footnote and directional arrows in metric headers."
+        }
+      ],
+      "figures": [
+        {
+          "id": "figure-2",
+          "label": "Figure 2",
+          "kind": "multi_panel_line_and_scatter_chart",
+          "bbox_pt": [
+            121.2,
+            72.1,
+            488.2,
+            355.6
+          ],
+          "notes": "12 panels in a 3 by 4 layout; model markers and dashed training curves; log-scaled token axes, bits-per-byte labels and shared model legend.",
+          "panels": [
+            {
+              "id": "figure-2-panel-1",
+              "label": "Sources Combined",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                133.3,
+                72.1,
+                210.8,
+                154.2
+              ]
+            },
+            {
+              "id": "figure-2-panel-2",
+              "label": "C4",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                215.5,
+                72.1,
+                292.9,
+                154.2
+              ]
+            },
+            {
+              "id": "figure-2-panel-3",
+              "label": "mC4",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                297.6,
+                72.1,
+                375.1,
+                154.2
+              ]
+            },
+            {
+              "id": "figure-2-panel-4",
+              "label": "WikiText-103",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                380.5,
+                72.1,
+                457.9,
+                154.2
+              ]
+            },
+            {
+              "id": "figure-2-panel-5",
+              "label": "PTB",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                133.3,
+                155.6,
+                210.8,
+                237.7
+              ]
+            },
+            {
+              "id": "figure-2-panel-6",
+              "label": "RedPajama",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                215.5,
+                155.6,
+                292.9,
+                237.7
+              ]
+            },
+            {
+              "id": "figure-2-panel-7",
+              "label": "Falcon RefinedWeb",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                297.6,
+                155.6,
+                375.1,
+                237.7
+              ]
+            },
+            {
+              "id": "figure-2-panel-8",
+              "label": "Dolma V1.5",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                380.5,
+                155.6,
+                457.9,
+                237.7
+              ]
+            },
+            {
+              "id": "figure-2-panel-9",
+              "label": "M2D2 S2ORC",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                133.3,
+                239.1,
+                210.8,
+                321.3
+              ]
+            },
+            {
+              "id": "figure-2-panel-10",
+              "label": "M2D2 Wikipedia",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                215.5,
+                239.1,
+                292.9,
+                321.3
+              ]
+            },
+            {
+              "id": "figure-2-panel-11",
+              "label": "C4 100 Domains",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                297.6,
+                239.1,
+                375.1,
+                321.3
+              ]
+            },
+            {
+              "id": "figure-2-panel-12",
+              "label": "100 Subreddits",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                380.5,
+                239.1,
+                457.9,
+                321.3
+              ]
+            }
+          ]
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Full-width Figure 2 above left-column Table 4 and two-column prose"
+        },
+        {
+          "description": "Nested bulleted and numbered list in right column"
+        },
+        {
+          "description": "Footnote in right column; superscript note marker inside table"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 9,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3653,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column conclusion and limitations prose"
+        },
+        {
+          "description": "Nested numbered artifact lists; footnote URL in left column"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 10,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4042,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column ethics statement and acknowledgments; references begin in right column"
+        },
+        {
+          "description": "Hanging-indent citations and links"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 11,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4425,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column references with hanging indents and linked titles"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 12,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4256,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column references with hanging indents and linked titles"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 13,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4519,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column references with hanging indents and linked titles"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 14,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4674,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column references with hanging indents and linked titles"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 15,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2638,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column references ending near top of right column"
+        },
+        {
+          "description": "Large unused lower-right region"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 16,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3970,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column appendices A, B and C"
+        },
+        {
+          "description": "Footnote URLs beneath both columns"
+        },
+        {
+          "description": "Subscripts in carbon-emissions units"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 17,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3109,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "table-5",
+          "label": "Table 5",
+          "bbox_pt": [
+            99,
+            70,
+            498.3,
+            338.8
+          ],
+          "structure": {
+            "description": "6 columns; one model header and 25 property rows in architecture/optimizer groups; horizontal rules and a partial vertical stub separator."
+          },
+          "notes": "Full-width comparison with text, numeric, approximate, scientific-notation and missing-value cells."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Full-width Table 5 above two-column appendix prose"
+        },
+        {
+          "description": "Architecture and optimizer groups separated by horizontal rule"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 18,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2427,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "table-6",
+          "label": "Table 6",
+          "bbox_pt": [
+            70,
+            70,
+            501,
+            229
+          ],
+          "structure": {
+            "description": "6 columns; multiline units header and 8 model/hardware rows; sparse rules and 2 blue rows."
+          },
+          "notes": "Full-width carbon emissions comparison; OLMo-7B appears for two hardware types. Asterisks refer to caption note."
+        },
+        {
+          "id": "table-7",
+          "label": "Table 7",
+          "bbox_pt": [
+            119.9,
+            333.4,
+            470.7,
+            451.3
+          ],
+          "structure": {
+            "description": "8 columns; one header and 7 model rows; vertical stub/average separators and sparse horizontal rules; blue final row."
+          },
+          "notes": "Full-width six additional task scores plus average."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two stacked full-width tables above two-column appendix D"
+        },
+        {
+          "description": "Caption footnote for hydropower carbon emissions"
+        },
+        {
+          "description": "Bulleted hyperparameters with mathematical exponents; footnote URL"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 19,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1103,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "chart",
+        "chart"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-3",
+          "label": "Figure 3",
+          "kind": "multi_panel_line_and_scatter_chart",
+          "bbox_pt": [
+            70,
+            72.7,
+            510.4,
+            313.9
+          ],
+          "notes": "7 source panels in a 2 by 4 layout; the eighth slot holds the shared model legend. Log-scaled token axes, model markers and training curves.",
+          "panels": [
+            {
+              "id": "figure-3-panel-1",
+              "label": "Pile",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                91.6,
+                72.7,
+                187.2,
+                183.2
+              ]
+            },
+            {
+              "id": "figure-3-panel-2",
+              "label": "100 PLs",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                199.3,
+                72.7,
+                294.9,
+                183.2
+              ]
+            },
+            {
+              "id": "figure-3-panel-3",
+              "label": "ICE",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                307.1,
+                72.7,
+                402.7,
+                183.2
+              ]
+            },
+            {
+              "id": "figure-3-panel-4",
+              "label": "Twitter AAE",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                414.8,
+                72.7,
+                510.4,
+                183.2
+              ]
+            },
+            {
+              "id": "figure-3-panel-5",
+              "label": "Manosphere",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                91.6,
+                188.6,
+                187.2,
+                299
+              ]
+            },
+            {
+              "id": "figure-3-panel-6",
+              "label": "Gab",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                199.3,
+                188.6,
+                294.9,
+                299
+              ]
+            },
+            {
+              "id": "figure-3-panel-7",
+              "label": "4chan",
+              "kind": "line_and_scatter_chart",
+              "bbox_pt": [
+                307.1,
+                188.6,
+                402.7,
+                299
+              ]
+            }
+          ]
+        },
+        {
+          "id": "figure-4",
+          "label": "Figure 4",
+          "kind": "multi_panel_line_chart",
+          "bbox_pt": [
+            69.4,
+            363,
+            519.9,
+            627.7
+          ],
+          "notes": "6 dashed accuracy curves in a 2 by 3 layout with shared Tokens Seen (billions) label.",
+          "panels": [
+            {
+              "id": "figure-4-panel-1",
+              "label": "headqa_en",
+              "kind": "line_chart",
+              "bbox_pt": [
+                78.8,
+                363,
+                220.9,
+                482.2
+              ]
+            },
+            {
+              "id": "figure-4-panel-2",
+              "label": "logiqa",
+              "kind": "line_chart",
+              "bbox_pt": [
+                228.3,
+                363,
+                370.4,
+                482.2
+              ]
+            },
+            {
+              "id": "figure-4-panel-3",
+              "label": "mrpc",
+              "kind": "line_chart",
+              "bbox_pt": [
+                377.1,
+                363,
+                519.2,
+                482.2
+              ]
+            },
+            {
+              "id": "figure-4-panel-4",
+              "label": "qnli",
+              "kind": "line_chart",
+              "bbox_pt": [
+                78.8,
+                497.7,
+                220.9,
+                616.9
+              ]
+            },
+            {
+              "id": "figure-4-panel-5",
+              "label": "wic",
+              "kind": "line_chart",
+              "bbox_pt": [
+                228.3,
+                497.7,
+                370.4,
+                616.9
+              ]
+            },
+            {
+              "id": "figure-4-panel-6",
+              "label": "wnli",
+              "kind": "line_chart",
+              "bbox_pt": [
+                377.1,
+                497.7,
+                519.2,
+                616.9
+              ]
+            }
+          ]
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Two stacked full-width composite charts above short two-column list continuation"
+        },
+        {
+          "description": "Rotated axis labels; footnote URL"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 20,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3371,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Two-column appendix E with bulleted model/evaluation descriptions"
+        },
+        {
+          "description": "Long URLs wrap across lines; footnote"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 21,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1433,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "table-8",
+          "label": "Table 8",
+          "bbox_pt": [
+            71.4,
+            70,
+            506.4,
+            130.7
+          ],
+          "structure": {
+            "description": "9 columns; multiline metric header and 3 model/training-stage rows; horizontal outer/header rules and vertical stub separator."
+          },
+          "notes": "Full-width complete evaluation suite. One missing result is a hyphen; leading plus signs identify training stages."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Full-width Table 8 above final prose in left column only"
+        },
+        {
+          "description": "Bulleted evaluation description; footnote URL"
+        },
+        {
+          "description": "Large unused right and lower page regions"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and object geometry"
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Source object inventory, not expected Markdown or a conversion quality verdict.",
+    "Vector object and panel bounds are visually measured at 1250-pixel page height and rounded to 0.1 point; allow about 3 points of boundary tolerance.",
+    "Tables are inventoried by visible structure; no PDF semantic cell merging is inferred. Chart series values and every table cell are not transcribed.",
+    "Composite charts are one figure each, with all component charts recorded in panels. The title logo is also counted as a figure. No raster image objects occur in this PDF."
+  ]
+}

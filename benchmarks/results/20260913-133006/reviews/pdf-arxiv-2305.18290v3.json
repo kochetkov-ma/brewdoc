@@ -1,0 +1,549 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-arxiv-2305.18290v3.json",
+    "markdown": "pass-1/pdf-arxiv-2305.18290v3/artifacts/document.md",
+    "receipt": "pass-1/pdf-arxiv-2305.18290v3/receipt.json"
+  },
+  "coverage": {
+    "all_annotated_display_equation_regions": true,
+    "all_numbered_figures": true,
+    "all_numbered_tables": true,
+    "long_text_cells": "all table layouts and row labels; sampled cell content",
+    "numeric_table_values": "all small numeric table rows inspected; long example cell text sampled",
+    "prose": "sampled",
+    "source_pages_reviewed": 27
+  },
+  "document_id": "pdf-arxiv-2305.18290v3",
+  "limitations": [
+    "No full character-level proof for prose, bibliography or long text cells.",
+    "No chart digitization, OCR, converter fix, rerun, CI or publication."
+  ],
+  "markdown_sha256": "a5647fc2ca4b2a742110c49db24305811c24f1d474fee5b6a3cfe397c250c0d1",
+  "objects_reviewed": [
+    {
+      "finding": "Fenced mixed region; numeric pairs 0.36/0.31 and 0.26/0.23 retained, but table and caption interleave neighboring prose.",
+      "kind": "table",
+      "label": "Table 1: Out-of-distribution win rates",
+      "markdown_lines": [
+        536,
+        549
+      ],
+      "source_object_id": "p9-table-1",
+      "source_page": 9
+    },
+    {
+      "finding": "Fenced mixed region; all seven metric rows visible; respondent counts 272/122/199 retained; rows interleave prose.",
+      "kind": "table",
+      "label": "Table 2: Human and GPT-4 comparison",
+      "markdown_lines": [
+        573,
+        591
+      ],
+      "source_object_id": "p10-table-1",
+      "source_page": 10
+    },
+    {
+      "finding": "Plain text; both tall Prompt/Response pairs retained as alternating left/right fragments, not cell-major order.",
+      "kind": "table",
+      "label": "Table 3: Unlikelihood samples",
+      "markdown_lines": [
+        1245,
+        1279
+      ],
+      "source_object_id": "p22-table-1",
+      "source_page": 22
+    },
+    {
+      "finding": "Plain text; Prompt/DPO/PPO/Judgment order and sampled summary meanings retained; spacing and table structure lost.",
+      "kind": "table",
+      "label": "Table 4: Summary example 1",
+      "markdown_lines": [
+        1309,
+        1333
+      ],
+      "source_object_id": "p23-table-1",
+      "source_page": 23
+    },
+    {
+      "finding": "Fenced text; four label/value rows retained; sampled proposal prompt and summary facts retained.",
+      "kind": "table",
+      "label": "Table 5: Summary example 2",
+      "markdown_lines": [
+        1338,
+        1366
+      ],
+      "source_object_id": "p24-table-1",
+      "source_page": 24
+    },
+    {
+      "finding": "Plain text; four label/value rows retained; source low-calorie versus weight-loss distinction retained.",
+      "kind": "table",
+      "label": "Table 6: Summary example 3",
+      "markdown_lines": [
+        1369,
+        1391
+      ],
+      "source_object_id": "p24-table-2",
+      "source_page": 24
+    },
+    {
+      "finding": "Plain text; four label/value rows retained, including source truncation marker; sampled dates and model judgment retained.",
+      "kind": "table",
+      "label": "Table 7: Dialogue: civil-rights essay",
+      "markdown_lines": [
+        1395,
+        1421
+      ],
+      "source_object_id": "p25-table-1",
+      "source_page": 25
+    },
+    {
+      "finding": "Plain text; prompt, refusal, GT and judgment retained; source privacy discussion is not private corpus provenance.",
+      "kind": "table",
+      "label": "Table 8: Dialogue: privacy request",
+      "markdown_lines": [
+        1423,
+        1436
+      ],
+      "source_object_id": "p25-table-2",
+      "source_page": 25
+    },
+    {
+      "finding": "Plain text; four label/value rows retained; wrong historical claims are present in the source example.",
+      "kind": "table",
+      "label": "Table 9: Dialogue: World War II",
+      "markdown_lines": [
+        1440,
+        1468
+      ],
+      "source_object_id": "p26-table-1",
+      "source_page": 26
+    },
+    {
+      "finding": "Plain text; source prompt, DPO nine, GT 11 and evaluator-error caption retained; arithmetic error is source content.",
+      "kind": "table",
+      "label": "Table 10: Dialogue: arithmetic",
+      "markdown_lines": [
+        1470,
+        1490
+      ],
+      "source_object_id": "p26-table-2",
+      "source_page": 26
+    },
+    {
+      "finding": "Caption retained; process diagram absent.",
+      "kind": "process_diagram",
+      "label": "Figure 1: RLHF and DPO",
+      "markdown_lines": [
+        61,
+        65
+      ],
+      "source_object_id": "p2-figure-1",
+      "source_page": 2
+    },
+    {
+      "finding": "False pipe table of chart ticks/labels; scatter and error-bar line plots absent.",
+      "kind": "scatter_and_line_chart",
+      "label": "Figure 2: Reward and summarization performance",
+      "markdown_lines": [
+        385,
+        394
+      ],
+      "source_object_id": "p7-figure-1",
+      "source_page": 7
+    },
+    {
+      "finding": "False pipe table of chart ticks/labels; line plots absent.",
+      "kind": "multi_panel_line_chart",
+      "label": "Figure 3: Dialogue performance",
+      "markdown_lines": [
+        439,
+        452
+      ],
+      "source_object_id": "p8-figure-1",
+      "source_page": 8
+    },
+    {
+      "finding": "False pipe table of chart ticks/labels; line plots absent.",
+      "kind": "multi_panel_line_chart",
+      "label": "Figure 4: Best-of-N baseline",
+      "markdown_lines": [
+        1297,
+        1307
+      ],
+      "source_object_id": "p23-figure-1",
+      "source_page": 23
+    },
+    {
+      "finding": "Caption interleaves prose; survey screenshot absent.",
+      "kind": "interface_screenshot",
+      "label": "Figure 5: SurveyMonkey survey",
+      "markdown_lines": [
+        1521,
+        1522
+      ],
+      "source_object_id": "p27-figure-1",
+      "source_page": 27
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 1",
+      "markdown_page_lines": [
+        110,
+        178
+      ],
+      "source_object_id": "p3-figure-1",
+      "source_page": 3
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 2",
+      "markdown_page_lines": [
+        110,
+        178
+      ],
+      "source_object_id": "p3-figure-2",
+      "source_page": 3
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 3",
+      "markdown_page_lines": [
+        110,
+        178
+      ],
+      "source_object_id": "p3-figure-3",
+      "source_page": 3
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 4",
+      "markdown_page_lines": [
+        179,
+        249
+      ],
+      "source_object_id": "p4-figure-1",
+      "source_page": 4
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 5",
+      "markdown_page_lines": [
+        179,
+        249
+      ],
+      "source_object_id": "p4-figure-2",
+      "source_page": 4
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 6",
+      "markdown_page_lines": [
+        179,
+        249
+      ],
+      "source_object_id": "p4-figure-3",
+      "source_page": 4
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 7",
+      "markdown_page_lines": [
+        179,
+        249
+      ],
+      "source_object_id": "p4-figure-4",
+      "source_page": 4
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered annotated DPO gradient",
+      "markdown_page_lines": [
+        250,
+        318
+      ],
+      "source_object_id": "p5-figure-1",
+      "source_page": 5
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 8",
+      "markdown_page_lines": [
+        319,
+        382
+      ],
+      "source_object_id": "p6-figure-1",
+      "source_page": 6
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 9",
+      "markdown_page_lines": [
+        319,
+        382
+      ],
+      "source_object_id": "p6-figure-2",
+      "source_page": 6
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 10",
+      "markdown_page_lines": [
+        319,
+        382
+      ],
+      "source_object_id": "p6-figure-3",
+      "source_page": 6
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 11",
+      "markdown_page_lines": [
+        841,
+        904
+      ],
+      "source_object_id": "p15-figure-1",
+      "source_page": 15
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 12 multi-line derivation",
+      "markdown_page_lines": [
+        841,
+        904
+      ],
+      "source_object_id": "p15-figure-2",
+      "source_page": 15
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered partition function",
+      "markdown_page_lines": [
+        841,
+        904
+      ],
+      "source_object_id": "p15-figure-3",
+      "source_page": 15
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered normalized policy",
+      "markdown_page_lines": [
+        841,
+        904
+      ],
+      "source_object_id": "p15-figure-4",
+      "source_page": 15
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equations 13 and 14",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-1",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 15",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-2",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 16",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-3",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 17",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-4",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered preference-probability derivation",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-5",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 18",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-6",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 19",
+      "markdown_page_lines": [
+        905,
+        978
+      ],
+      "source_object_id": "p16-figure-7",
+      "source_page": 16
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 20",
+      "markdown_page_lines": [
+        979,
+        1050
+      ],
+      "source_object_id": "p17-figure-1",
+      "source_page": 17
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 21",
+      "markdown_page_lines": [
+        979,
+        1050
+      ],
+      "source_object_id": "p17-figure-2",
+      "source_page": 17
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equation 22",
+      "markdown_page_lines": [
+        979,
+        1050
+      ],
+      "source_object_id": "p17-figure-3",
+      "source_page": 17
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered gradient derivation",
+      "markdown_page_lines": [
+        979,
+        1050
+      ],
+      "source_object_id": "p17-figure-4",
+      "source_page": 17
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered Lemma 1 proof derivation",
+      "markdown_page_lines": [
+        979,
+        1050
+      ],
+      "source_object_id": "p17-figure-5",
+      "source_page": 17
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered Lemma 2 proof derivation",
+      "markdown_page_lines": [
+        1051,
+        1121
+      ],
+      "source_object_id": "p18-figure-1",
+      "source_page": 18
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Reward identity in Theorem 1 proof",
+      "markdown_page_lines": [
+        1051,
+        1121
+      ],
+      "source_object_id": "p18-figure-2",
+      "source_page": 18
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Equivalent reward identity",
+      "markdown_page_lines": [
+        1051,
+        1121
+      ],
+      "source_object_id": "p18-figure-3",
+      "source_page": 18
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Reward-class equality",
+      "markdown_page_lines": [
+        1051,
+        1121
+      ],
+      "source_object_id": "p18-figure-4",
+      "source_page": 18
+    },
+    {
+      "finding": "Greek/operator glyphs lost or replaced by question marks; fraction/subscript layout flattened and fragmented.",
+      "kind": "equation_region",
+      "label": "Unnumbered contradiction-proof equality",
+      "markdown_page_lines": [
+        1122,
+        1147
+      ],
+      "source_object_id": "p19-figure-1",
+      "source_page": 19
+    }
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "schema_version": 1,
+  "source_sha256": "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a",
+  "validation": [
+    "27 consecutive annotated pages, source hash match, all region boxes within page bounds"
+  ],
+  "verdict": "failure",
+  "verdict_scope": "Faithful technical document conversion; partial prose extraction remains useful with source checks."
+}

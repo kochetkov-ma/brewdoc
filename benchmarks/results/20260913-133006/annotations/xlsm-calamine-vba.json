@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsm-calamine-vba",
+  "source_sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+  "title": "VBA project with three empty worksheets",
+  "topics": [
+    "spreadsheet parser features",
+    "three-empty-sheets",
+    "vba-part-present"
+  ],
+  "language": "und",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "Sheet1"
+          ],
+          "examples": []
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/worksheets/sheet1.xml"
+    },
+    {
+      "index": 2,
+      "name": "Sheet2",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet2.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "Sheet2"
+          ],
+          "examples": []
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/worksheets/sheet2.xml"
+    },
+    {
+      "index": 3,
+      "name": "Sheet3",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet3.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "Sheet3"
+          ],
+          "examples": []
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/worksheets/sheet3.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "vba_part_present": true,
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

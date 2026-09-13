@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsx-census-nst-est2024-pop",
+  "source_sha256": "4a98cd464d3f9e122e74b47b38f1584e78e9077f4b36be1cabf7a79ab5942852",
+  "title": "Annual Estimates of the Resident Population for the United States, Regions, States, District of Columbia, and Puerto Rico: April 1, 2020 to July 1, 2024",
+  "topics": [
+    "United States population",
+    "states and regions",
+    "population estimates"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "NST-EST2024-POP",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:G68",
+      "value_grid_dimensions": {
+        "rows": 68,
+        "columns": 7
+      },
+      "cell_type_counts": {
+        "blank": 61,
+        "float": 347,
+        "str": 68
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [
+          61
+        ],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [
+        "A64:G64",
+        "A65:G65",
+        "A66:G66",
+        "A67:G67",
+        "A68:G68",
+        "A63:G63",
+        "A1:G1",
+        "A2:G2",
+        "A3:A4",
+        "B3:B4",
+        "C3:G3"
+      ],
+      "tables": [
+        {
+          "kind": "document_table",
+          "name": null,
+          "range": "A3:G62",
+          "title_range": "A2",
+          "header_range": "A3:G4",
+          "body_ranges": [
+            "A5:G60",
+            "A62:G62"
+          ],
+          "row_header_ranges": [
+            "A5:A60",
+            "A62"
+          ],
+          "notes_range": "A63:A68",
+          "evidence": "Source A1 explicitly identifies row headers and header rows; value inspection confirms body and note boundaries."
+        }
+      ],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "blank-rows",
+          "locations": [
+            "61"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "repeated-spaces",
+          "locations": [
+            "A64"
+          ],
+          "examples": [
+            {
+              "cell": "A64",
+              "value": "Note: The estimates are developed from a base that integrates the 2020 Census, Vintage 2020 estimates, and (for the U.S. only) 2020 Demographic Analysis estimates.  For population estimates methodology statements, see https://www.census.gov/programs-surveys/popest/technical-documentation/methodology.html. See Geographic Terms and Definitions at https://www.census.gov/programs-surveys/popest/guidance-geographies/terms-and-definitions.html for a list of the states that are included in each region. All geographic boundaries for the 2024 population estimates series are as of January 1, 2024."
+            }
+          ]
+        },
+        {
+          "tag": "unicode-text",
+          "locations": [
+            "A63"
+          ],
+          "examples": [
+            {
+              "cell": "A63",
+              "value": "The Census Bureau has reviewed this data product to ensure appropriate access, use, and disclosure avoidance protection of the confidential source data used to produce this product (Data Management System (DMS) number:  P-6000042 and P-7501659. Disclosure Review Board (DRB) approval number: CBDRB-FY25-0078)."
+            }
+          ]
+        },
+        {
+          "tag": "merged-cells",
+          "locations": [
+            "A64:G64",
+            "A65:G65",
+            "A66:G66",
+            "A67:G67",
+            "A68:G68",
+            "A63:G63",
+            "A1:G1",
+            "A2:G2",
+            "A3:A4",
+            "B3:B4",
+            "C3:G3"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "two-row-header-with-footnotes",
+          "locations": [
+            "A3:G4",
+            "A63:A68"
+          ],
+          "examples": [
+            {
+              "cell": "A3",
+              "value": "Geographic Area"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "str",
+          "value": "table with row headers in column A and column headers in rows 3 through 4. (leading dots indicate sub-parts)"
+        },
+        {
+          "cell": "C4",
+          "type": "float",
+          "value": 2020
+        }
+      ],
+      "source_part": "xl/worksheets/sheet1.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "title_basis": "Source cell A2.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

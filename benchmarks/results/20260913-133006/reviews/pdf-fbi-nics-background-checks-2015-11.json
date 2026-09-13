@@ -1,0 +1,43 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-fbi-nics-background-checks-2015-11.json",
+    "markdown": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md",
+    "receipt": "pass-1/pdf-fbi-nics-background-checks-2015-11/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md:11-21",
+      "finding": "Each output row groups five source records. The first row combines five states and five corresponding values per populated numeric cell. All 55 geography labels remain represented, but their individual row boundaries are lost.",
+      "snippet": "| Alabama Alaska Arizona Arkansas California | 18,870 209 2,303 3,298 98452 |",
+      "source": "Page 1, p1-t1: 55 geography records followed by one totals row in a 25-column table."
+    },
+    {
+      "actual": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md:22",
+      "finding": "The complete source totals line equals the output totals row after whitespace and pipe removal. All 24 numeric totals preserve their order, including the final 2,236,457.",
+      "snippet": "| Totals | 804,006 | 671,330 | 636,903 |",
+      "source": "Page 1 totals row: Permit 804,006; final total 2,236,457, with intervening category totals."
+    },
+    {
+      "actual": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md:23-24",
+      "finding": "The disclaimer is concatenated with notes in line 23 and repeated in line 24; both are absorbed into the data table.",
+      "snippet": "These statistics represent the number of firearm background checks initiated through the NICS",
+      "source": "Page 1 category notes and disclaimer below the main table."
+    },
+    {
+      "actual": "pass-1/pdf-fbi-nics-background-checks-2015-11/artifacts/document.md:7-10",
+      "finding": "Title becomes the Markdown header row. Two later rows preserve grouped and detailed heading text, but column hierarchy is flattened.",
+      "snippet": "Pre-Pawn Handgun Long Gun *Other",
+      "source": "Page 1 grouped category headings above the detailed numeric columns."
+    }
+  ],
+  "id": "pdf-fbi-nics-background-checks-2015-11",
+  "limitations": [
+    "All output row groups were reviewed; cell-level equality was verified for the complete totals row and selected geography values, not every individual source cell.",
+    "Dropped folio 'Page 1 of 205' is a presentation choice; the source fixture actually contains one page."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "All 1 source page rendered and inspected; full output lines 1-24, all 11 geography row groups, complete totals row and footer reviewed.",
+  "schema_version": 1,
+  "summary": "Fifty-five geography records become eleven multi-record rows, and the disclaimer is duplicated. The totals row retains its values.",
+  "verdict": "failure"
+}

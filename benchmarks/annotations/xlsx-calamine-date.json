@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsx-calamine-date",
+  "source_sha256": "0440916ec1b76ee4dd54955d59c2f42b266e9f5e4fccafb8cc1ed875908b26d2",
+  "title": "OOXML dates and duration",
+  "topics": [
+    "spreadsheet parser features",
+    "date-cells",
+    "duration-cell",
+    "float-cells"
+  ],
+  "language": "und",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:B3",
+      "value_grid_dimensions": {
+        "rows": 3,
+        "columns": 2
+      },
+      "cell_type_counts": {
+        "date": 2,
+        "float": 3,
+        "timedelta": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "temporal-value",
+          "locations": [
+            "A1",
+            "A2",
+            "A3"
+          ],
+          "examples": [
+            {
+              "cell": "A1",
+              "value": "2021-01-01"
+            },
+            {
+              "cell": "A2",
+              "value": "2021-01-02"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "date",
+          "value": "2021-01-01"
+        },
+        {
+          "cell": "B1",
+          "type": "float",
+          "value": 15
+        },
+        {
+          "cell": "A3",
+          "type": "timedelta",
+          "value": "10 days, 15:10:10"
+        }
+      ],
+      "source_part": "xl/worksheets/sheet1.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

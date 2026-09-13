@@ -1,0 +1,120 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-arxiv-2402.00838v4.json",
+    "markdown": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md",
+    "receipt": "pass-1/pdf-arxiv-2402.00838v4/receipt.json"
+  },
+  "capture": {
+    "elapsed_seconds": 1.8455851250037085,
+    "file_ok": true,
+    "markdown_sha256": "6a7ddaa17b02207e83a21f5038c3dd12b91dfb9a980f8e568551cc9d2bc1b1ea",
+    "pages": 21,
+    "receipt_tables": 6,
+    "returncode": 0
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:490-502",
+      "finding": "Eleven Markdown columns replace ten. The StableLM and Falcon row names and averages are absent from the table. Their score blocks include other model rows that are then repeated. Retained OLMo rows do not repair these losses.",
+      "snippet": "|  |  | 43.8 63.7 76.6 68.2 45.8 74.0 94.7 64.9 33.1 50.2",
+      "source": "Page 6, Table 3: 10 columns, 11 model rows; StableLM 1.6B average 66.5 and Falcon-7B average 70.6."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:1709-1717",
+      "finding": "Nine Markdown columns replace eight. Falcon-7B label and average 45.4 are absent; six model score sequences are concatenated into one cell and five are repeated below.",
+      "snippet": "|  |  | 38.6 23.7 62.8 49.8 49.5 47.9 38.7 19.5",
+      "source": "Page 18, Table 7: Falcon-7B scores 38.6, 23.7, 62.8, 49.8, 49.5, 47.9 and average 45.4."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:706-717",
+      "finding": "The missing-value marker and note become the apparent numeric value -7. Header arrows become question marks. Other nine model rows and their numeric scores are retained.",
+      "snippet": "| TULU2+DPO | 50.7 | 85.1 | 0.5 | -7 |",
+      "source": "Page 8, Table 4: TULU 2+DPO TruthfulQA is unavailable, represented by a dash with superscript footnote 7; direction arrows appear in headers."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:7-14",
+      "finding": "The wordmark becomes a three-column false table. The remaining title text is absent from the output. Author affiliation markers become question marks.",
+      "snippet": "| OL | OL |  |",
+      "source": "Page 1: vector OLMo wordmark followed by the title Accelerating the Science of Language Models."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:687-699",
+      "finding": "Chart axes and labels become a false twelve-column table, with reversed numeric labels and repeated text. The receipt's six tables therefore include two objects that are not source tables.",
+      "snippet": "| Sources Combined 00.1 C4 11.1 mC4 22.1 WikiText-103",
+      "source": "Page 8, Figure 2: twelve vector line/scatter charts with model legend."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:508-514",
+      "finding": "The two columns are interleaved on individual output lines. Similar interleaving is visible around the Table 4 caption on page 8 and appendix prose on page 16.",
+      "snippet": "In all cases, we perform zero-shot evaluation OLMo-7Bistrainedonmoretokens. Asharpup-",
+      "source": "Page 6: left-column evaluation method and right-column result discussion are separate paragraphs."
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:556-620;1745-1849",
+      "finding": "Captions and many axis labels survive, but curves, markers and spatial relationships do not. Rotated labels reverse. Figure 3's Manosphere panel label is absent. Images/figures and rotated text are explicitly listed in not_carried; false tables and text corruption remain separate defects.",
+      "snippet": "ycaruccA",
+      "source": "Pages 7 and 19, Figures 1, 3 and 4: thirty-three panels in total across the four numbered figures."
+    }
+  ],
+  "id": "pdf-arxiv-2402.00838v4",
+  "limitations": [
+    "All 21 source pages visually reviewed and every output page chapter accounted for. All eight tables, four numbered figures and title logo compared; narrative and reference fidelity was sampled, not exhaustively aligned word by word.",
+    "The review concerns immutable captured pass-1 bytes; no new conversion, code fix, CI or publication.",
+    "Figure reconstruction and rotated text are declared unsupported. These do not explain lost table identities, title text or interleaved prose."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "Full source page/object inventory; all table rows and chart objects checked against output; prose samples on pages 1-3, 6-8, 16 and 20-21. No claim of complete paragraph-level semantic acceptance.",
+  "schema_version": 1,
+  "summary": "Tables 3 and 7 lose model identities and averages, duplicate score blocks and gain an extra column. The title and chart become false tables; several two-column sections interleave prose.",
+  "table_review": [
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:182-188",
+      "finding": "Both nine-column model records retain their numbers, including source D=4086 for 7B, scientific notation and yes/no values. A fenced text block replaces a Markdown table; approximate batch-size markers become ?4M and headers/caption lose spaces.",
+      "source": "Page 3, Table 1",
+      "verdict": "warning"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:234-247",
+      "finding": "All six source rows plus Total and their three numeric columns match the visible source. It remains a fenced text block with a stacked header; source/type labels lose spaces.",
+      "source": "Page 3, Table 2",
+      "verdict": "warning"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:490-502",
+      "finding": "All eleven source model rows compared. StableLM and Falcon identities/averages are lost; numeric blocks collapse and duplicate; extra empty stub column.",
+      "source": "Page 6, Table 3",
+      "verdict": "failure"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:706-717",
+      "finding": "All nine source model rows compared. Scores otherwise match, but unavailable TruthfulQA plus note becomes -7 and metric-direction arrows become question marks.",
+      "source": "Page 8, Table 4",
+      "verdict": "failure"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:1600-1628",
+      "finding": "All 25 property rows and five model columns compared. Numeric/text property values are present; source blank PaLM optimizer cells remain blank. Approximate MLP/batch markers become question marks; fenced text and compressed names weaken column readability.",
+      "source": "Page 17, Table 5",
+      "verdict": "warning"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:1688-1707",
+      "finding": "All eight rows and five value columns match source, including 1,066 MWh, 0.000*, 0* and 70. Column mapping and asterisk note survive. Source subscript 2 in caption is detached onto a separate line.",
+      "source": "Page 18, Table 6",
+      "verdict": "success"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:1709-1717",
+      "finding": "All seven model rows compared. Falcon label and 45.4 average lost, six score rows collapse into one cell and five duplicate below; extra empty stub column.",
+      "source": "Page 18, Table 7",
+      "verdict": "failure"
+    },
+    {
+      "actual": "pass-1/pdf-arxiv-2402.00838v4/artifacts/document.md:1969-1977",
+      "finding": "All three model/stage rows and eight scores match source, including +SFT+DPO MMLU 46.1. Fenced text retains data but stacked headers and labels lose spacing.",
+      "source": "Page 21, Table 8",
+      "verdict": "warning"
+    }
+  ],
+  "verdict": "failure"
+}

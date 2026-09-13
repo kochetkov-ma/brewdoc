@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsm-calamine-issue221",
+  "source_sha256": "4757c73be0ad3e0cb789dcf6c170df7ddf10160618986af41614278dc8ce6498",
+  "title": "Macro-enabled container with a text grid",
+  "topics": [
+    "spreadsheet parser features",
+    "2-by-2-text-grid",
+    "no-vba-part"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:B2",
+      "value_grid_dimensions": {
+        "rows": 2,
+        "columns": 2
+      },
+      "cell_type_counts": {
+        "str": 4
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "str",
+          "value": "Cell_A1"
+        }
+      ],
+      "source_part": "xl/worksheets/sheet1.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "vba_part_present": false,
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

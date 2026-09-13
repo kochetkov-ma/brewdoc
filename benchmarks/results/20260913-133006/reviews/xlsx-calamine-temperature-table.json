@@ -1,0 +1,94 @@
+{
+  "artifacts": {
+    "annotation": "annotations/xlsx-calamine-temperature-table.json",
+    "markdown": "pass-1/xlsx-calamine-temperature-table/artifacts/document.md",
+    "receipt": "pass-1/xlsx-calamine-temperature-table/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 2,
+      "actual_rows": 3,
+      "all_lexical_differences": [],
+      "compared_positions": 6,
+      "exact_value_spellings": 6,
+      "heading_line": 5,
+      "representative_values": [
+        {
+          "actual": "label",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!A1",
+          "source_value": "'label'"
+        },
+        {
+          "actual": "value",
+          "markdown_line": 7,
+          "source_cell": "Sheet1!B1",
+          "source_value": "'value'"
+        }
+      ],
+      "sheet": "Sheet1",
+      "source_columns": 2,
+      "source_merges_zero_based": [],
+      "source_rows": 3
+    },
+    {
+      "actual_columns": 2,
+      "actual_rows": 3,
+      "all_lexical_differences": [],
+      "compared_positions": 6,
+      "exact_value_spellings": 6,
+      "heading_line": 12,
+      "representative_values": [
+        {
+          "actual": "label2",
+          "markdown_line": 14,
+          "source_cell": "Sheet2!A1",
+          "source_value": "'label2'"
+        },
+        {
+          "actual": "value2",
+          "markdown_line": 14,
+          "source_cell": "Sheet2!B1",
+          "source_value": "'value2'"
+        }
+      ],
+      "sheet": "Sheet2",
+      "source_columns": 2,
+      "source_merges_zero_based": [],
+      "source_rows": 3
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "xlsx-calamine-temperature-table",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "9691d4e282ba3a47565b994a42ca1f1389bf018ca30da9ebc4cb728544760bad",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 0,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 2,
+    "tables": 2
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/xlsx/calamine-temperature-table.xlsx",
+  "source_sha256": "2770aa2fdf782414e83ee80c7b25b4a102204a28a19f15fe5177661e1174eb4b",
+  "summary": "All twelve source cells survive in both sheet grids, including 22.2222 and 12.5.",
+  "verdict": "success"
+}

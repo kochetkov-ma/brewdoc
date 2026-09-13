@@ -1,0 +1,29 @@
+{
+  "broken_ligature_words": 0,
+  "columns_split": 0,
+  "dropped": {
+    "cid_survivors": 0,
+    "control_chars": 0,
+    "ligatures": 0,
+    "nbsp": 0,
+    "non_ascii_replaced": 0,
+    "page_numbers": 0,
+    "pua_glyphs": 0,
+    "running_heads": 0,
+    "soft_hyphens": 0
+  },
+  "file_ok": true,
+  "not_carried": [
+    "cell formulas - only the value the writer cached",
+    "formatting, colours, comments and data validation",
+    "charts and embedded images"
+  ],
+  "out": "artifacts/document.md",
+  "pages": 0,
+  "reason": "sheet rendered: 1 chapters, 1 tables, 0 text regions, 0 column splits",
+  "route": "sheet",
+  "sheets": 1,
+  "source": "calamine-merged_cells.ods",
+  "tables": 1,
+  "text_regions": 0
+}

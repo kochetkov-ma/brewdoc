@@ -1,0 +1,29 @@
+{
+  "broken_ligature_words": 0,
+  "columns_split": 6,
+  "dropped": {
+    "cid_survivors": 0,
+    "control_chars": 0,
+    "ligatures": 0,
+    "nbsp": 0,
+    "non_ascii_replaced": 5,
+    "page_numbers": 1,
+    "pua_glyphs": 0,
+    "running_heads": 83,
+    "soft_hyphens": 0
+  },
+  "file_ok": true,
+  "not_carried": [
+    "images, figures and the text drawn inside them",
+    "a table that spans a page break",
+    "text rotated out of the horizontal reading order"
+  ],
+  "out": "artifacts/document.md",
+  "pages": 15,
+  "reason": "pdf rendered: 15 chapters, 2 tables, 52 text regions, 6 column splits",
+  "route": "pdf",
+  "sheets": 0,
+  "source": "federal-register-2020-17221.pdf",
+  "tables": 2,
+  "text_regions": 52
+}

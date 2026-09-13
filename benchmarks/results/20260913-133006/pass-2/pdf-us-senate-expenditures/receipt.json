@@ -1,0 +1,29 @@
+{
+  "broken_ligature_words": 0,
+  "columns_split": 0,
+  "dropped": {
+    "cid_survivors": 0,
+    "control_chars": 0,
+    "ligatures": 0,
+    "nbsp": 0,
+    "non_ascii_replaced": 0,
+    "page_numbers": 0,
+    "pua_glyphs": 0,
+    "running_heads": 0,
+    "soft_hyphens": 0
+  },
+  "file_ok": true,
+  "not_carried": [
+    "images, figures and the text drawn inside them",
+    "a table that spans a page break",
+    "text rotated out of the horizontal reading order"
+  ],
+  "out": "artifacts/document.md",
+  "pages": 1,
+  "reason": "pdf rendered: 1 chapters, 1 tables, 0 text regions, 0 column splits",
+  "route": "pdf",
+  "sheets": 0,
+  "source": "us-senate-expenditures.pdf",
+  "tables": 1,
+  "text_regions": 0
+}

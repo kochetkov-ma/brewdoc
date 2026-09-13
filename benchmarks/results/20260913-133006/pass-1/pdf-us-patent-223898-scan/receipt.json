@@ -1,0 +1,29 @@
+{
+  "broken_ligature_words": 0,
+  "columns_split": 0,
+  "dropped": {
+    "cid_survivors": 0,
+    "control_chars": 0,
+    "ligatures": 0,
+    "nbsp": 0,
+    "non_ascii_replaced": 0,
+    "page_numbers": 0,
+    "pua_glyphs": 0,
+    "running_heads": 0,
+    "soft_hyphens": 0
+  },
+  "file_ok": false,
+  "not_carried": [
+    "images, figures and the text drawn inside them",
+    "a table that spans a page break",
+    "text rotated out of the horizontal reading order"
+  ],
+  "out": null,
+  "pages": 0,
+  "reason": "no text layer: 5 of 5 pages carry zero characters in tests/fixtures/pdf/us-patent-223898-scan.pdf - this reader does no OCR",
+  "route": "pdf",
+  "sheets": 0,
+  "source": "us-patent-223898-scan.pdf",
+  "tables": 0,
+  "text_regions": 0
+}

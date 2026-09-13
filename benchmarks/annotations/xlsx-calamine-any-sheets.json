@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsx-calamine-any-sheets",
+  "source_sha256": "fba48e0141f847d80738a4417f0a336cba92e4ac692d8dd7516eac41e32c9e4f",
+  "title": "OOXML sheet order, visibility and chart sheet",
+  "topics": [
+    "spreadsheet parser features",
+    "sheet-order",
+    "hidden-and-very-hidden-sheets",
+    "empty-sheets",
+    "interior-blank-row",
+    "chart-sheet-with-empty-grid"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Visible",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:B5",
+      "value_grid_dimensions": {
+        "rows": 5,
+        "columns": 2
+      },
+      "cell_type_counts": {
+        "blank": 3,
+        "float": 6,
+        "str": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [
+          4
+        ],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "blank-rows",
+          "locations": [
+            "4"
+          ],
+          "examples": []
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 1
+        },
+        {
+          "cell": "A5",
+          "type": "str",
+          "value": "This workbook contains 4 sheets: Visible, Hidden, VeryHidden and Chart"
+        }
+      ],
+      "source_part": "xl/worksheets/sheet1.xml"
+    },
+    {
+      "index": 2,
+      "name": "Hidden",
+      "type": "WorkSheet",
+      "visibility": "Hidden",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet2.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "Hidden"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "hidden-sheet",
+          "locations": [
+            "Hidden"
+          ],
+          "examples": [
+            "Hidden"
+          ]
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/worksheets/sheet2.xml"
+    },
+    {
+      "index": 3,
+      "name": "VeryHidden",
+      "type": "WorkSheet",
+      "visibility": "VeryHidden",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet3.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "VeryHidden"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "hidden-sheet",
+          "locations": [
+            "VeryHidden"
+          ],
+          "examples": [
+            "VeryHidden"
+          ]
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/worksheets/sheet3.xml"
+    },
+    {
+      "index": 4,
+      "name": "Chart",
+      "type": "ChartSheet",
+      "visibility": "Visible",
+      "used_range": null,
+      "value_grid_dimensions": {
+        "rows": 0,
+        "columns": 0
+      },
+      "cell_type_counts": {},
+      "blank_areas": {
+        "empty_value_grid": true,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [
+        {
+          "kind": "barChart",
+          "title": null,
+          "title_status": "no explicit title text",
+          "anchor": {
+            "kind": "absoluteAnchor",
+            "position_emu": {
+              "x": "0",
+              "y": "0"
+            },
+            "extent_emu": {
+              "cx": "9299864",
+              "cy": "6070023"
+            }
+          },
+          "source_part": "xl/charts/chart1.xml",
+          "drawing_part": "xl/drawings/drawing1.xml",
+          "series_count": 2,
+          "series_ranges": [
+            "Visible!$A$1:$A$3",
+            "Visible!$B$1:$B$3"
+          ]
+        }
+      ],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/chartsheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "empty-value-grid",
+          "locations": [
+            "Chart"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "chart-object",
+          "locations": [
+            "xl/charts/chart1.xml"
+          ],
+          "examples": [
+            {
+              "title": null,
+              "series_count": 2
+            }
+          ]
+        }
+      ],
+      "cell_examples": [],
+      "source_part": "xl/chartsheets/sheet1.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

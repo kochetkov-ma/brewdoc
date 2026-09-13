@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-fbi-nics-background-checks-2015-11",
+  "source_sha256": "4f0ae6e017b0e97de211da8fd97316e55bd927af5740d6ce95e1b7b1539f9407",
+  "title": "NICS Firearm Background Checks, November 2015",
+  "topics": [
+    "firearm background checks",
+    "state and territory statistics",
+    "permit and transaction categories"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 1008,
+      "height_pt": 612,
+      "text_char_count": 4319,
+      "layout": {
+        "columns": 1,
+        "orientation": "landscape"
+      },
+      "content_types": [
+        "table",
+        "footnotes",
+        "disclaimer"
+      ],
+      "tables": [
+        {
+          "id": "p1-t1",
+          "label": "NICS Firearm Background Checks, November 2015",
+          "bbox_pt": [
+            33.12,
+            61.22,
+            975.6,
+            482.83
+          ],
+          "structure": {
+            "columns": 25,
+            "header_rows": 2,
+            "body_rows": 56,
+            "description": "State/territory column, transaction categories and final totals. Grouped two-level headers include Pre-Pawn, Redemption, Returned/Disposition, Rentals, Private Sale and Return to Seller. Fifty-five geography rows followed by a totals row. Vertical rules persist through the body; horizontal rules separate groups of rows, not every record."
+          },
+          "notes": "Colored header groups and shaded state/territory column. Several grouped headings span three detail columns. The enclosing title banner sits above the table bounds."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "NICS Firearm Background Checks and November 2015",
+          "location": "full-width title banner",
+          "bbox_pt": [
+            33.12,
+            24,
+            975.36,
+            61.7
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "footnotes",
+          "label": "Other and Multiple category definitions",
+          "location": "below table",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "disclaimer",
+          "label": "State-law variation and checks versus firearm sales",
+          "location": "below category notes",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "folio",
+          "label": "Page 1 of 205",
+          "location": "bottom center",
+          "bbox_pt": [
+            485.88,
+            586.34,
+            521.71,
+            592.1
+          ],
+          "notes": "The supplied file contains only this one page."
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Source layout and content inventory, not a transcription or converter quality verdict.",
+    "Null bounds identify objects whose exact boundary was not measured."
+  ]
+}

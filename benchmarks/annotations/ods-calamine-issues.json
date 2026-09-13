@@ -1,0 +1,428 @@
+{
+  "schema_version": 1,
+  "document_id": "ods-calamine-issues",
+  "source_sha256": "35b60d34e30e80b9931b5001ae9d8ff6ce0ac719983af8197a00ee59e01f07df",
+  "title": "ODF mixed cells and stored formula results",
+  "topics": [
+    "spreadsheet parser features",
+    "six-sheets",
+    "mixed-cell-types",
+    "boolean-cell",
+    "datetime-cell",
+    "unicode-text",
+    "leading-blank-row",
+    "cached-string-boolean-numeric-formula-values"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "datatypes",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A6",
+      "value_grid_dimensions": {
+        "rows": 6,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "bool": 1,
+        "datetime": 1,
+        "float": 2,
+        "str": 2
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 2,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [
+          {
+            "cell": "A3",
+            "formula": "of:=CONCATENATE(\"a\";\"b\")",
+            "source_value_type": "string",
+            "stored_value": "ab",
+            "decoded_value": "ab"
+          },
+          {
+            "cell": "A4",
+            "formula": "of:=[.A1]>[.A2]",
+            "source_value_type": "boolean",
+            "stored_value": "false",
+            "decoded_value": false
+          }
+        ],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "fractional-number",
+          "locations": [
+            "A2"
+          ],
+          "examples": [
+            {
+              "cell": "A2",
+              "value": 1.5
+            }
+          ]
+        },
+        {
+          "tag": "temporal-value",
+          "locations": [
+            "A6"
+          ],
+          "examples": [
+            {
+              "cell": "A6",
+              "value": "2016-10-20 00:00:00"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 1
+        },
+        {
+          "cell": "A3",
+          "type": "str",
+          "value": "ab"
+        },
+        {
+          "cell": "A4",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "cell": "A6",
+          "type": "datetime",
+          "value": "2016-10-20 00:00:00"
+        }
+      ],
+      "source_part": "content.xml"
+    },
+    {
+      "index": 2,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A2:A2",
+      "value_grid_dimensions": {
+        "rows": 2,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "blank": 1,
+        "float": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 1,
+        "leading_columns": 0,
+        "blank_rows": [
+          1
+        ],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 1,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [
+          {
+            "cell": "A2",
+            "formula": "of:=[.B1]+$$OneRange",
+            "source_value_type": "float",
+            "stored_value": "0",
+            "decoded_value": 0
+          }
+        ],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "blank-rows",
+          "locations": [
+            "1"
+          ],
+          "examples": []
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A2",
+          "type": "float",
+          "value": 0
+        }
+      ],
+      "source_part": "content.xml"
+    },
+    {
+      "index": 3,
+      "name": "issue2",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:B3",
+      "value_grid_dimensions": {
+        "rows": 3,
+        "columns": 2
+      },
+      "cell_type_counts": {
+        "float": 3,
+        "str": 3
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 1
+        },
+        {
+          "cell": "B1",
+          "type": "str",
+          "value": "a"
+        }
+      ],
+      "source_part": "content.xml"
+    },
+    {
+      "index": 4,
+      "name": "issue5",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A1",
+      "value_grid_dimensions": {
+        "rows": 1,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "float": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "fractional-number",
+          "locations": [
+            "A1"
+          ],
+          "examples": [
+            {
+              "cell": "A1",
+              "value": 0.5
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 0.5
+        }
+      ],
+      "source_part": "content.xml"
+    },
+    {
+      "index": 5,
+      "name": "issue6",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A4",
+      "value_grid_dimensions": {
+        "rows": 4,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "bool": 1,
+        "float": 2,
+        "str": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 2,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [
+          {
+            "cell": "A3",
+            "formula": "of:=CONCATENATE(\"a\";\"b\")",
+            "source_value_type": "string",
+            "stored_value": "ab",
+            "decoded_value": "ab"
+          },
+          {
+            "cell": "A4",
+            "formula": "of:=[.A1]>[.A2]",
+            "source_value_type": "boolean",
+            "stored_value": "false",
+            "decoded_value": false
+          }
+        ],
+        "status": "source-inspected"
+      },
+      "edge_cases": [],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "float",
+          "value": 1
+        },
+        {
+          "cell": "A3",
+          "type": "str",
+          "value": "ab"
+        },
+        {
+          "cell": "A4",
+          "type": "bool",
+          "value": false
+        }
+      ],
+      "source_part": "content.xml"
+    },
+    {
+      "index": 6,
+      "name": "spc_chrs",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:A8",
+      "value_grid_dimensions": {
+        "rows": 8,
+        "columns": 1
+      },
+      "cell_type_counts": {
+        "str": 8
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "content.xml table:formula attributes; stored office value attributes",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "unicode-text",
+          "locations": [
+            "A6",
+            "A7",
+            "A8"
+          ],
+          "examples": [
+            {
+              "cell": "A6",
+              "value": "☺"
+            },
+            {
+              "cell": "A7",
+              "value": "֍"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "str",
+          "value": "&"
+        }
+      ],
+      "source_part": "content.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "tables records annotated semantic data tables; ODF table elements are worksheet containers, not Excel named table objects.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-us-patent-223898-scan",
+  "source_sha256": "89078727e7a19f85ef5874a9750037d1accc317e5c13489f7fc7bd721392bd2a",
+  "title": "US Patent 223,898: Electric-Lamp, with correction documents",
+  "topics": [
+    "electric lamp",
+    "carbon filament",
+    "patent drawings",
+    "patent claims",
+    "administrative corrections"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 2320,
+      "height_pt": 3408,
+      "text_char_count": 0,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "scanned_image",
+        "drawing_sheet"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p1-image1",
+          "label": "Drawing sheet with three labeled lamp illustrations and signatures",
+          "kind": "full_page_scan",
+          "bbox_pt": [
+            0,
+            0,
+            2320,
+            3408
+          ],
+          "notes": "One embedded image covers the page. Visible lettering and illustrations are image pixels; the PDF text layer has zero characters. This container is not a plot."
+        },
+        {
+          "id": "p1-f1",
+          "label": "Fig. 1",
+          "kind": "technical_drawing",
+          "bbox_pt": null,
+          "notes": "Upper-center lamp assembly. Part of p1-image1, not a separate PDF image object. Exact drawing boundary unmeasured."
+        },
+        {
+          "id": "p1-f2",
+          "label": "Fig. 2",
+          "kind": "technical_drawing",
+          "bbox_pt": null,
+          "notes": "Long narrow component to the left of the other drawings. Part of p1-image1; exact boundary unmeasured."
+        },
+        {
+          "id": "p1-f3",
+          "label": "Fig. 3",
+          "kind": "technical_drawing",
+          "bbox_pt": null,
+          "notes": "Lower-center lamp component. Part of p1-image1; exact boundary unmeasured."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "T. A. Edison; Electric-Lamp; patent number and date",
+          "location": "top of scan",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "handwriting",
+          "label": "Witness and inventor signatures",
+          "location": "below drawings",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry",
+        "Visual reading of the scan without OCR or inferred missing glyphs"
+      ],
+      "uncertainties": [
+        "Individual text-region bounds inside the raster were not measured; uncertain or degraded lettering is not transcribed."
+      ]
+    },
+    {
+      "number": 2,
+      "width_pt": 2320,
+      "height_pt": 3408,
+      "text_char_count": 0,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "scanned_image",
+        "scanned_prose"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p2-image1",
+          "label": "Patent specification, first text page",
+          "kind": "full_page_scan",
+          "bbox_pt": [
+            0,
+            0,
+            2320,
+            3408
+          ],
+          "notes": "One embedded image covers the page. Visible lettering and illustrations are image pixels; the PDF text layer has zero characters. This container is not a plot."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "United States Patent Office and Electric Lamp",
+          "location": "above the two-column body",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "line_numbers",
+          "label": "Numbered margin markers",
+          "location": "outer edges of both prose columns",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "stamp",
+          "label": "Best available copy",
+          "location": "top margin",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry",
+        "Visual reading of the scan without OCR or inferred missing glyphs"
+      ],
+      "uncertainties": [
+        "Individual text-region bounds inside the raster were not measured; uncertain or degraded lettering is not transcribed."
+      ]
+    },
+    {
+      "number": 3,
+      "width_pt": 2320,
+      "height_pt": 3408,
+      "text_char_count": 0,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "scanned_image",
+        "scanned_prose"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p3-image1",
+          "label": "Specification continuation, four numbered claims and witness names",
+          "kind": "full_page_scan",
+          "bbox_pt": [
+            0,
+            0,
+            2320,
+            3408
+          ],
+          "notes": "One embedded image covers the page. Visible lettering and illustrations are image pixels; the PDF text layer has zero characters. This container is not a plot."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "line_numbers",
+          "label": "Numbered margin markers",
+          "location": "outer edges of both columns",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "claims",
+          "label": "Four numbered claims",
+          "location": "lower half of right column",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "signatures",
+          "label": "Inventor and witnesses",
+          "location": "bottom of right column",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "stamp",
+          "label": "Best available copy",
+          "location": "top margin",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry",
+        "Visual reading of the scan without OCR or inferred missing glyphs"
+      ],
+      "uncertainties": [
+        "Individual text-region bounds inside the raster were not measured; uncertain or degraded lettering is not transcribed."
+      ]
+    },
+    {
+      "number": 4,
+      "width_pt": 2320,
+      "height_pt": 3408,
+      "text_char_count": 0,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "scanned_image",
+        "scanned_prose"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p4-image1",
+          "label": "Correction notice with approval and commissioner blocks",
+          "kind": "full_page_scan",
+          "bbox_pt": [
+            0,
+            0,
+            2320,
+            3408
+          ],
+          "notes": "One embedded image covers the page. Visible lettering and illustrations are image pixels; the PDF text layer has zero characters. This container is not a plot."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Department of the Interior and United States Patent Office",
+          "location": "upper text block",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "rotated_text",
+          "label": "Correction in Letters Patent No. 223,898",
+          "location": "left of text block",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "handwriting",
+          "label": "Date notation",
+          "location": "above the heading at right",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "approval",
+          "label": "Approval and commissioner name blocks",
+          "location": "below the prose",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry",
+        "Visual reading of the scan without OCR or inferred missing glyphs"
+      ],
+      "uncertainties": [
+        "Individual text-region bounds inside the raster were not measured; uncertain or degraded lettering is not transcribed."
+      ]
+    },
+    {
+      "number": 5,
+      "width_pt": 2320,
+      "height_pt": 3408,
+      "text_char_count": 0,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "scanned_image",
+        "scanned_prose"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p5-image1",
+          "label": "Certificate and cancellation of a correction",
+          "kind": "full_page_scan",
+          "bbox_pt": [
+            0,
+            0,
+            2320,
+            3408
+          ],
+          "notes": "One embedded image covers the page. Visible lettering and illustrations are image pixels; the PDF text layer has zero characters. This container is not a plot."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Department of the Interior and United States Patent Office",
+          "location": "upper body",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "rotated_text",
+          "label": "Correction and cancellation identification",
+          "location": "left margin",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "approval",
+          "label": "Approval and commissioner blocks",
+          "location": "middle and lower body",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "handwriting",
+          "label": "Page notation",
+          "location": "top right",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry",
+        "Visual reading of the scan without OCR or inferred missing glyphs"
+      ],
+      "uncertainties": [
+        "Individual text-region bounds inside the raster were not measured; uncertain or degraded lettering is not transcribed."
+      ]
+    }
+  ],
+  "limitations": [
+    "Source layout and content inventory, not a transcription or converter quality verdict.",
+    "Null bounds identify objects whose exact boundary was not measured.",
+    "All pages are image-only; source annotation does not change brewdoc no-OCR refusal behavior."
+  ]
+}

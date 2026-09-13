@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsb-calamine-date",
+  "source_sha256": "68d36adf4d4de3890209e786eeb89a98778d25158628f83e96587e652fbb4eca",
+  "title": "Binary workbook dates and duration",
+  "topics": [
+    "spreadsheet parser features",
+    "date-cells",
+    "duration-cell",
+    "float-cells"
+  ],
+  "language": "und",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations. Second pass: complete BIFF8/BIFF12 sheet record inventory using Microsoft record specifications; olefile 0.47 reads XLS OLE streams and xlrd 2.0.2 independently decompiles XLS formula tokens in an isolated uv environment.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:B3",
+      "value_grid_dimensions": {
+        "rows": 3,
+        "columns": 2
+      },
+      "cell_type_counts": {
+        "date": 2,
+        "float": 3,
+        "timedelta": 1
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "status": "source-inspected",
+        "evidence": "Complete BIFF12 sheet record scan; BrtFmlaString=8, BrtFmlaNum=9, BrtFmlaBool=10, BrtFmlaError=11; cached fields decoded directly.",
+        "cached_values": []
+      },
+      "edge_cases": [
+        {
+          "tag": "temporal-value",
+          "locations": [
+            "A1",
+            "A2",
+            "A3"
+          ],
+          "examples": [
+            {
+              "cell": "A1",
+              "value": "2021-01-01"
+            },
+            {
+              "cell": "A2",
+              "value": "2021-01-02"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "date",
+          "value": "2021-01-01"
+        },
+        {
+          "cell": "B1",
+          "type": "float",
+          "value": 15
+        },
+        {
+          "cell": "A3",
+          "type": "timedelta",
+          "value": "10 days, 15:10:10"
+        }
+      ],
+      "binary_evidence": {
+        "source_part": "xl/worksheets/sheet1.bin",
+        "record_count": 42,
+        "parsed_bytes": 749,
+        "formula_record_counts": {
+          "8": 0,
+          "9": 0,
+          "10": 0,
+          "11": 0
+        },
+        "merge_record_count": 0,
+        "object_record_counts": {
+          "550": 0,
+          "551": 0,
+          "552": 0,
+          "562": 0,
+          "661": 0
+        }
+      },
+      "object_presence_evidence": "Zero BrtDrawing, BrtLegacyDrawing, BrtLegacyDrawingHF, BrtBkHim and BrtListPart records; no related ZIP parts or relationship targets."
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit.",
+    "Structural inventory is complete for sheet values, formula counts/caches, merges and table/chart/image presence. It is not a full binary-format conformance or rendering audit.",
+    "XLSB formula token payloads are recorded with type, location and cached result; formula expressions were not decompiled or recalculated."
+  ],
+  "package_object_parts": [],
+  "package_object_evidence": "ZIP member names, relationship targets and every worksheet BIFF12 record inspected. No drawing, legacy drawing, background-image or table-part records; no chart, drawing, VML, image or table relationship/part.",
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  },
+  "vba_part_present": false
+}

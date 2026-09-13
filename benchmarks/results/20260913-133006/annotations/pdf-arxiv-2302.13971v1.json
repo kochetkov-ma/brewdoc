@@ -1,0 +1,1088 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-arxiv-2302.13971v1",
+  "source_sha256": "2e663675ae36ad12adb2f5a05281bac2747ecf8d23d92bedd9f937a89fee7136",
+  "title": "LLaMA: Open and Efficient Foundation Language Models",
+  "topics": [
+    "language model pretraining",
+    "training datasets",
+    "language model evaluation",
+    "bias and toxicity",
+    "training carbon footprint"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3423,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "title",
+        "authors",
+        "abstract"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Full-width title and author block above two-column body."
+        },
+        {
+          "description": "Rotated arXiv identifier at left margin."
+        },
+        {
+          "description": "Contribution footnote and source-code URL at bottom left."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 2,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3602,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p2-table-1",
+          "label": "Table 1: Pre-training data",
+          "bbox_pt": [
+            305.3,
+            71.2,
+            526.4,
+            260.2
+          ],
+          "structure": {
+            "description": "4 columns; 7 dataset rows; sampling proportions, epochs and disk sizes; single header row."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 3,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2928,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables",
+        "figures"
+      ],
+      "tables": [
+        {
+          "id": "p3-table-1",
+          "label": "Table 2: Model sizes and hyperparameters",
+          "bbox_pt": [
+            114.0,
+            70.4,
+            482.0,
+            171.4
+          ],
+          "structure": {
+            "description": "7 columns; 4 model rows; scientific-notation learning rates and token counts."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [
+        {
+          "id": "p3-figure-1",
+          "label": "Figure 1: Training loss over train tokens",
+          "bbox_pt": [
+            305.3,
+            198.2,
+            526.4,
+            413.3
+          ],
+          "kind": "line_chart",
+          "notes": "Four colored training-loss traces with legend, grid, axis labels and sharp spikes; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Bottom footnote separated by short horizontal rule; URL present."
+        },
+        {
+          "description": "Inline mathematical notation, including subscripts or superscripts."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 4,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2701,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables",
+        "equations"
+      ],
+      "tables": [
+        {
+          "id": "p4-table-1",
+          "label": "Table 3: Common Sense Reasoning",
+          "bbox_pt": [
+            81.1,
+            70.4,
+            514.9,
+            259.5
+          ],
+          "structure": {
+            "description": "10 columns including model and size; 10 model rows; model-family labels span rows visually; bold scores and missing-value dashes."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p4-table-2",
+          "label": "Table 4: NaturalQuestions",
+          "bbox_pt": [
+            305.3,
+            481.4,
+            526.4,
+            678.9
+          ],
+          "structure": {
+            "description": "6 columns including model and size; 10 model rows; four shot-count headers; grouped model-family labels, bold scores and dashes."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [
+        {
+          "id": "p4-figure-1",
+          "label": "Unnumbered answer-likelihood normalization formula",
+          "bbox_pt": [
+            305.3,
+            456.2,
+            526.4,
+            472.2
+          ],
+          "kind": "equation_region",
+          "notes": "Single displayed probability ratio in right column above Table 4."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Inline mathematical notation, including subscripts or superscripts."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 5,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3169,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p5-table-1",
+          "label": "Table 5: TriviaQA",
+          "bbox_pt": [
+            69.6,
+            531.2,
+            290.8,
+            676.6
+          ],
+          "structure": {
+            "description": "6 columns; 6 model rows; four shot-count headers; one grouped LLaMA label, bold scores and dashes."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p5-table-2",
+          "label": "Table 6: Reading Comprehension",
+          "bbox_pt": [
+            305.3,
+            70.4,
+            524.1,
+            248.7
+          ],
+          "structure": {
+            "description": "4 columns; 8 model rows; RACE-middle and RACE-high scores; model-family labels span rows visually."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 6,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3250,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p6-table-1",
+          "label": "Table 7: Quantitative reasoning",
+          "bbox_pt": [
+            69.6,
+            70.4,
+            290.8,
+            335.2
+          ],
+          "structure": {
+            "description": "6 columns including model and size; 10 model rows; MATH and GSM8k header groups each cover two metrics; bold scores and missing-value dashes."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p6-table-2",
+          "label": "Table 8: Code generation",
+          "bbox_pt": [
+            305.3,
+            70.4,
+            526.4,
+            318.4
+          ],
+          "structure": {
+            "description": "6 columns including model and size; 9 model rows; HumanEval and MBPP grouped headers with pass-at subheaders; starred values, bold scores and dashes."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Inline mathematical notation, including subscripts or superscripts."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 7,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2608,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p7-table-1",
+          "label": "Table 9: MMLU",
+          "bbox_pt": [
+            113.2,
+            70.4,
+            482.0,
+            279.4
+          ],
+          "structure": {
+            "description": "7 columns including model and size; 11 model rows; four domain groups and average; grouped family labels and bold scores."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p7-table-2",
+          "label": "Table 10: Instruction finetuning",
+          "bbox_pt": [
+            69.6,
+            563.3,
+            290.8,
+            769.9
+          ],
+          "structure": {
+            "description": "3 columns; 11 model rows; no explicit header row; horizontal split separates ordinary and instruction-tuned models; bold final score."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 8,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2335,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables",
+        "figures"
+      ],
+      "tables": [
+        {
+          "id": "p8-table-1",
+          "label": "Table 11: RealToxicityPrompts",
+          "bbox_pt": [
+            305.3,
+            392.6,
+            527.2,
+            564.8
+          ],
+          "structure": {
+            "description": "4 columns including model and size; 4 model rows; Basic and Respectful metrics; one model label centered over four rows."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [
+        {
+          "id": "p8-figure-1",
+          "label": "Figure 2: Evolution of performance during training",
+          "bbox_pt": [
+            70.4,
+            72.7,
+            523.4,
+            372.0
+          ],
+          "kind": "multi_panel_line_chart",
+          "notes": "Six panels in a 3-by-2 arrangement: TriviaQA, HellaSwag, NaturalQuestions, SIQA, WinoGrande and PIQA; four model traces plus dashed Chinchilla baseline; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Bottom footnote separated by short horizontal rule; URL present."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 9,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3607,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p9-table-1",
+          "label": "Table 12: CrowS-Pairs",
+          "bbox_pt": [
+            69.6,
+            70.4,
+            290.8,
+            282.4
+          ],
+          "structure": {
+            "description": "4 columns; 9 bias categories and an Average row; three model headers; bold values and horizontal rule before average."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 10,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3342,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables",
+        "equations"
+      ],
+      "tables": [
+        {
+          "id": "p10-table-1",
+          "label": "Table 13: WinoGender",
+          "bbox_pt": [
+            69.6,
+            70.4,
+            296.1,
+            269.4
+          ],
+          "structure": {
+            "description": "5 columns; 6 data rows including All; four model-size headers; subgroup separators and italic gotcha labels."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p10-table-2",
+          "label": "Table 14: TruthfulQA",
+          "bbox_pt": [
+            69.6,
+            283.2,
+            291.5,
+            476.8
+          ],
+          "structure": {
+            "description": "4 columns including model and size; 7 model rows; Truthful and Truthful*Inf headers; model-family labels span rows visually."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [
+        {
+          "id": "p10-figure-1",
+          "label": "Carbon-emission conversion formula",
+          "bbox_pt": [
+            352.7,
+            270.2,
+            479.7,
+            287.8
+          ],
+          "kind": "equation_region",
+          "notes": "Single displayed carbon-emission equation in right column."
+        },
+        {
+          "id": "p10-figure-2",
+          "label": "Energy consumption formula",
+          "bbox_pt": [
+            69.6,
+            760.0,
+            294.6,
+            775.3
+          ],
+          "kind": "equation_region",
+          "notes": "Single displayed energy equation at bottom of left column."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Bottom footnote separated by short horizontal rule; URL present."
+        },
+        {
+          "description": "Inline mathematical notation, including subscripts or superscripts."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 11,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3582,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p11-table-1",
+          "label": "Table 15: Carbon footprint",
+          "bbox_pt": [
+            69.6,
+            70.4,
+            526.4,
+            253.3
+          ],
+          "structure": {
+            "description": "6 columns; 6 model rows; multi-line unit-bearing headers; comma-separated GPU-hours and energy/emissions values."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 12,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4392,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references",
+        "acknowledgments"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two-column bibliography with hanging entries and blue citation links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 13,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4259,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two-column bibliography with hanging entries and blue citation links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 14,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4371,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two-column bibliography with hanging entries and blue citation links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 15,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 4295,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two-column bibliography with hanging entries and blue citation links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 16,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1438,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two-column bibliography with hanging entries and blue citation links."
+        },
+        {
+          "description": "Only left column occupied; right side and lower page blank."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 17,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1288,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "figures"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p17-figure-1",
+          "label": "Figure 3: Formatted dataset example",
+          "bbox_pt": [
+            70.4,
+            251.8,
+            526.4,
+            328.3
+          ],
+          "kind": "text_example_diagram",
+          "notes": "Two side-by-side monospaced prompt/target examples with horizontal rules and a central divider; publisher labels it Figure 3, not a numbered table; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Bottom footnote separated by short horizontal rule; URL present."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 18,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 3482,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p18-table-1",
+          "label": "Table 16: Detailed MMLU",
+          "bbox_pt": [
+            94.9,
+            101.0,
+            503.5,
+            766.9
+          ],
+          "structure": {
+            "description": "10 columns including subject and category; 57 subject rows, 4 category summary rows and All row; model-family header spans four size columns; small dense text, horizontal summary separators."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 19,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1738,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples",
+        "code"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Three bordered examples: Fibonacci prose, a fictional recommendation letter, and a shaded Python code block with line numbers."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 20,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2293,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two bordered generated dialogue examples; bold prompts and long wrapped paragraphs."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 21,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1339,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "One bordered dialogue example with speaker labels; lower page blank."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 22,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1357,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples",
+        "code"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Three bordered examples: dialogue, JavaScript HTTP requests, and Python regular expressions. Four shaded code blocks with line numbers and syntax color."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 23,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 1544,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "One bordered multi-turn chess example with move lists and bold questions."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 24,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2539,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two bordered story examples with bold prompts and long prose."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 25,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2069,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Two bordered examples: fictional historical dialogue and a model-use email draft."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 26,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 2213,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "Inline mathematical notation, including subscripts or superscripts."
+        },
+        {
+          "description": "One bordered multi-turn example with a bulleted list and inline E=mc squared expression."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 27,
+      "width_pt": 595.276,
+      "height_pt": 841.89,
+      "text_char_count": 544,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "text_examples",
+        "code"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "No printed page folio visible."
+        },
+        {
+          "description": "One bordered shell-session example with commands, output-like rows and memory fields; this is printed source content, not commands to execute."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Complete means every source page and visible table, figure and displayed equation region was reviewed. It does not mean cell transcription or mathematical correctness was verified.",
+    "Region boxes are approximate visual extents in PDF points from the top left; table and numbered figure boxes include their captions. They are not exact cell or glyph boundaries.",
+    "Inline mathematics are recorded as page features, not individually boxed. Multi-line displayed derivations are grouped as equation regions.",
+    "Chart observations describe visible structure, without digitizing plotted data. Source annotations are independent of brewdoc output and are not expected Markdown."
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "capture_errors": [],
+  "capture_helper": "benchmarks/capture_results.py",
+  "command_template": [
+    "python",
+    "-m",
+    "brewdoc.cli",
+    "{repository_root}/tests/fixtures/ods/calamine-special_cells.ods",
+    "--out",
+    "{capture_directory}/artifacts/document.md"
+  ],
+  "elapsed_seconds": 0.12482754199299961,
+  "error": null,
+  "file_ok": true,
+  "helper_exit": 0,
+  "input": {
+    "format": "ods",
+    "group": "feature_probe",
+    "id": "ods-calamine-special-cells",
+    "path": "tests/fixtures/ods/calamine-special_cells.ods",
+    "sha256": "12384e99c8b023f410de1fc102a5eda9950eb1358d7194028e71bc06cb70b767",
+    "size_bytes": 12051
+  },
+  "markdown": {
+    "copy_kind": "unchanged original bytes",
+    "path": "artifacts/document.md",
+    "sha256": "c3c3df8a6932395463e7b147b297ede3fb276f48ea19ed5842e6f52cf274516d",
+    "size_bytes": 324
+  },
+  "pass": 1,
+  "raw_streams_local_only": {
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0
+    },
+    "stdout": {
+      "sha256": "25cfdc884cfa50eaa9c45bdb5a1307a47e10d339d7c051b6fbc1d6540110d9dc",
+      "size_bytes": 746
+    }
+  },
+  "receipt_kind": "derived portable copy; transformations listed explicitly",
+  "receipt_path": "receipt.json",
+  "receipt_transformations": [
+    {
+      "field": "out",
+      "operation": "replace exact expanded output argument with capture-relative artifacts/document.md"
+    }
+  ],
+  "record_kind": "portable_capture_derivative",
+  "returncode": 0,
+  "schema_version": 1,
+  "signal": null,
+  "started_at_utc": "2026-09-13T13:34:08.350089+00:00",
+  "status": "success",
+  "timeout_seconds": 300.0,
+  "timing_unit": "seconds",
+  "tool": {
+    "name": "brewdoc",
+    "version": "0.1.0"
+  }
+}

@@ -1,0 +1,1259 @@
+{
+  "documents": [
+    {
+      "annotation_path": "annotations/ods-calamine-any-sheets.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.ods",
+      "features": [
+        "sheet-order",
+        "hidden-worksheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "embedded-chart"
+      ],
+      "format": "ods",
+      "group": "feature_probe",
+      "id": "ods-calamine-any-sheets",
+      "language": "mul",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/ods/calamine-any_sheets.ods",
+      "provenance_kind": "public",
+      "sha256": "1aef869b5e34ad735010ca37a27fcf081824fd45d2af351542a74d03e3fed01d",
+      "size_bytes": 5813,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.ods",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.344967+00:00",
+        "download_sha256": "1aef869b5e34ad735010ca37a27fcf081824fd45d2af351542a74d03e3fed01d",
+        "download_size_bytes": 5813,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.ods",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Worksheet order, visibility and an embedded chart",
+      "topics": [
+        "spreadsheet parser features",
+        "sheet-order",
+        "hidden-worksheets",
+        "empty-sheets",
+        "interior-blank-row"
+      ],
+      "variant": "ODF spreadsheet"
+    },
+    {
+      "annotation_path": "annotations/ods-calamine-date.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.ods",
+      "features": [
+        "date-cell",
+        "datetime-cell",
+        "time-cells",
+        "fractional-seconds",
+        "float-cells"
+      ],
+      "format": "ods",
+      "group": "feature_probe",
+      "id": "ods-calamine-date",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/ods/calamine-date.ods",
+      "provenance_kind": "public",
+      "sha256": "d65f3198bc73f2fad356e1b097215fc2f9a833fb802638217e5adc27fbba0466",
+      "size_bytes": 11886,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.ods",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.341503+00:00",
+        "download_sha256": "d65f3198bc73f2fad356e1b097215fc2f9a833fb802638217e5adc27fbba0466",
+        "download_size_bytes": 11886,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.ods",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "ODF date, datetime and time values",
+      "topics": [
+        "spreadsheet parser features",
+        "date-cell",
+        "datetime-cell",
+        "time-cells",
+        "fractional-seconds",
+        "float-cells"
+      ],
+      "variant": "ODF spreadsheet"
+    },
+    {
+      "annotation_path": "annotations/ods-calamine-issues.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.ods",
+      "features": [
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "datetime-cell",
+        "unicode-text",
+        "leading-blank-row",
+        "cached-string-boolean-numeric-formula-values"
+      ],
+      "format": "ods",
+      "group": "feature_probe",
+      "id": "ods-calamine-issues",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/ods/calamine-issues.ods",
+      "provenance_kind": "public",
+      "sha256": "35b60d34e30e80b9931b5001ae9d8ff6ce0ac719983af8197a00ee59e01f07df",
+      "size_bytes": 4095,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.ods",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.377250+00:00",
+        "download_sha256": "35b60d34e30e80b9931b5001ae9d8ff6ce0ac719983af8197a00ee59e01f07df",
+        "download_size_bytes": 4095,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.ods",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "ODF mixed cells and stored formula results",
+      "topics": [
+        "spreadsheet parser features",
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "datetime-cell",
+        "unicode-text",
+        "leading-blank-row",
+        "cached-string-boolean-numeric-formula-values"
+      ],
+      "variant": "ODF spreadsheet"
+    },
+    {
+      "annotation_path": "annotations/ods-calamine-merged-cells.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merged_cells.ods",
+      "features": [
+        "vertical-merge",
+        "covered-cell",
+        "merge-absent-from-binding-metadata"
+      ],
+      "format": "ods",
+      "group": "feature_probe",
+      "id": "ods-calamine-merged-cells",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/ods/calamine-merged_cells.ods",
+      "provenance_kind": "public",
+      "sha256": "64c7c278e497d32a7a54fe4c06d1db5e01a4741ed0fb7bde2817579d483c7301",
+      "size_bytes": 8650,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merged_cells.ods",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.451330+00:00",
+        "download_sha256": "64c7c278e497d32a7a54fe4c06d1db5e01a4741ed0fb7bde2817579d483c7301",
+        "download_size_bytes": 8650,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merged_cells.ods",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "ODF vertical merge and covered cells",
+      "topics": [
+        "spreadsheet parser features",
+        "vertical-merge",
+        "covered-cell",
+        "merge-absent-from-binding-metadata"
+      ],
+      "variant": "ODF spreadsheet"
+    },
+    {
+      "annotation_path": "annotations/ods-calamine-special-cells.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/special_cells.ods",
+      "features": [
+        "string-cells",
+        "embedded-newline",
+        "repeated-interior-spaces",
+        "leading-and-trailing-spaces"
+      ],
+      "format": "ods",
+      "group": "feature_probe",
+      "id": "ods-calamine-special-cells",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/ods/calamine-special_cells.ods",
+      "provenance_kind": "public",
+      "sha256": "12384e99c8b023f410de1fc102a5eda9950eb1358d7194028e71bc06cb70b767",
+      "size_bytes": 12051,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/special_cells.ods",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.341370+00:00",
+        "download_sha256": "12384e99c8b023f410de1fc102a5eda9950eb1358d7194028e71bc06cb70b767",
+        "download_size_bytes": 12051,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/special_cells.ods",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "ODF line breaks and whitespace",
+      "topics": [
+        "spreadsheet parser features",
+        "string-cells",
+        "embedded-newline",
+        "repeated-interior-spaces",
+        "leading-and-trailing-spaces"
+      ],
+      "variant": "ODF spreadsheet"
+    },
+    {
+      "annotation_path": "annotations/pdf-arxiv-2302.13971v1.json",
+      "download_url": "https://arxiv.org/pdf/2302.13971v1",
+      "features": [
+        "two-column-prose",
+        "horizontal-only-table-rules",
+        "figures"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-arxiv-2302.13971v1",
+      "language": "en",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/arxiv-2302.13971v1.pdf",
+      "provenance_kind": "public",
+      "sha256": "2e663675ae36ad12adb2f5a05281bac2747ecf8d23d92bedd9f937a89fee7136",
+      "size_bytes": 726566,
+      "source_url": "https://arxiv.org/abs/2302.13971v1",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.183546+00:00",
+        "download_link_evidence": "landing page View PDF href",
+        "download_sha256": "2e663675ae36ad12adb2f5a05281bac2747ecf8d23d92bedd9f937a89fee7136",
+        "download_size_bytes": 726566,
+        "effective_url": "https://arxiv.org/pdf/2302.13971v1",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "LLaMA: Open and Efficient Foundation Language Models",
+      "topics": [
+        "language model pretraining",
+        "training datasets",
+        "language model evaluation",
+        "bias and toxicity",
+        "training carbon footprint"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-arxiv-2305.18290v3.json",
+      "download_url": "https://arxiv.org/pdf/2305.18290v3",
+      "features": [
+        "single-column-prose",
+        "equations",
+        "references",
+        "running-heads"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-arxiv-2305.18290v3",
+      "language": "en",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/arxiv-2305.18290v3.pdf",
+      "provenance_kind": "public",
+      "sha256": "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a",
+      "size_bytes": 1299212,
+      "source_url": "https://arxiv.org/abs/2305.18290v3",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.369154+00:00",
+        "download_link_evidence": "landing page View PDF href",
+        "download_sha256": "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a",
+        "download_size_bytes": 1299212,
+        "effective_url": "https://arxiv.org/pdf/2305.18290v3",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+      "topics": [
+        "preference optimization",
+        "reinforcement learning from human feedback",
+        "language model alignment",
+        "summarization and dialogue evaluation",
+        "mathematical derivations"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-arxiv-2402.00838v4.json",
+      "download_url": "https://arxiv.org/pdf/2402.00838v4",
+      "features": [
+        "two-column-prose",
+        "footnotes",
+        "figures"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-arxiv-2402.00838v4",
+      "language": "en",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/arxiv-2402.00838v4.pdf",
+      "provenance_kind": "public",
+      "sha256": "121e82248da601e8e4d4da5fa9b4486660ecf0f5a0fae5292b7af3c656c2385d",
+      "size_bytes": 562224,
+      "source_url": "https://arxiv.org/abs/2402.00838v4",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.421115+00:00",
+        "download_link_evidence": "landing page View PDF href",
+        "download_sha256": "121e82248da601e8e4d4da5fa9b4486660ecf0f5a0fae5292b7af3c656c2385d",
+        "download_size_bytes": 562224,
+        "effective_url": "https://arxiv.org/pdf/2402.00838v4",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "OLMo: Accelerating the Science of Language Models",
+      "topics": [
+        "open language models",
+        "training data",
+        "model architecture",
+        "model evaluation",
+        "energy use and carbon emissions"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-eia-steo-table1.json",
+      "download_url": "https://www.eia.gov/outlooks/steo/tables/pdf/1tab.pdf",
+      "features": [
+        "grouped-year-quarter-headers",
+        "dot-leaders",
+        "unruled-table-body",
+        "footer-notes"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-eia-steo-table1",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/eia-steo-table1.pdf",
+      "provenance_kind": "public",
+      "sha256": "c83236d12a071cc75b5717429ed52f93b3c9b9d78c4d2cc08a666db261a00dbf",
+      "size_bytes": 167515,
+      "source_url": "https://www.eia.gov/outlooks/steo/tables/pdf/1tab.pdf",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.836799+00:00",
+        "download_sha256": "c83236d12a071cc75b5717429ed52f93b3c9b9d78c4d2cc08a666db261a00dbf",
+        "download_size_bytes": 167515,
+        "effective_url": "https://www.eia.gov/outlooks/steo/tables/pdf/1tab.pdf",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Table 1. U.S. Energy Markets Summary, September 2026",
+      "topics": [
+        "energy production",
+        "energy consumption",
+        "energy prices",
+        "macroeconomic forecasts",
+        "weather"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-fbi-nics-background-checks-2015-11.json",
+      "download_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/nics-background-checks-2015-11.pdf",
+      "features": [
+        "landscape-page",
+        "25-column-ruled-grid",
+        "grouped-headers",
+        "footer-notes"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-fbi-nics-background-checks-2015-11",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/fbi-nics-background-checks-2015-11.pdf",
+      "provenance_kind": "public",
+      "sha256": "4f0ae6e017b0e97de211da8fd97316e55bd927af5740d6ce95e1b7b1539f9407",
+      "size_bytes": 90468,
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/nics-background-checks-2015-11.pdf",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.597761+00:00",
+        "download_sha256": "4f0ae6e017b0e97de211da8fd97316e55bd927af5740d6ce95e1b7b1539f9407",
+        "download_size_bytes": 90468,
+        "effective_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/nics-background-checks-2015-11.pdf",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "NICS Firearm Background Checks, November 2015",
+      "topics": [
+        "firearm background checks",
+        "state and territory statistics",
+        "permit and transaction categories"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-federal-register-2020-17221.json",
+      "download_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/federal-register-2020-17221.pdf",
+      "features": [
+        "three-column-prose",
+        "running-heads",
+        "footnotes",
+        "image-content-on-text-bearing-pages"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-federal-register-2020-17221",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/federal-register-2020-17221.pdf",
+      "provenance_kind": "public",
+      "sha256": "ac419e4e084ea7a7a33a7be3f129dd07bc705b1a9e45ad751e33357f17d60f5c",
+      "size_bytes": 713992,
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/federal-register-2020-17221.pdf",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.676086+00:00",
+        "download_sha256": "ac419e4e084ea7a7a33a7be3f129dd07bc705b1a9e45ad751e33357f17d60f5c",
+        "download_size_bytes": 713992,
+        "effective_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/federal-register-2020-17221.pdf",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Federal Register: Airworthiness Directives; The Boeing Company Airplanes",
+      "topics": [
+        "aviation regulation",
+        "Boeing 737 MAX",
+        "flight control software",
+        "operating procedures",
+        "compliance costs",
+        "Pilatus PC-12 notice fragment"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-nist-sp800-145.json",
+      "download_url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf",
+      "features": [
+        "single-column-prose",
+        "indented-definitions",
+        "footnote",
+        "page-folios"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-nist-sp800-145",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/nist-sp800-145.pdf",
+      "provenance_kind": "public",
+      "sha256": "7b0c1a9fdfc67218b8ba2098f448c100c27070db91736b3c87fed63bfa21d418",
+      "size_bytes": 85781,
+      "source_url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.191780+00:00",
+        "download_sha256": "7b0c1a9fdfc67218b8ba2098f448c100c27070db91736b3c87fed63bfa21d418",
+        "download_size_bytes": 85781,
+        "effective_url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "The NIST Definition of Cloud Computing",
+      "topics": [
+        "cloud computing",
+        "service models",
+        "deployment models",
+        "technical definitions"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-us-patent-223898-scan.json",
+      "download_url": "https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/0223898",
+      "features": [
+        "five-image-only-pages",
+        "no-text-layer"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-us-patent-223898-scan",
+      "language": "en",
+      "license": "US patent text and drawings, not subject to copyright",
+      "license_url": "https://www.uspto.gov/terms-use-uspto-websites",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/us-patent-223898-scan.pdf",
+      "provenance_kind": "public",
+      "sha256": "89078727e7a19f85ef5874a9750037d1accc317e5c13489f7fc7bd721392bd2a",
+      "size_bytes": 227921,
+      "source_url": "https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/0223898",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:02.002956+00:00",
+        "content_comparison": {
+          "changed_byte_offsets": [
+            48,
+            57,
+            59,
+            60,
+            62,
+            63
+          ],
+          "decoded_page_image_streams_match": true,
+          "difference_scope": "Only the PDF CreationDate value changed; every other byte matched.",
+          "followup_download_sha256": "d376a45dac6c0651528f4544199de23c9b31799c32d318587efd6465258fc4ea",
+          "followup_download_size_bytes": 227921,
+          "page_count": 5
+        },
+        "download_sha256": "a3c0e8f8ecac87e51433d6efa995e6290574d11c4c2aaffea69805d258e2d36d",
+        "download_size_bytes": 227921,
+        "effective_url": "https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/0223898",
+        "http_status": 200,
+        "method": "GET",
+        "status": "mismatch"
+      },
+      "title": "US Patent 223,898: Electric-Lamp, with correction documents",
+      "topics": [
+        "electric lamp",
+        "carbon filament",
+        "patent drawings",
+        "patent claims",
+        "administrative corrections"
+      ],
+      "variant": "image-only PDF"
+    },
+    {
+      "annotation_path": "annotations/pdf-us-senate-expenditures.json",
+      "download_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/senate-expenditures.pdf",
+      "features": [
+        "landscape-page",
+        "grouped-date-subheader",
+        "table-body-without-row-separators"
+      ],
+      "format": "pdf",
+      "group": "core",
+      "id": "pdf-us-senate-expenditures",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/pdf/us-senate-expenditures.pdf",
+      "provenance_kind": "public",
+      "sha256": "16921f0fc9b2c6039b23b694e0317917118ad7dd2b3a95a88518b7e144df527c",
+      "size_bytes": 53481,
+      "source_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/senate-expenditures.pdf",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.786160+00:00",
+        "download_sha256": "16921f0fc9b2c6039b23b694e0317917118ad7dd2b3a95a88518b7e144df527c",
+        "download_size_bytes": 53481,
+        "effective_url": "https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/senate-expenditures.pdf",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "United States Senate expenditures, page B-1191",
+      "topics": [
+        "government expenditure",
+        "staff compensation",
+        "travel payments"
+      ],
+      "variant": "text PDF"
+    },
+    {
+      "annotation_path": "annotations/xls-calamine-any-sheets.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xls",
+      "features": [
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-values",
+        "vba-streams-present",
+        "column-chart-with-two-series"
+      ],
+      "format": "xls",
+      "group": "feature_probe",
+      "id": "xls-calamine-any-sheets",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xls/calamine-any_sheets.xls",
+      "provenance_kind": "public",
+      "sha256": "efb61c9a60b826b18b251cd74bb80819fcf8eb566e74ef6130709dcd2f7e0590",
+      "size_bytes": 38400,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xls",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.837993+00:00",
+        "download_sha256": "efb61c9a60b826b18b251cd74bb80819fcf8eb566e74ef6130709dcd2f7e0590",
+        "download_size_bytes": 38400,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xls",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Legacy workbook sheet order and chart sheet",
+      "topics": [
+        "spreadsheet parser features",
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-values"
+      ],
+      "variant": "BIFF8"
+    },
+    {
+      "annotation_path": "annotations/xls-calamine-date.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xls",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "integer-cells"
+      ],
+      "format": "xls",
+      "group": "feature_probe",
+      "id": "xls-calamine-date",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xls/calamine-date.xls",
+      "provenance_kind": "public",
+      "sha256": "e3eb3391a371cc1e0b85d94b9f1dd94bbcedf19733ed0ca449e2d269af758e9e",
+      "size_bytes": 5632,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xls",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:00.910554+00:00",
+        "download_sha256": "e3eb3391a371cc1e0b85d94b9f1dd94bbcedf19733ed0ca449e2d269af758e9e",
+        "download_size_bytes": 5632,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xls",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Legacy workbook dates, duration and integers",
+      "topics": [
+        "spreadsheet parser features",
+        "date-cells",
+        "duration-cell",
+        "integer-cells"
+      ],
+      "variant": "BIFF8"
+    },
+    {
+      "annotation_path": "annotations/xls-calamine-merge-cells.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xls",
+      "features": [
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ],
+      "format": "xls",
+      "group": "feature_probe",
+      "id": "xls-calamine-merge-cells",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xls/calamine-merge_cells.xls",
+      "provenance_kind": "public",
+      "sha256": "8900c1ed9184c3af774f56cc5d459377219603dd37cbfaa911fb6f759c780597",
+      "size_bytes": 19456,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xls",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.035601+00:00",
+        "download_sha256": "8900c1ed9184c3af774f56cc5d459377219603dd37cbfaa911fb6f759c780597",
+        "download_size_bytes": 19456,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xls",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Legacy workbook horizontal, vertical and block merges",
+      "topics": [
+        "spreadsheet parser features",
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ],
+      "variant": "BIFF8"
+    },
+    {
+      "annotation_path": "annotations/xls-calamine-xls-formula.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/xls_formula.xls",
+      "features": [
+        "cached-numeric-formula-values",
+        "same-sheet-formula",
+        "cross-sheet-formula"
+      ],
+      "format": "xls",
+      "group": "feature_probe",
+      "id": "xls-calamine-xls-formula",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xls/calamine-xls_formula.xls",
+      "provenance_kind": "public",
+      "sha256": "553f0417bacbb34c7755cbe7334ecc63f850cb099d02af503143a9c679278a87",
+      "size_bytes": 25600,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/xls_formula.xls",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.081664+00:00",
+        "download_sha256": "553f0417bacbb34c7755cbe7334ecc63f850cb099d02af503143a9c679278a87",
+        "download_size_bytes": 25600,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/xls_formula.xls",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Legacy workbook same-sheet and cross-sheet formulas",
+      "topics": [
+        "spreadsheet parser features",
+        "cached-numeric-formula-values",
+        "same-sheet-formula",
+        "cross-sheet-formula"
+      ],
+      "variant": "BIFF8"
+    },
+    {
+      "annotation_path": "annotations/xls-census-st-est00int-01.json",
+      "download_url": "https://www2.census.gov/programs-surveys/popest/tables/2000-2010/intercensal/state/st-est00int-01.xls",
+      "features": [
+        "title-rows",
+        "two-row-header",
+        "merged-ranges",
+        "footnotes",
+        "interior-blank-row",
+        "integer-and-float-cells"
+      ],
+      "format": "xls",
+      "group": "core",
+      "id": "xls-census-st-est00int-01",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/xls/census-st-est00int-01.xls",
+      "provenance_kind": "public",
+      "sha256": "4a4c056771eb4abd82900b13bc3b9173571ca43e52ad67b3b170a034dce874ee",
+      "size_bytes": 35328,
+      "source_url": "https://www2.census.gov/programs-surveys/popest/tables/2000-2010/intercensal/state/st-est00int-01.xls",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.460605+00:00",
+        "download_sha256": "4a4c056771eb4abd82900b13bc3b9173571ca43e52ad67b3b170a034dce874ee",
+        "download_size_bytes": 35328,
+        "effective_url": "https://www2.census.gov/programs-surveys/popest/tables/2000-2010/intercensal/state/st-est00int-01.xls",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Table 1. Intercensal Estimates of the Resident Population for the United States, Regions, States, and Puerto Rico: April 1, 2000 to July 1, 2010",
+      "topics": [
+        "United States population",
+        "states and regions",
+        "population estimates"
+      ],
+      "variant": "BIFF8"
+    },
+    {
+      "annotation_path": "annotations/xlsb-calamine-date.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsb",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ],
+      "format": "xlsb",
+      "group": "feature_probe",
+      "id": "xlsb-calamine-date",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsb/calamine-date.xlsb",
+      "provenance_kind": "public",
+      "sha256": "68d36adf4d4de3890209e786eeb89a98778d25158628f83e96587e652fbb4eca",
+      "size_bytes": 7711,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsb",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.162188+00:00",
+        "download_sha256": "68d36adf4d4de3890209e786eeb89a98778d25158628f83e96587e652fbb4eca",
+        "download_size_bytes": 7711,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsb",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Binary workbook dates and duration",
+      "topics": [
+        "spreadsheet parser features",
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ],
+      "variant": "binary workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsb-calamine-issue127.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue127.xlsb",
+      "features": [
+        "eight-empty-sheets",
+        "sheet-order"
+      ],
+      "format": "xlsb",
+      "group": "feature_probe",
+      "id": "xlsb-calamine-issue127",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsb/calamine-issue127.xlsb",
+      "provenance_kind": "public",
+      "sha256": "7a1eebd5b6d8f560a91babd3831f1133d964b1b094b848dd00c933d905ca0e09",
+      "size_bytes": 13868,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue127.xlsb",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.278523+00:00",
+        "download_sha256": "7a1eebd5b6d8f560a91babd3831f1133d964b1b094b848dd00c933d905ca0e09",
+        "download_size_bytes": 13868,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue127.xlsb",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Binary workbook with eight empty sheets",
+      "topics": [
+        "spreadsheet parser features",
+        "eight-empty-sheets",
+        "sheet-order"
+      ],
+      "variant": "binary workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsb-calamine-issues.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.xlsb",
+      "features": [
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "date-cell",
+        "unicode-text",
+        "leading-blank-row",
+        "vba-part-present",
+        "cached-string-boolean-numeric-formula-values"
+      ],
+      "format": "xlsb",
+      "group": "feature_probe",
+      "id": "xlsb-calamine-issues",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsb/calamine-issues.xlsb",
+      "provenance_kind": "public",
+      "sha256": "06c648de5529e022ef399a2b6ebc227040e9fdf71a0780e19e614f556bdb53d7",
+      "size_bytes": 19226,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.xlsb",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.314348+00:00",
+        "download_sha256": "06c648de5529e022ef399a2b6ebc227040e9fdf71a0780e19e614f556bdb53d7",
+        "download_size_bytes": 19226,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issues.xlsb",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Binary workbook mixed cells and Unicode",
+      "topics": [
+        "spreadsheet parser features",
+        "six-sheets",
+        "mixed-cell-types",
+        "boolean-cell",
+        "date-cell",
+        "unicode-text",
+        "leading-blank-row",
+        "cached-string-boolean-numeric-formula-values"
+      ],
+      "variant": "binary workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsm-calamine-issue221.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue221.xlsm",
+      "features": [
+        "2-by-2-text-grid",
+        "no-vba-part"
+      ],
+      "format": "xlsm",
+      "group": "feature_probe",
+      "id": "xlsm-calamine-issue221",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsm/calamine-issue221.xlsm",
+      "provenance_kind": "public",
+      "sha256": "4757c73be0ad3e0cb789dcf6c170df7ddf10160618986af41614278dc8ce6498",
+      "size_bytes": 7660,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue221.xlsm",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.418261+00:00",
+        "download_sha256": "4757c73be0ad3e0cb789dcf6c170df7ddf10160618986af41614278dc8ce6498",
+        "download_size_bytes": 7660,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue221.xlsm",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Macro-enabled container with a text grid",
+      "topics": [
+        "spreadsheet parser features",
+        "2-by-2-text-grid",
+        "no-vba-part"
+      ],
+      "variant": "macro-enabled OOXML"
+    },
+    {
+      "annotation_path": "annotations/xlsm-calamine-issue3.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue3.xlsm",
+      "features": [
+        "sheet-order",
+        "float-and-text-cells",
+        "two-empty-sheets",
+        "no-vba-part"
+      ],
+      "format": "xlsm",
+      "group": "feature_probe",
+      "id": "xlsm-calamine-issue3",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsm/calamine-issue3.xlsm",
+      "provenance_kind": "public",
+      "sha256": "6d42e269833549a4c5d0118a6b0689cd9c6e6bafc3f1c32ea1bde865333ec9e1",
+      "size_bytes": 8266,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue3.xlsm",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.422698+00:00",
+        "download_sha256": "6d42e269833549a4c5d0118a6b0689cd9c6e6bafc3f1c32ea1bde865333ec9e1",
+        "download_size_bytes": 8266,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/issue3.xlsm",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Macro-enabled container with one data row and empty sheets",
+      "topics": [
+        "spreadsheet parser features",
+        "sheet-order",
+        "float-and-text-cells",
+        "two-empty-sheets",
+        "no-vba-part"
+      ],
+      "variant": "macro-enabled OOXML"
+    },
+    {
+      "annotation_path": "annotations/xlsm-calamine-vba.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/vba.xlsm",
+      "features": [
+        "three-empty-sheets",
+        "vba-part-present"
+      ],
+      "format": "xlsm",
+      "group": "feature_probe",
+      "id": "xlsm-calamine-vba",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsm/calamine-vba.xlsm",
+      "provenance_kind": "public",
+      "sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+      "size_bytes": 12752,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/vba.xlsm",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.515983+00:00",
+        "download_sha256": "2fe9f89f4a969658c1e3f9b0e8c70ccb155840aa6ee1bad6b15df603f41da1c0",
+        "download_size_bytes": 12752,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/vba.xlsm",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "VBA project with three empty worksheets",
+      "topics": [
+        "spreadsheet parser features",
+        "three-empty-sheets",
+        "vba-part-present"
+      ],
+      "variant": "macro-enabled OOXML"
+    },
+    {
+      "annotation_path": "annotations/xlsx-calamine-any-sheets.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xlsx",
+      "features": [
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-empty-grid"
+      ],
+      "format": "xlsx",
+      "group": "feature_probe",
+      "id": "xlsx-calamine-any-sheets",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsx/calamine-any_sheets.xlsx",
+      "provenance_kind": "public",
+      "sha256": "fba48e0141f847d80738a4417f0a336cba92e4ac692d8dd7516eac41e32c9e4f",
+      "size_bytes": 14804,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.852384+00:00",
+        "download_sha256": "fba48e0141f847d80738a4417f0a336cba92e4ac692d8dd7516eac41e32c9e4f",
+        "download_size_bytes": 14804,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/any_sheets.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "OOXML sheet order, visibility and chart sheet",
+      "topics": [
+        "spreadsheet parser features",
+        "sheet-order",
+        "hidden-and-very-hidden-sheets",
+        "empty-sheets",
+        "interior-blank-row",
+        "chart-sheet-with-empty-grid"
+      ],
+      "variant": "OOXML workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsx-calamine-date.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsx",
+      "features": [
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ],
+      "format": "xlsx",
+      "group": "feature_probe",
+      "id": "xlsx-calamine-date",
+      "language": "und",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsx/calamine-date.xlsx",
+      "provenance_kind": "public",
+      "sha256": "0440916ec1b76ee4dd54955d59c2f42b266e9f5e4fccafb8cc1ed875908b26d2",
+      "size_bytes": 4659,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.660402+00:00",
+        "download_sha256": "0440916ec1b76ee4dd54955d59c2f42b266e9f5e4fccafb8cc1ed875908b26d2",
+        "download_size_bytes": 4659,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/date.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "OOXML dates and duration",
+      "topics": [
+        "spreadsheet parser features",
+        "date-cells",
+        "duration-cell",
+        "float-cells"
+      ],
+      "variant": "OOXML workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsx-calamine-inventory-table.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/inventory-table.xlsx",
+      "features": [
+        "text-cells",
+        "integer-valued-floats",
+        "excel-table-part"
+      ],
+      "format": "xlsx",
+      "group": "feature_probe",
+      "id": "xlsx-calamine-inventory-table",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsx/calamine-inventory-table.xlsx",
+      "provenance_kind": "public",
+      "sha256": "d63fa89e938aad9635cd556f683b901cc1c118bf11b494b1156c4711e5329631",
+      "size_bytes": 8347,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/inventory-table.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.652465+00:00",
+        "download_sha256": "d63fa89e938aad9635cd556f683b901cc1c118bf11b494b1156c4711e5329631",
+        "download_size_bytes": 8347,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/inventory-table.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Inventory table of items, types and quantities",
+      "topics": [
+        "spreadsheet parser features",
+        "text-cells",
+        "integer-valued-floats",
+        "excel-table-part"
+      ],
+      "variant": "OOXML workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsx-calamine-merge-cells.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xlsx",
+      "features": [
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ],
+      "format": "xlsx",
+      "group": "feature_probe",
+      "id": "xlsx-calamine-merge-cells",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsx/calamine-merge_cells.xlsx",
+      "provenance_kind": "public",
+      "sha256": "34f6b2779f49991859045791d8be0c5027e09b395f067c4363e38813d1e6431c",
+      "size_bytes": 8948,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:01.698529+00:00",
+        "download_sha256": "34f6b2779f49991859045791d8be0c5027e09b395f067c4363e38813d1e6431c",
+        "download_size_bytes": 8948,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/merge_cells.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "OOXML horizontal, vertical and block merges",
+      "topics": [
+        "spreadsheet parser features",
+        "horizontal-merge",
+        "vertical-merge",
+        "block-merge",
+        "merge-extents-beyond-value-grid"
+      ],
+      "variant": "OOXML workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsx-calamine-temperature-table.json",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/temperature-table.xlsx",
+      "features": [
+        "two-sheets",
+        "fractional-floats",
+        "two-excel-table-parts"
+      ],
+      "format": "xlsx",
+      "group": "feature_probe",
+      "id": "xlsx-calamine-temperature-table",
+      "language": "en",
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "origin_kind": "upstream_parser_fixture",
+      "path": "tests/fixtures/xlsx/calamine-temperature-table.xlsx",
+      "provenance_kind": "public",
+      "sha256": "2770aa2fdf782414e83ee80c7b25b4a102204a28a19f15fe5177661e1174eb4b",
+      "size_bytes": 11478,
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/temperature-table.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:02.065632+00:00",
+        "download_sha256": "2770aa2fdf782414e83ee80c7b25b4a102204a28a19f15fe5177661e1174eb4b",
+        "download_size_bytes": 11478,
+        "effective_url": "https://raw.githubusercontent.com/tafia/calamine/master/tests/temperature-table.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Temperature and auxiliary named tables",
+      "topics": [
+        "spreadsheet parser features",
+        "two-sheets",
+        "fractional-floats",
+        "two-excel-table-parts"
+      ],
+      "variant": "OOXML workbook"
+    },
+    {
+      "annotation_path": "annotations/xlsx-census-nst-est2024-pop.json",
+      "download_url": "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/state/totals/NST-EST2024-POP.xlsx",
+      "features": [
+        "title-rows",
+        "two-row-header",
+        "merged-ranges",
+        "footnotes",
+        "interior-blank-row",
+        "large-integer-valued-floats"
+      ],
+      "format": "xlsx",
+      "group": "core",
+      "id": "xlsx-census-nst-est2024-pop",
+      "language": "en",
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "origin_kind": "original_document",
+      "path": "tests/fixtures/xlsx/census-NST-EST2024-POP.xlsx",
+      "provenance_kind": "public",
+      "sha256": "4a98cd464d3f9e122e74b47b38f1584e78e9077f4b36be1cabf7a79ab5942852",
+      "size_bytes": 15507,
+      "source_url": "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/state/totals/NST-EST2024-POP.xlsx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-13T13:31:02.173915+00:00",
+        "download_sha256": "4a98cd464d3f9e122e74b47b38f1584e78e9077f4b36be1cabf7a79ab5942852",
+        "download_size_bytes": 15507,
+        "effective_url": "https://www2.census.gov/programs-surveys/popest/tables/2020-2024/state/totals/NST-EST2024-POP.xlsx",
+        "http_status": 200,
+        "method": "GET",
+        "status": "match"
+      },
+      "title": "Annual Estimates of the Resident Population for the United States, Regions, States, District of Columbia, and Puerto Rico: April 1, 2020 to July 1, 2024",
+      "topics": [
+        "United States population",
+        "states and regions",
+        "population estimates"
+      ],
+      "variant": "OOXML workbook"
+    }
+  ],
+  "gaps": [
+    "Every input is already used by the test suite; no held-out quality set is present.",
+    "Original-document XLSM, XLSB and ODS coverage is absent; these variants use upstream parser fixtures.",
+    "No wholly unruled standalone PDF table, mixed PDF with an entirely textless page, nonzero page-box origin, encrypted PDF or malformed PDF is confirmed.",
+    "No workbook establishes leading empty columns, ragged Python rows, error cells, missing or stale formula caches, or XLSX/XLSM formula cells.",
+    "No workbook establishes 1904 dates, old BIFF generations, strict OOXML, password handling, malformed archives or large sparse-sheet scaling.",
+    "Features describe inputs, not correct extraction. OCR, formula calculation, VBA execution and chart extraction are outside brewdoc acceptance.",
+    "All 105 PDF pages and 54 workbook sheets have complete annotations within their declared inspection scope. XLSB formula expressions are not decompiled; token record types, locations and cached results are inventoried. Workbook visual rendering, formula recalculation and a full binary-format conformance audit were not performed."
+  ],
+  "schema_version": 2
+}

@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-nist-sp800-145",
+  "source_sha256": "7b0c1a9fdfc67218b8ba2098f448c100c27070db91736b3c87fed63bfa21d418",
+  "title": "The NIST Definition of Cloud Computing",
+  "topics": [
+    "cloud computing",
+    "service models",
+    "deployment models",
+    "technical definitions"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 166,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "cover",
+        "text",
+        "image"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p1-f1",
+          "label": "NIST logo and institutional identification",
+          "kind": "raster_image",
+          "bbox_pt": [
+            82.9,
+            100.95,
+            253.9,
+            198.1
+          ],
+          "notes": "One embedded image contains the logo and agency text; it is not a chart."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Publication number",
+          "location": "upper right",
+          "bbox_pt": [
+            351.84,
+            106.27,
+            522.26,
+            119.23
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "heading",
+          "label": "The NIST Definition of Cloud Computing",
+          "location": "middle",
+          "bbox_pt": [
+            90,
+            265.17,
+            493.29,
+            337.53
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "authors",
+          "label": "Peter Mell and Timothy Grance",
+          "location": "lower middle",
+          "bbox_pt": [
+            90,
+            502.83,
+            211.9,
+            545.91
+          ],
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 2,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 499,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "title_page",
+        "text",
+        "vector_illustration"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p2-f1",
+          "label": "United States Department of Commerce seal",
+          "kind": "vector_illustration",
+          "bbox_pt": null,
+          "notes": "Visible below the date in the right-hand block. No PDF image object exists on this page; exact seal boundary unmeasured."
+        }
+      ],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Publication identifier and title",
+          "location": "separate left and right top blocks",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "banner",
+          "label": "COMPUTER SECURITY",
+          "location": "full-width band",
+          "bbox_pt": [
+            45,
+            272.35,
+            561.6,
+            320.4
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "publication_details",
+          "label": "Authors, agency address and September 2011 date",
+          "location": "right block below title and banner",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "layout",
+          "label": "Asymmetric title-page blocks",
+          "location": "whole page",
+          "bbox_pt": null,
+          "notes": "Two side-by-side title blocks above a full-width banner; lower material is a right-aligned block, not two flowing prose columns."
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 3,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 1437,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "boxed_text"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Reports on Computer Systems Technology",
+          "location": "top center",
+          "bbox_pt": [
+            182.64,
+            97.87,
+            429.31,
+            109.87
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "publication_details",
+          "label": "Publication series, page count and date",
+          "location": "center below prose",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "boxed_text",
+          "label": "Commercial-entity disclaimer",
+          "location": "lower middle",
+          "bbox_pt": [
+            128.04,
+            381.36,
+            478.56,
+            459.6
+          ],
+          "notes": "A single prose box, not a data table."
+        },
+        {
+          "kind": "folio",
+          "label": "ii",
+          "location": "bottom center",
+          "bbox_pt": [
+            302.88,
+            745.71,
+            309.07,
+            756.75
+          ],
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 4,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 660,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "p4-t1",
+          "label": "Errata",
+          "bbox_pt": [
+            66.36,
+            292.92,
+            545.64,
+            319.95
+          ],
+          "structure": {
+            "columns": 4,
+            "header_rows": 1,
+            "body_rows": 1,
+            "description": "Fully ruled table with shaded header: DATE, TYPE, CHANGE, PAGE NUMBER. One editorial correction row."
+          },
+          "notes": "Table includes a date and quoted page numbers. Bounds enclose ruling and text."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "Acknowledgements",
+          "location": "top center",
+          "bbox_pt": [
+            241.32,
+            77.96,
+            370.69,
+            89.96
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "heading",
+          "label": "Errata",
+          "location": "above table",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "folio",
+          "label": "iii",
+          "location": "bottom center",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 5,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 2083,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "section_headings"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "1. Introduction",
+          "location": "top black banner",
+          "bbox_pt": [
+            72,
+            77.11,
+            170.77,
+            89.11
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "heading",
+          "label": "1.1 Authority; 1.2 Purpose and Scope; 1.3 Audience",
+          "location": "successive body sections",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "folio",
+          "label": "1",
+          "location": "bottom center",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 6,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 3742,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "definitions",
+        "footnotes"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "heading",
+          "label": "2. The NIST Definition of Cloud Computing",
+          "location": "top black banner",
+          "bbox_pt": [
+            72,
+            77.11,
+            330.01,
+            89.11
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "heading",
+          "label": "Essential Characteristics; Service Models",
+          "location": "body section starts",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "definitions",
+          "label": "Five characteristics followed by service models",
+          "location": "indented body",
+          "bbox_pt": null,
+          "notes": "Italic lead terms with hanging indentation; PaaS definition continues on the next page."
+        },
+        {
+          "kind": "footnotes",
+          "label": "Notes 1 and 2",
+          "location": "bottom above folio",
+          "bbox_pt": [
+            72,
+            656,
+            540.1,
+            720.61
+          ],
+          "notes": "Superscript references appear within the body."
+        },
+        {
+          "kind": "folio",
+          "label": "2",
+          "location": "bottom center",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 7,
+      "width_pt": 612.0,
+      "height_pt": 792.0,
+      "text_char_count": 2371,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "definitions",
+        "footnotes"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "kind": "continuation",
+          "label": "PaaS definition continued from previous page",
+          "location": "top indented paragraph",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "definitions",
+          "label": "IaaS and four deployment models",
+          "location": "body with italic lead terms and hanging indentation",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "heading",
+          "label": "Deployment Models",
+          "location": "upper middle",
+          "bbox_pt": null,
+          "notes": ""
+        },
+        {
+          "kind": "footnote",
+          "label": "Note 3",
+          "location": "bottom above folio",
+          "bbox_pt": [
+            72,
+            699.4,
+            540.04,
+            720.61
+          ],
+          "notes": ""
+        },
+        {
+          "kind": "folio",
+          "label": "3",
+          "location": "bottom center",
+          "bbox_pt": null,
+          "notes": ""
+        }
+      ],
+      "review_method": [
+        "Poppler full-page render, 1600-pixel maximum dimension, visually inspected",
+        "pdfplumber 0.11.10 text, image and vector-object geometry"
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Source layout and content inventory, not a transcription or converter quality verdict.",
+    "Null bounds identify objects whose exact boundary was not measured."
+  ]
+}

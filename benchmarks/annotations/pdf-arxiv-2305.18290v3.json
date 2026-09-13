@@ -1,0 +1,1452 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-arxiv-2305.18290v3",
+  "source_sha256": "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a",
+  "title": "Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+  "topics": [
+    "preference optimization",
+    "reinforcement learning from human feedback",
+    "language model alignment",
+    "summarization and dialogue evaluation",
+    "mathematical derivations"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2705,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "title",
+        "authors",
+        "abstract"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Rotated arXiv identifier at left margin."
+        },
+        {
+          "description": "Title rules, author grid, narrow abstract, contribution footnote and conference footer; no centered numeric folio."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 2,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3892,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "figures"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p2-figure-1",
+          "label": "Figure 1: RLHF and DPO",
+          "bbox_pt": [
+            106.6,
+            72.7,
+            505.4,
+            208.1
+          ],
+          "kind": "process_diagram",
+          "notes": "Two colored process panels, arrows, icons and text; shows reward-model/LM loop versus direct preference optimization; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 3,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3851,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p3-figure-1",
+          "label": "Equation 1",
+          "bbox_pt": [
+            190.1,
+            537.1,
+            506.9,
+            565.9
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p3-figure-2",
+          "label": "Equation 2",
+          "bbox_pt": [
+            180.0,
+            609.8,
+            506.9,
+            628.6
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p3-figure-3",
+          "label": "Equation 3",
+          "bbox_pt": [
+            168.5,
+            704.2,
+            506.9,
+            727.2
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 4,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3537,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p4-figure-1",
+          "label": "Equation 4",
+          "bbox_pt": [
+            203.0,
+            352.1,
+            506.9,
+            381.6
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p4-figure-2",
+          "label": "Equation 5",
+          "bbox_pt": [
+            215.3,
+            461.5,
+            506.9,
+            490.3
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p4-figure-3",
+          "label": "Equation 6",
+          "bbox_pt": [
+            175.0,
+            565.9,
+            506.9,
+            600.5
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p4-figure-4",
+          "label": "Equation 7",
+          "bbox_pt": [
+            130.3,
+            667.4,
+            506.9,
+            697.7
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 5,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3447,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p5-figure-1",
+          "label": "Unnumbered annotated DPO gradient",
+          "bbox_pt": [
+            107.3,
+            140.4,
+            499.7,
+            193.0
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        },
+        {
+          "description": "Definitions, lemmas or proof prose; proof-end square symbols on proof pages."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 6,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3275,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p6-figure-1",
+          "label": "Equation 8",
+          "bbox_pt": [
+            164.2,
+            211.7,
+            506.9,
+            241.9
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p6-figure-2",
+          "label": "Equation 9",
+          "bbox_pt": [
+            226.8,
+            359.3,
+            506.9,
+            405.4
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p6-figure-3",
+          "label": "Equation 10",
+          "bbox_pt": [
+            120.2,
+            579.6,
+            506.9,
+            628.6
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        },
+        {
+          "description": "Definitions, lemmas or proof prose; proof-end square symbols on proof pages."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 7,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3722,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "figures"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p7-figure-1",
+          "label": "Figure 2: Reward and summarization performance",
+          "bbox_pt": [
+            107.3,
+            74.2,
+            506.2,
+            266.4
+          ],
+          "kind": "scatter_and_line_chart",
+          "notes": "Two panels: colored reward-versus-KL scatter series, and temperature-versus-win-rate line series with error bars and dashed baselines; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Footnote below a short horizontal separator."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 8,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3551,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "figures"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p8-figure-1",
+          "label": "Figure 3: Dialogue performance",
+          "bbox_pt": [
+            107.3,
+            73.4,
+            506.2,
+            266.4
+          ],
+          "kind": "multi_panel_line_chart",
+          "notes": "Two line-chart panels with error bars: win rate versus temperature and fine-tuning step; legends and dashed baseline; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Footnote below a short horizontal separator."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 9,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3785,
+      "layout": {
+        "columns": 1,
+        "description": "1 with right-side table inset",
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p9-table-1",
+          "label": "Table 1: Out-of-distribution win rates",
+          "bbox_pt": [
+            354.2,
+            522.7,
+            505.4,
+            616.3
+          ],
+          "structure": {
+            "description": "3 columns; 2 algorithm rows; grouped top header over two temperature columns."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Footnote below a short horizontal separator."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 10,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3811,
+      "layout": {
+        "columns": 1,
+        "description": "1 with right-side table inset",
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p10-table-1",
+          "label": "Table 2: Human and GPT-4 comparison",
+          "bbox_pt": [
+            317.5,
+            179.3,
+            505.4,
+            344.9
+          ],
+          "structure": {
+            "description": "4 columns; 7 metric rows; respondent counts, win percentages and agreement values; one dash for unavailable H-H agreement."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 11,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3530,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Numbered bibliography with hanging entries and outlined URL links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 12,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3498,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Numbered bibliography with hanging entries and outlined URL links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 13,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3588,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Numbered bibliography with hanging entries and outlined URL links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 14,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3343,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "references"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Numbered bibliography with hanging entries and outlined URL links."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 15,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2323,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "author_contributions",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p15-figure-1",
+          "label": "Equation 11",
+          "bbox_pt": [
+            192.2,
+            427.0,
+            506.9,
+            448.6
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p15-figure-2",
+          "label": "Equation 12 multi-line derivation",
+          "bbox_pt": [
+            113.8,
+            479.5,
+            506.9,
+            601.9
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p15-figure-3",
+          "label": "Unnumbered partition function",
+          "bbox_pt": [
+            219.6,
+            625.7,
+            391.7,
+            658.8
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p15-figure-4",
+          "label": "Unnumbered normalized policy",
+          "bbox_pt": [
+            209.5,
+            697.0,
+            401.0,
+            727.2
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 16,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2135,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p16-figure-1",
+          "label": "Equations 13 and 14",
+          "bbox_pt": [
+            192.2,
+            95.8,
+            506.9,
+            142.6
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-2",
+          "label": "Equation 15",
+          "bbox_pt": [
+            190.8,
+            179.3,
+            506.9,
+            208.8
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-3",
+          "label": "Equation 16",
+          "bbox_pt": [
+            194.4,
+            274.3,
+            506.9,
+            300.2
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-4",
+          "label": "Equation 17",
+          "bbox_pt": [
+            217.4,
+            327.6,
+            506.9,
+            355.7
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-5",
+          "label": "Unnumbered preference-probability derivation",
+          "bbox_pt": [
+            114.5,
+            374.4,
+            493.9,
+            481.7
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-6",
+          "label": "Equation 18",
+          "bbox_pt": [
+            193.7,
+            596.9,
+            506.9,
+            635.0
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p16-figure-7",
+          "label": "Equation 19",
+          "bbox_pt": [
+            182.2,
+            682.6,
+            506.9,
+            726.5
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 17,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 1775,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p17-figure-1",
+          "label": "Equation 20",
+          "bbox_pt": [
+            144.0,
+            110.2,
+            506.9,
+            154.1
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p17-figure-2",
+          "label": "Equation 21",
+          "bbox_pt": [
+            118.1,
+            195.1,
+            506.9,
+            227.5
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p17-figure-3",
+          "label": "Equation 22",
+          "bbox_pt": [
+            192.2,
+            243.4,
+            506.9,
+            275.8
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p17-figure-4",
+          "label": "Unnumbered gradient derivation",
+          "bbox_pt": [
+            107.3,
+            323.3,
+            506.9,
+            371.5
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p17-figure-5",
+          "label": "Unnumbered Lemma 1 proof derivation",
+          "bbox_pt": [
+            174.2,
+            552.2,
+            424.1,
+            709.2
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        },
+        {
+          "description": "Definitions, lemmas or proof prose; proof-end square symbols on proof pages."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 18,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2051,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p18-figure-1",
+          "label": "Unnumbered Lemma 2 proof derivation",
+          "bbox_pt": [
+            106.6,
+            130.3,
+            506.2,
+            289.4
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p18-figure-2",
+          "label": "Reward identity in Theorem 1 proof",
+          "bbox_pt": [
+            221.0,
+            440.6,
+            389.5,
+            470.9
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p18-figure-3",
+          "label": "Equivalent reward identity",
+          "bbox_pt": [
+            249.8,
+            514.1,
+            362.9,
+            542.2
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        },
+        {
+          "id": "p18-figure-4",
+          "label": "Reward-class equality",
+          "bbox_pt": [
+            147.6,
+            596.9,
+            463.7,
+            627.1
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        },
+        {
+          "description": "Definitions, lemmas or proof prose; proof-end square symbols on proof pages."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 19,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 865,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "equations"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p19-figure-1",
+          "label": "Unnumbered contradiction-proof equality",
+          "bbox_pt": [
+            106.6,
+            128.9,
+            506.2,
+            162.0
+          ],
+          "kind": "equation_region",
+          "notes": "Displayed mathematical region; bounds exclude surrounding prose. Region grouping does not assert formula transcription or correctness."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Inline mathematics and displayed derivations use Greek letters, subscripts, superscripts, fractions and large operators."
+        },
+        {
+          "description": "Definitions, lemmas or proof prose; proof-end square symbols on proof pages."
+        },
+        {
+          "description": "Implementation section heading ends above a large blank lower area; code follows on page 20."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 20,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2278,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "code",
+        "prompt_templates"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Unbordered monospaced PyTorch loss-function listing at top; experimental prose and start of prompt template below."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 21,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 1513,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "prompt_templates"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Three monospaced evaluation prompt templates, including continuation from page 20; literal placeholders and line-continuation backslashes."
+        }
+      ],
+      "review_method": [
+        "Visual review of Poppler contact sheet; source text geometry inspected with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 22,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2898,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p22-table-1",
+          "label": "Table 3: Unlikelihood samples",
+          "bbox_pt": [
+            107.3,
+            71.3,
+            505.4,
+            479.5
+          ],
+          "structure": {
+            "description": "2 columns, Prompt and Response; 2 tall data rows with wrapped paragraphs; intentionally repetitive output in response cells."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 23,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2056,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables",
+        "figures"
+      ],
+      "tables": [
+        {
+          "id": "p23-table-1",
+          "label": "Table 4: Summary example 1",
+          "bbox_pt": [
+            107.3,
+            368.6,
+            506.2,
+            669.6
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, PPO and Judgment; tall wrapped cells and bold post-hoc annotations."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [
+        {
+          "id": "p23-figure-1",
+          "label": "Figure 4: Best-of-N baseline",
+          "bbox_pt": [
+            107.3,
+            115.2,
+            506.2,
+            277.2
+          ],
+          "kind": "multi_panel_line_chart",
+          "notes": "Two panels with colored line series, error bars and dashed baselines; dialogue and summarization win rates versus temperature; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 24,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3260,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p24-table-1",
+          "label": "Table 5: Summary example 2",
+          "bbox_pt": [
+            107.3,
+            72.0,
+            506.2,
+            416.2
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, PPO and Judgment; long wrapped prompt and caption."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p24-table-2",
+          "label": "Table 6: Summary example 3",
+          "bbox_pt": [
+            107.3,
+            432.7,
+            506.2,
+            712.1
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, PPO and Judgment; unequal row heights and bold post-hoc annotations."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 25,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2598,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p25-table-1",
+          "label": "Table 7: Dialogue: civil-rights essay",
+          "bbox_pt": [
+            107.3,
+            101.5,
+            506.2,
+            425.5
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, GT and Judgment; tall response row; bold truncation marker in source."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p25-table-2",
+          "label": "Table 8: Dialogue: privacy request",
+          "bbox_pt": [
+            107.3,
+            500.4,
+            506.2,
+            683.3
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, GT and Judgment; prose and post-hoc annotations."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 26,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 2930,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "tables"
+      ],
+      "tables": [
+        {
+          "id": "p26-table-1",
+          "label": "Table 9: Dialogue: World War II",
+          "bbox_pt": [
+            107.3,
+            76.3,
+            506.2,
+            423.4
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, GT and Judgment; long response and bold truncation marker."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        },
+        {
+          "id": "p26-table-2",
+          "label": "Table 10: Dialogue: arithmetic",
+          "bbox_pt": [
+            107.3,
+            447.1,
+            506.2,
+            707.8
+          ],
+          "structure": {
+            "description": "2 columns; 4 label/value rows: Prompt, DPO, GT and Judgment; multiline quoted arithmetic in response cell; source caption notes evaluator error."
+          },
+          "notes": "Horizontal rules only; no drawn vertical cell grid. Box includes caption."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 27,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 1824,
+      "layout": {
+        "columns": 1,
+        "description": "1 with prose beside figure; four-column numbered list below",
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "figures"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "p27-figure-1",
+          "label": "Figure 5: SurveyMonkey survey",
+          "bbox_pt": [
+            277.9,
+            93.6,
+            506.9,
+            385.9
+          ],
+          "kind": "interface_screenshot",
+          "notes": "Survey screenshot beside prose, with green headings, tiny text and radio-button choices; image-based content; caption included."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Centered bottom page folio."
+        },
+        {
+          "description": "Colored hyperlink outlines around citations or cross-references."
+        },
+        {
+          "description": "Footnote below a short horizontal separator."
+        },
+        {
+          "description": "Numbered participant list has four visual columns; source order runs across each row. Screenshot text is very small and is not transcribed."
+        }
+      ],
+      "review_method": [
+        "Visual review of contact sheet and individual 1100-pixel Poppler page; labels checked against source text geometry with pdfplumber 0.11.10."
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Complete means every source page and visible table, figure and displayed equation region was reviewed. It does not mean cell transcription or mathematical correctness was verified.",
+    "Region boxes are approximate visual extents in PDF points from the top left; table and numbered figure boxes include their captions. They are not exact cell or glyph boundaries.",
+    "Inline mathematics are recorded as page features, not individually boxed. Multi-line displayed derivations are grouped as equation regions.",
+    "Chart observations describe visible structure, without digitizing plotted data. Source annotations are independent of brewdoc output and are not expected Markdown."
+  ]
+}

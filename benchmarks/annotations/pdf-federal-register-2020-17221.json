@@ -1,0 +1,670 @@
+{
+  "schema_version": 1,
+  "document_id": "pdf-federal-register-2020-17221",
+  "source_sha256": "ac419e4e084ea7a7a33a7be3f129dd07bc705b1a9e45ad751e33357f17d60f5c",
+  "title": "Federal Register: Airworthiness Directives; The Boeing Company Airplanes",
+  "topics": [
+    "aviation regulation",
+    "Boeing 737 MAX",
+    "flight control software",
+    "operating procedures",
+    "compliance costs",
+    "Pilatus PC-12 notice fragment"
+  ],
+  "language": "en",
+  "annotation_scope": "all_pages",
+  "review_status": "complete",
+  "pages": [
+    {
+      "number": 1,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 6195,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "logo"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "gpo-logo",
+          "label": "Authenticated U.S. Government Information GPO",
+          "kind": "vector_logo",
+          "bbox_pt": [
+            43.1,
+            11.4,
+            83.6,
+            32.9
+          ],
+          "notes": "Unnumbered authentication logo at the top left; no raster image object on this page."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Three-column rule notice beneath full-width masthead"
+        },
+        {
+          "description": "GPO authentication vector logo; issue date, volume and printed folio 47698"
+        },
+        {
+          "description": "Department, docket and action headings; summary and comment-submission addresses"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 2,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 9407,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Three-column background prose; footnotes beneath all three columns"
+        },
+        {
+          "description": "Running header, printed folio 47699 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 3,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 8165,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Three-column proposed-design prose; footnotes beneath all three columns"
+        },
+        {
+          "description": "Running header, printed folio 47700 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 4,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 7518,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Three-column prose with bold subsection headings and bullet items"
+        },
+        {
+          "description": "Running header, printed folio 47701 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 5,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 6575,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "estimated-costs-page-5",
+          "label": "Estimated Costs",
+          "bbox_pt": [
+            44.3,
+            672.2,
+            567.7,
+            739.4
+          ],
+          "structure": {
+            "description": "5 columns, one header row and 3 data rows; vertical separators and horizontal header rules; no per-row grid; wrapped labor costs and dot leaders."
+          },
+          "notes": "First segment: FCC OPS installation, AFM revisions, MDS installation/verification. Continues on page 6."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Three-column prose above full-width Estimated Costs table"
+        },
+        {
+          "description": "Table continues onto page 6"
+        },
+        {
+          "description": "Running header, printed folio 47702 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 6,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 6326,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "table"
+      ],
+      "tables": [
+        {
+          "id": "estimated-costs-page-6",
+          "label": "Estimated Costs - Continued",
+          "bbox_pt": [
+            44.3,
+            75.4,
+            567.7,
+            145.7
+          ],
+          "structure": {
+            "description": "5 columns, one header row and 2 data rows; vertical separators and horizontal header rules; no per-row grid; wrapped labor costs and dot leaders."
+          },
+          "notes": "Continuation: stabilizer wiring change and AOA sensor system test. Same five-column header as page 5."
+        }
+      ],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Full-width continued Estimated Costs table above three-column rule text"
+        },
+        {
+          "description": "Numbered amendment paragraphs and lettered subsections"
+        },
+        {
+          "description": "Running header, printed folio 47703 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 7,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 787,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-1",
+          "label": "Figure 1: AFM revision: General paragraph",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            112.12,
+            504.48,
+            211
+          ],
+          "notes": "Definitions box with bold lead-in and two definition paragraphs. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Short three-column prose above a centered raster text figure; two-column instruction below"
+        },
+        {
+          "description": "Large blank lower region"
+        },
+        {
+          "description": "Running header, printed folio 47704; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 8,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 243,
+      "layout": {
+        "columns": 1,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-2",
+          "label": "Figure 2: AFM revision: Airspeed Unreliable",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            58.8,
+            504.48,
+            696
+          ],
+          "notes": "Nested recall/reference instructions, numbered notes and conditional prose. Continues on page 9. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Full-page raster procedure Figure 2 inside page furniture"
+        },
+        {
+          "description": "Only 243 characters in source text layer; no figure body text in that layer"
+        },
+        {
+          "description": "Running header, printed folio 47705; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 9,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 399,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-2-continued",
+          "label": "Figure 2: AFM revision: Airspeed Unreliable (continued)",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            97.5,
+            59,
+            515.3,
+            647
+          ],
+          "notes": "Continuation without a repeated figure caption. Indented notes and conditional procedure prose. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Continuation of raster Figure 2; short two-column amendment instruction below"
+        },
+        {
+          "description": "Running header, printed folio 47706; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 10,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 408,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-3",
+          "label": "Figure 3: AFM revision: Runaway Stabilizer",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            59.4,
+            504.48,
+            477
+          ],
+          "notes": "Recall/reference sections, numbered notes and indented deferred items. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Large raster Figure 3 with short two-column instruction below"
+        },
+        {
+          "description": "Large blank lower region"
+        },
+        {
+          "description": "Running header, printed folio 47707; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 11,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 471,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-4",
+          "label": "Figure 4: AFM revision: Stabilizer Trim Inoperative",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            107.5,
+            58.88,
+            504.22,
+            452
+          ],
+          "notes": "Procedure prose with numbered notes and indented deferred items. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        },
+        {
+          "id": "figure-5",
+          "label": "Figure 5: AFM revision: Speed Trim Fail",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            514.64,
+            504.48,
+            632
+          ],
+          "notes": "Short boxed procedure with a bold Note. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Two raster procedure figures stacked vertically with amendment text between and below"
+        },
+        {
+          "description": "Running header, printed folio 47708; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 12,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 471,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-6",
+          "label": "Figure 6: AFM revision: Stabilizer Out of Trim",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            58.92,
+            504.48,
+            333
+          ],
+          "notes": "Boxed conditional procedure paragraphs. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        },
+        {
+          "id": "figure-7",
+          "label": "Figure 7: AFM revision: AOA Disagree",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            395.84,
+            504.48,
+            476
+          ],
+          "notes": "Short boxed alert explanation and procedure reference. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Two raster procedure figures stacked vertically with amendment text between and below"
+        },
+        {
+          "description": "Large blank lower region"
+        },
+        {
+          "description": "Running header, printed folio 47709; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 13,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 762,
+      "layout": {
+        "columns": 2,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-8",
+          "label": "Figure 8: AFM revision: ALT Disagree",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            59.08,
+            504.48,
+            427
+          ],
+          "notes": "Boxed multi-paragraph procedure with a bold Note. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        },
+        {
+          "id": "figure-9",
+          "label": "Figure 9: AFM revision: IAS Disagree",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            108,
+            490.36,
+            504.48,
+            583
+          ],
+          "notes": "Short boxed alert explanation and procedure reference. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Two raster procedure figures above two-column equipment-list subsection"
+        },
+        {
+          "description": "Running header, printed folio 47710; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 14,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 3418,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose",
+        "raster_text"
+      ],
+      "tables": [],
+      "figures": [
+        {
+          "id": "figure-10",
+          "label": "Figure 10: MEL provisions",
+          "kind": "raster_text_figure",
+          "bbox_pt": [
+            90,
+            59.04,
+            522.24,
+            456
+          ],
+          "notes": "Boxed list of 10 dispatch/equipment provisions, nested a/b/c conditions and a NOTE; not a cell table. Figure title and body are inside the embedded raster image; they are not source text-layer characters."
+        }
+      ],
+      "other_features": [
+        {
+          "description": "Large raster numbered MEL provisions above three-column prose"
+        },
+        {
+          "description": "Lettered rule subsections, indented enumerations and URLs"
+        },
+        {
+          "description": "Running header, printed folio 47711; production footer and rotated edge text"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    },
+    {
+      "number": 15,
+      "width_pt": 612,
+      "height_pt": 792,
+      "text_char_count": 7106,
+      "layout": {
+        "columns": 3,
+        "orientation": "portrait"
+      },
+      "content_types": [
+        "prose"
+      ],
+      "tables": [],
+      "figures": [],
+      "other_features": [
+        {
+          "description": "Three-column page; Boeing rule ends in left column with signature and document identifier"
+        },
+        {
+          "description": "New Pilatus PC-12 rule starts lower in left column and continues through middle/right columns"
+        },
+        {
+          "description": "Separate department, docket, action and summary headings"
+        },
+        {
+          "description": "Running header, printed folio 47712 and production footer"
+        }
+      ],
+      "review_method": [
+        "Poppler full-page visual review at 1250-pixel height",
+        "pdfplumber 0.11.10 source text and embedded-image geometry"
+      ],
+      "uncertainties": []
+    }
+  ],
+  "limitations": [
+    "Source object inventory, not expected Markdown or a conversion quality verdict.",
+    "Embedded-image bounds come from pdfplumber; vector/logo/table bounds are measured visually with about 3 points of tolerance.",
+    "Ten numbered figures occupy eleven raster image objects because Figure 2 continues onto page 9. They contain procedure text, not quantitative charts or cell tables.",
+    "One logical cost table spans two pages. Page-level table entries identify its two segments.",
+    "No OCR or transcription of the full raster procedure text was performed. Visible headings, structure and text-layer absence were verified.",
+    "Page 15 includes the start of a different Pilatus notice; the source PDF is not restricted to the Boeing notice."
+  ]
+}

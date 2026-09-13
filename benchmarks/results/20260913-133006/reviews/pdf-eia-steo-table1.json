@@ -1,0 +1,37 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-eia-steo-table1.json",
+    "markdown": "pass-1/pdf-eia-steo-table1/artifacts/document.md",
+    "receipt": "pass-1/pdf-eia-steo-table1/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-eia-steo-table1/artifacts/document.md:12-13",
+      "finding": "All numeric series occupy one output body row. The first-quarter figures are concatenated into the label cell and the Q1 data cell is empty. The next cell contains a sequence beginning '13.58 106.9 128', combining different source series.",
+      "snippet": "Energy Production Crude Oil Production (a) (million barrels per day) ........................ 13.32 Dry Natural Gas Production",
+      "source": "Page 1, p1-t1: label column plus twelve quarterly and three annual columns; separate numeric series down the page."
+    },
+    {
+      "actual": "pass-1/pdf-eia-steo-table1/artifacts/document.md:13",
+      "finding": "Selected exact figures survive, including the last annual column, but each is in a cell containing multiple series; preservation of these numerals does not preserve row identity.",
+      "snippet": "14.26 115.9 497 20.80 94.3",
+      "source": "Page 1, crude-oil production: Q1 2025 is 13.32, Q2 2025 is 13.58, and annual 2027 is 14.26."
+    },
+    {
+      "actual": "pass-1/pdf-eia-steo-table1/artifacts/document.md:10,14-18",
+      "finding": "Issue text is duplicated inside the table header. Footer paragraphs are absorbed into table rows; the forecast sentence is split across unrelated data columns at line 18.",
+      "snippet": "| Forecasts: EIA Short-Term Integrated Forecasting System. U.S. macroeconomic forecasts are |",
+      "source": "Page 1 year/quarter header, lettered notes, and source/forecast paragraphs below the table."
+    }
+  ],
+  "id": "pdf-eia-steo-table1",
+  "limitations": [
+    "The source itself crowds or clips some long labels and figures visually; this review does not attribute those source presentation defects to the converter.",
+    "Every output row and column structure was examined; exact values were sampled, not exhaustively transcribed."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "All 1 source page rendered and inspected; full output lines 1-20, all table rows, header groups, notes and selected first/last annual numeric values reviewed.",
+  "schema_version": 1,
+  "summary": "The numeric body is collapsed into one Markdown row and Q1 values are joined to labels, so the output cannot be used as a faithful table.",
+  "verdict": "failure"
+}

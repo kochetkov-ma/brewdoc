@@ -1,0 +1,27 @@
+{
+  "artifacts": {
+    "annotation": "annotations/pdf-us-patent-223898-scan.json",
+    "markdown": null,
+    "receipt": "pass-1/pdf-us-patent-223898-scan/receipt.json"
+  },
+  "capture_status": "nonzero_exit",
+  "evidence": [
+    {
+      "actual": "pass-1/pdf-us-patent-223898-scan/receipt.json (derived); result.json",
+      "finding": "Receipt file_ok is false, return code is 1, reason names the input and no-OCR policy, and captured artifacts is empty.",
+      "snippet": "no text layer: 5 of 5 pages carry zero characters",
+      "source": "Pages 1-5: one full-page raster and zero text-layer characters on every page; drawings, specification and correction documents remain visible in the scans."
+    }
+  ],
+  "expected_refusal": true,
+  "id": "pdf-us-patent-223898-scan",
+  "limitations": [
+    "This is successful refusal behavior, not successful extraction of patent content.",
+    "Receipt pages is 0 on failure although its reason correctly reports five source pages; do not interpret the counter as source page count."
+  ],
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "review_coverage": "All 5 source pages rendered and inspected; complete refusal receipt and capture result reviewed; absence of a Markdown artifact verified.",
+  "schema_version": 1,
+  "summary": "Correctly refuses all five image-only pages without producing an empty success artifact or attempting OCR.",
+  "verdict": "warning"
+}

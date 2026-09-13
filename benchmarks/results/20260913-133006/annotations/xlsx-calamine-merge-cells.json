@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "document_id": "xlsx-calamine-merge-cells",
+  "source_sha256": "34f6b2779f49991859045791d8be0c5027e09b395f067c4363e38813d1e6431c",
+  "title": "OOXML horizontal, vertical and block merges",
+  "topics": [
+    "spreadsheet parser features",
+    "horizontal-merge",
+    "vertical-merge",
+    "block-merge",
+    "merge-extents-beyond-value-grid"
+  ],
+  "language": "en",
+  "annotation_scope": "all_sheets",
+  "review_status": "complete",
+  "evidence_method": "All sheets inspected with python-calamine 0.8.2, CPython 3.12.3; XML containers also inspected with zipfile and ElementTree. Values are source observations, not Markdown expectations.",
+  "sheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "type": "WorkSheet",
+      "visibility": "Visible",
+      "used_range": "A1:C2",
+      "value_grid_dimensions": {
+        "rows": 2,
+        "columns": 3
+      },
+      "cell_type_counts": {
+        "blank": 2,
+        "str": 4
+      },
+      "blank_areas": {
+        "empty_value_grid": false,
+        "leading_rows": 0,
+        "leading_columns": 0,
+        "blank_rows": [],
+        "blank_columns": [],
+        "ragged_rows": false,
+        "trailing_source_blank_extent": null
+      },
+      "merge_ranges": [
+        "A1:B1",
+        "A2:A4",
+        "B2:D4"
+      ],
+      "tables": [],
+      "charts": [],
+      "images": [],
+      "formulas": {
+        "count": 0,
+        "evidence": "xl/worksheets/sheet1.xml worksheet f elements",
+        "cached_values": [],
+        "status": "source-inspected"
+      },
+      "edge_cases": [
+        {
+          "tag": "merged-cells",
+          "locations": [
+            "A1:B1",
+            "A2:A4",
+            "B2:D4"
+          ],
+          "examples": []
+        },
+        {
+          "tag": "merge-beyond-value-grid",
+          "locations": [
+            "A2:A4",
+            "B2:D4"
+          ],
+          "examples": [
+            {
+              "value_grid": "A1:C2"
+            }
+          ]
+        }
+      ],
+      "cell_examples": [
+        {
+          "cell": "A1",
+          "type": "str",
+          "value": "Row Merge"
+        }
+      ],
+      "source_part": "xl/worksheets/sheet1.xml"
+    }
+  ],
+  "limitations": [
+    "Cell types are binding-decoded types, not original numeric storage or display formatting. Grid dimensions include leading empty areas and end at the last stored value.",
+    "No visual rendering, formula recalculation, chart rendering or macro execution was performed.",
+    "Null trailing_source_blank_extent means styled or unused cells outside the value grid were not measured. No exhaustive style, comment, external-link or validation audit."
+  ],
+  "title_basis": "Descriptive annotation title; source has no document title cell.",
+  "review_coverage": {
+    "sheets": "complete",
+    "value_grids": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

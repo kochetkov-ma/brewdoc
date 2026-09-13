@@ -1,0 +1,208 @@
+{
+  "artifacts": {
+    "annotation": "annotations/xlsb-calamine-issues.json",
+    "markdown": "pass-1/xlsb-calamine-issues/artifacts/document.md",
+    "receipt": "pass-1/xlsb-calamine-issues/receipt.json"
+  },
+  "evidence": [
+    {
+      "actual_columns": 1,
+      "actual_rows": 6,
+      "all_lexical_differences": [],
+      "compared_positions": 6,
+      "exact_value_spellings": 6,
+      "heading_line": 5,
+      "representative_values": [
+        {
+          "actual": "1.0",
+          "markdown_line": 7,
+          "source_cell": "datatypes!A1",
+          "source_value": "1.0"
+        },
+        {
+          "actual": "1.5",
+          "markdown_line": 9,
+          "source_cell": "datatypes!A2",
+          "source_value": "1.5"
+        }
+      ],
+      "sheet": "datatypes",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 6
+    },
+    {
+      "actual_columns": 2,
+      "actual_rows": 3,
+      "all_lexical_differences": [],
+      "compared_positions": 6,
+      "exact_value_spellings": 6,
+      "heading_line": 15,
+      "representative_values": [
+        {
+          "actual": "1.0",
+          "markdown_line": 17,
+          "source_cell": "issue2!A1",
+          "source_value": "1.0"
+        },
+        {
+          "actual": "a",
+          "markdown_line": 17,
+          "source_cell": "issue2!B1",
+          "source_value": "'a'"
+        }
+      ],
+      "sheet": "issue2",
+      "source_columns": 2,
+      "source_merges_zero_based": null,
+      "source_rows": 3
+    },
+    {
+      "actual_columns": 1,
+      "actual_rows": 2,
+      "all_lexical_differences": [],
+      "compared_positions": 2,
+      "exact_value_spellings": 2,
+      "heading_line": 22,
+      "representative_values": [
+        {
+          "actual": "0.0",
+          "markdown_line": 26,
+          "source_cell": "Sheet1!A2",
+          "source_value": "0.0"
+        }
+      ],
+      "sheet": "Sheet1",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 2
+    },
+    {
+      "actual_columns": 1,
+      "actual_rows": 1,
+      "all_lexical_differences": [],
+      "compared_positions": 1,
+      "exact_value_spellings": 1,
+      "heading_line": 28,
+      "representative_values": [
+        {
+          "actual": "0.5",
+          "markdown_line": 30,
+          "source_cell": "issue5!A1",
+          "source_value": "0.5"
+        }
+      ],
+      "sheet": "issue5",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 1
+    },
+    {
+      "actual_columns": 1,
+      "actual_rows": 4,
+      "all_lexical_differences": [],
+      "compared_positions": 4,
+      "exact_value_spellings": 4,
+      "heading_line": 33,
+      "representative_values": [
+        {
+          "actual": "1.0",
+          "markdown_line": 35,
+          "source_cell": "issue6!A1",
+          "source_value": "1.0"
+        },
+        {
+          "actual": "2.0",
+          "markdown_line": 37,
+          "source_cell": "issue6!A2",
+          "source_value": "2.0"
+        }
+      ],
+      "sheet": "issue6",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 4
+    },
+    {
+      "actual_columns": 1,
+      "actual_rows": 8,
+      "all_lexical_differences": [
+        {
+          "actual": "?",
+          "kind": "lexical_change",
+          "markdown_line": 49,
+          "source_cell": "spc_chrs!A6",
+          "source_value": "'☺'"
+        },
+        {
+          "actual": "?",
+          "kind": "lexical_change",
+          "markdown_line": 50,
+          "source_cell": "spc_chrs!A7",
+          "source_value": "'֍'"
+        },
+        {
+          "actual": "aaeeecoii??",
+          "kind": "lexical_change",
+          "markdown_line": 51,
+          "source_cell": "spc_chrs!A8",
+          "source_value": "'àâéêèçöïî«»'"
+        }
+      ],
+      "compared_positions": 8,
+      "exact_value_spellings": 5,
+      "heading_line": 41,
+      "representative_values": [
+        {
+          "actual": "&",
+          "markdown_line": 43,
+          "source_cell": "spc_chrs!A1",
+          "source_value": "'&'"
+        },
+        {
+          "actual": "<",
+          "markdown_line": 45,
+          "source_cell": "spc_chrs!A2",
+          "source_value": "'<'"
+        }
+      ],
+      "sheet": "spc_chrs",
+      "source_columns": 1,
+      "source_merges_zero_based": null,
+      "source_rows": 8
+    }
+  ],
+  "extent": "Every Calamine-exposed cell and every sheet compared; all lexical changes inspected. Selected XML metadata cross-checks, not a visual workbook roundtrip.",
+  "group": "feature_probe",
+  "id": "xlsb-calamine-issues",
+  "limitations": [
+    "Calamine is also the converter dependency; this comparison cannot independently detect every binding-level omission.",
+    "Formatting, merged-span relationships, chart/VBA objects and formula expressions are outside the value-only output contract."
+  ],
+  "markdown_sha256": "bd32a4183e311e6fb649f375cfd46a18101db7cbf59de406724ad0ff4fd671f1",
+  "path_convention": "Artifact references are bundle-relative; source paths beginning tests/ or benchmarks/ are repository-relative. Source page and Markdown line references preserve original review evidence.",
+  "receipt_counts_match_source_grids": true,
+  "receipt_observation": {
+    "dropped": {
+      "cid_survivors": 0,
+      "control_chars": 0,
+      "ligatures": 0,
+      "nbsp": 0,
+      "non_ascii_replaced": 4,
+      "page_numbers": 0,
+      "pua_glyphs": 0,
+      "running_heads": 0,
+      "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "route": "sheet",
+    "sheets": 6,
+    "tables": 6
+  },
+  "schema_version": 1,
+  "sheet_order_matches": true,
+  "source": "tests/fixtures/xlsb/calamine-issues.xlsb",
+  "source_sha256": "06c648de5529e022ef399a2b6ebc227040e9fdf71a0780e19e614f556bdb53d7",
+  "summary": "All six grids survive, including leading blank A1; three Unicode strings are changed by ASCII sanitising.",
+  "verdict": "warning"
+}
