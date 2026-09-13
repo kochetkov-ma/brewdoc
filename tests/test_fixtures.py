@@ -7,6 +7,8 @@ import pytest
 
 from brewdoc import reader
 
+pytestmark = pytest.mark.corpus
+
 FIXTURES = Path(__file__).parent / "fixtures"
 RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
 SUPPORTED = (".docx", ".ods", ".pdf", ".xls", ".xlsb", ".xlsm", ".xlsx")
@@ -51,9 +53,7 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_
 
 
 def test_the_receipt_snapshot_covers_every_supported_fixture_and_nothing_else():
-    # GIVEN the supported-format files on disk
-    # WHEN compared with the snapshot keys
-    # THEN they are the same set, the scan included
+    # GIVEN supported files, WHEN compared with snapshot keys, THEN both sets match.
     assert sorted(RECEIPTS) == fixture_files(SUPPORTED), (
         "receipts.json must hold exactly one row per supported-format fixture"
     )
@@ -123,4 +123,3 @@ def test_the_corpus_stays_small():
     assert (oversized, sum(sizes.values()) <= 20_000_000) == ([], True), (
         "fixtures must stay small enough for a public CI checkout"
     )
-

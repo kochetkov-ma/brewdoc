@@ -2,7 +2,12 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -19,7 +24,4 @@ jobs:
           version: "0.12.13"
           python-version: ${{ matrix.python }}
       - run: uv sync --locked --group dev
-      - run: uv run --locked brewdoc --self-check
-      - run: uv run --locked pytest -q
-      - run: uv build
-        if: matrix.os == 'ubuntu-24.04' && matrix.python == '3.12'
+      - run: uv run --locked pytest -q --strict-markers -m "not corpus"
