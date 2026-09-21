@@ -800,6 +800,13 @@ def new_file_mode(directory: Path) -> int:
     return stat.S_IMODE(control.stat().st_mode)
 
 
+def observable_mode(posix_mode: int) -> int:
+    """Return the permission bits os.stat reports after chmod(posix_mode) on this platform."""
+    # Windows chmod only toggles read-only, so stat reports 0o666 or 0o444 there.
+    windows_mode = 0o666 if posix_mode & stat.S_IWRITE else 0o444
+    return windows_mode if os.name == "nt" else posix_mode
+
+
 @pytest.mark.parametrize(
     ("artifact_outputs", "reason"),
     [
@@ -980,8 +987,8 @@ def test_failed_restore_after_failed_replace_names_every_unrestored_target(
     assert (actual, tree_state(tmp_path)) == ((1, refused(
         "output write failed: could not replace %s: injected failure; could not restore "
         "%s (injected failure), %s (injected failure)" % (later, markdown_out, first)), ""), {
-        **before, "book.md": (markdown.encode("ascii"), 0o640),
-        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), 0o600),
+        **before, "book.md": (markdown.encode("ascii"), observable_mode(0o640)),
+        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), observable_mode(0o600)),
     }), "an unrestored target must be reported, never silently left replaced"
 
 
@@ -1034,8 +1041,8 @@ def test_successful_run_writes_exact_bytes_keeps_modes_and_leaves_no_stage(tmp_p
     # THEN bytes are exact, existing modes survive, the new file follows 0666 & ~umask
     assert (code, receipt["file_ok"], tree_state(tmp_path)) == (0, True, {
         **before,
-        "book.md": (markdown.encode("ascii"), 0o640),
-        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), 0o600),
+        "book.md": (markdown.encode("ascii"), observable_mode(0o640)),
+        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), observable_mode(0o600)),
         "later.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[1]), created_mode),
     }), "success must publish exact bytes with preserved or umask modes and no stage files"
 
