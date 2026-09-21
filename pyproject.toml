@@ -47,13 +47,21 @@ build-backend = "hatchling.build"
 packages = ["src/brewdoc"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "/.agents/**",
-    "/.codex/**",
-    "/docs/**",
-    "/AGENTS.md",
-    "/CLAUDE.md",
-    "/.github/pull_request_template.md",
+include = [
+    "/.gitattributes",
+    "/.github/dependabot.yml",
+    "/.github/workflows",
+    "/.gitignore",
+    "/.python-version",
+    "/FORMATS.md",
+    "/LICENSE",
+    "/README.md",
+    "/RELEASING.md",
+    "/benchmarks",
+    "/pyproject.toml",
+    "/src",
+    "/tests",
+    "/uv.lock",
 ]
 
 [tool.uv]
