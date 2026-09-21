@@ -174,7 +174,7 @@
   "route": "pdf",
   "sheets": 0,
   "tables": 16,
-  "text_regions": 92,
+  "text_regions": 88,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -253,7 +253,7 @@
   "rc": 0,
   "route": "pdf",
   "sheets": 0,
-  "tables": 10,
+  "tables": 8,
   "text_regions": 77,
   "unit_keys": [
    "page/000001",
