@@ -815,22 +815,23 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
     verticals = [edge for edge in page.edges if edge["orientation"] == "v"]
     inferred = table is not None and getattr(table, "_brewdoc_body_grid", False)
     horizontal = table is not None and hasattr(table, "_brewdoc_bounds")
-    spans = []
-    for band in bands:  # body cell spans per column: they anchor the header heads above them
-        if band[0]["top"] < body_top:
-            continue
-        cells = {}
-        for word in band:
-            column = column_at(word["x0"] + 1 if inferred else (word["x0"] + word["x1"]) / 2)
-            low, high = cells.get(column, (word["x0"], word["x1"]))
-            cells[column] = (min(low, word["x0"]), max(high, word["x1"]))
-        spans.append(cells)
     centres, body_gaps = {}, {}
-    for column in {index for cells in spans for index in cells}:
-        centres[column] = statistics.median((cells[column][0] + cells[column][1]) / 2
-                                            for cells in spans if column in cells)
-        body_gaps[column] = min((cells[column + 1][0] - cells[column][1] for cells in spans
-                                 if column in cells and column + 1 in cells), default=0.0)
+    if horizontal:  # body cell spans per column: they anchor the header heads above them
+        spans = []
+        for band in bands:
+            if band[0]["top"] < body_top:
+                continue
+            cells = {}
+            for word in band:
+                column = column_at(word["x0"] + 1 if inferred else (word["x0"] + word["x1"]) / 2)
+                low, high = cells.get(column, (word["x0"], word["x1"]))
+                cells[column] = (min(low, word["x0"]), max(high, word["x1"]))
+            spans.append(cells)
+        for column in {index for cells in spans for index in cells}:
+            centres[column] = statistics.median((cells[column][0] + cells[column][1]) / 2
+                                                for cells in spans if column in cells)
+            body_gaps[column] = min((cells[column + 1][0] - cells[column][1] for cells in spans
+                                     if column in cells and column + 1 in cells), default=0.0)
 
     def headed(word):
         """Body column a header span is centred over, or None when it is centred over none."""
