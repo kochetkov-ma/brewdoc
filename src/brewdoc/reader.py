@@ -1254,12 +1254,12 @@ def _render_doc(path: Path, _sheets=None) -> Rendered:
 
 
 def render_doc(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a .docx: one `## <heading>` chapter per Word heading, else `Body`."""
+    """(Markdown, tally) for a .docx: one anchored chapter per Word heading, else `Body`."""
     return _render_doc(Path(path))[:2]
 
 
 # --- CLI --------------------------------------------------------------------------------------
-# Suffix -> (route, private renderer, what the route structurally cannot carry).
+# Suffix -> (route, unit kind, private renderer, what the route structurally cannot carry).
 ROUTES = {PDF_SUFFIX: ("pdf", "page", _render_pdf, PDF_NOT_CARRIED),
           DOC_SUFFIX: ("doc", "chapter", _render_doc, DOC_NOT_CARRIED),
           **dict.fromkeys(SHEET_SUFFIXES, ("sheet", "sheet", _render_book, SHEET_NOT_CARRIED))}
@@ -1656,9 +1656,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
                     "a Markdown table, an unlined captioned table is cropped then read, other "
                     "regions become fixed-width or plain text, and two-column prose is cropped at "
-                    "the gutter. A spreadsheet becomes one '## <sheet>' chapter per sheet, and a "
-                    ".docx one '## <heading>' chapter per Word heading, its tables kept as "
-                    "tables.",
+                    "the gutter. A spreadsheet becomes one anchored '## Sheet N: \"<name>\"' "
+                    "section per sheet, only the --sheet ones when given, and a .docx one "
+                    "anchored '## Chapter N: \"<heading>\"' section per Word heading, its "
+                    "tables kept as tables.",
         epilog="Both paths may be absolute or relative; a relative one is resolved against the "
                "current working directory, never against this script's location, and --out "
                "creates its parent directories. "
@@ -1671,7 +1672,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="the .pdf, .docx or spreadsheet to render")
     parser.add_argument("--out", help="write the Markdown here (ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
-                        help="render this exact workbook sheet; repeat for caller order")
+                        help="render only this exact workbook sheet; repeat for caller order")
     parser.add_argument("--artifact", action="append",
                         help="write one listed workbook artifact as KEY=PATH; repeat as needed")
     parser.add_argument("--self-check", action="store_true", dest="self_check",

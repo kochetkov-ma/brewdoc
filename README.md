@@ -46,28 +46,36 @@ workbook keys are `sheet/000001`, and DOCX keys are `chapter/000001`. Metadata c
 source identity, selection, content hashes, conversion tallies, and artifact capabilities. It excludes
 paths, timestamps, permissions, host data, and unsupported author metadata.
 
-One JSON receipt line always goes to stdout first:
+One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omitted):
 
 ```json
-{"file_ok": true, "route": "pdf", "pages": 130, "tables": 38, "text_regions": 338,
- "dropped": {"running_heads": 279, "page_numbers": 15},
+{"artifacts": [], "broken_ligature_words": 0, "columns_split": 1,
+ "dropped": {"cid_survivors": 0, "control_chars": 0, "ligatures": 0, "nbsp": 0,
+             "non_ascii_replaced": 0, "page_numbers": 3, "pua_glyphs": 0,
+             "running_heads": 0, "soft_hyphens": 0},
+ "file_ok": true, "markdown_schema": "brewdoc.markdown/2",
  "not_carried": ["images, figures and the text drawn inside them",
                  "a table that spans a page break",
                  "text rotated out of the horizontal reading order"],
- "reason": "pdf rendered: 130 chapters, 38 tables, 338 text regions, 7 column splits",
- "out": "file.md"}
+ "out": "file.md", "pages": 7,
+ "reason": "pdf rendered: 7 pages, 1 tables, 26 text regions, 1 column splits",
+ "route": "pdf", "sheets": 0, "source": "nist-sp800-145.pdf", "tables": 1,
+ "text_regions": 26}
 ```
 
 | key | meaning |
 |---|---|
-| `file_ok` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why |
+| `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
 | `route` | which reader ran: `pdf`, `doc` or `sheet` |
-| `pages`, `tables`, `text_regions` | what was rendered |
+| `source` | the input file name, without its directory |
+| `pages`, `sheets`, `tables`, `text_regions`, `columns_split` | what was rendered |
+| `broken_ligature_words` | words with a ligature the font mapped to a stray code point, folded to ASCII, not repaired |
 | `dropped` | sanitised items removed on purpose, counted by kind (running heads, page numbers, ...) |
 | `not_carried` | what this route structurally cannot represent - read it before concluding a fact is absent |
 | `out` | the Markdown path, or `null` when it went to stdout |
-| `markdown_schema`, `unit_keys` | the contract and ordered full-source content keys |
-| `artifacts` | available keyed formula or opaque VBA outputs and requested output paths |
+| `markdown_schema`, `unit_keys` | the contract and ordered full-source content keys; success only |
+| `artifacts` | available keyed formula or opaque VBA outputs and requested output paths; success only |
+| `selected_sheets` | the `--sheet` names in caller order; present only when sheets were selected |
 
 Paths resolve against the current working directory; `--out` creates parent directories.
 Exit code is non-zero on refusal; the receipt line is still printed.
