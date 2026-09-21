@@ -931,6 +931,17 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
     return out
 
 
+def _one_rule(edges: list) -> bool:
+    """True when the edges are one segmented rule, not separate figures sharing a baseline."""
+    ordered = sorted(edges, key=lambda edge: edge["x0"])
+    reach = ordered[0]["x1"]
+    for edge in ordered[1:]:
+        if edge["x0"] > reach + RULE_SNAP:
+            return False
+        reach = max(reach, edge["x1"])
+    return True
+
+
 def _rule_columns(page) -> tuple[list[float], float, float] | None:
     # A rule emitted as one segment per column carries the grid in its segment ends. The opening
     # rule is the topmost of the same width: caption and running head sit above it.
@@ -938,6 +949,7 @@ def _rule_columns(page) -> tuple[list[float], float, float] | None:
     for edge in page.edges:
         if edge["orientation"] == "h":
             groups.setdefault(int(edge["top"] / RULE_SNAP), []).append(edge)
+    groups = {key: group for key, group in groups.items() if _one_rule(group)}
     spans = {key: _snap([edge["x0"] for edge in group] + [edge["x1"] for edge in group])
              for key, group in groups.items()}
     best = None

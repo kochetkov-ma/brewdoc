@@ -470,3 +470,62 @@ def test_adjacent_centred_header_heads_keep_their_own_body_columns(tmp_path):
         "| OLMo | 28.3 | 12.5 | 81.4 |", "| Llama | 45.1 | 10.2 | 76.8 |",
         "| Falcon | 30.0 | 55.0 | 70.1 |",
     ], "a centred head belongs to the body column it is centred over, never to its left neighbour"
+
+
+def test_separate_plot_axes_do_not_turn_a_figure_legend_into_a_table(tmp_path):
+    # GIVEN four plot panels whose axis segments sit on one baseline above a legend and tick labels
+    path = tmp_path / "figure-legend.pdf"
+    commands = "".join(rule(x, 600, 100) for x in (60, 185, 310, 435))
+    for y, values in ((640, ("0.82", "0.76", "Falcon-7B")), (628, ("0.76", "0.55", "LLaMA2-7B")),
+                      (616, ("0.55", "0.28", "MPT-7B"))):
+        commands += "".join(text_op(x, y, value) for x, value in zip((190, 315, 440), values))
+    commands += "".join(text_op(x, 588, "10 100 1000") for x in (60, 185, 310, 435))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["0.82 0.76 Falcon-7B", "0.76 0.55 LLaMA2-7B", "0.55 0.28 MPT-7B",
+                                  "10 100 1000 10 100 1000 10 100 1000 10 100 1000"], "the source must hold three legend entries above one shared tick line"
+    with pdfplumber.open(path) as document:
+        axes = [(round(box["x0"], 2), round(box["x1"], 2)) for box in document.pages[0].rects]
+    assert axes == [(60.0, 160.0), (185.0, 285.0), (310.0, 410.0), (435.0, 535.0)], "the panel axes must leave 25 pt gaps, far wider than a trimmed rule"
+    # WHEN the widest group of aligned horizontal segments is read as a column grid
+    code, receipt, markdown = service.run(path)
+    # THEN the legend keeps its fixed layout and no table is reported
+    assert (code, receipt["file_ok"]) == (0, True), "the synthetic figure page must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
+        "```",
+        "0.82             0.76              Falcon-7B",
+        "0.76             0.55              LLaMA2-7B",
+        "0.55             0.28              MPT-7B",
+        "```",
+        "10 100 1000 10 100 1000 10 100 1000 10 100 1000",
+    ], 0), "separate panel axes are not one segmented rule, so a figure must not become a table"
+
+
+def test_trimmed_cmidrule_segments_keep_their_grouped_header_table(tmp_path):
+    # GIVEN a booktabs table whose cmidrule is trimmed into two segments 10 pt apart
+    path = tmp_path / "cmidrule-table.pdf"
+    heads = ("Warm", "Cold", "Exact", "Fuzzy")
+    commands = "".join(rule(60, y, 300) for y in (712, 686, 626))
+    commands += rule(140, 694, 80) + rule(230, 694, 80)
+    commands += text_op(65, 700, "Model") + text_op(165, 700, "Speed") + text_op(250, 700, "Quality")
+    commands += "".join(text_op(x, 674, value) for x, value in zip((150, 195, 240, 285), heads))
+    for y, name, values in ((654, "OLMo", ("11", "12", "13", "14")),
+                            (636, "Llama", ("21", "22", "23", "24"))):
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(x, y, value) for x, value in zip((150, 195, 240, 285), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["Model Speed Quality", "Warm Cold Exact Fuzzy",
+                                  "OLMo 11 12 13 14", "Llama 21 22 23 24"], "the source must expose two header rows above two four-value records"
+    with pdfplumber.open(path) as document:
+        rules = sorted((round(box["top"], 2), round(box["x0"], 2), round(box["x1"], 2))
+                       for box in document.pages[0].rects)
+    assert rules == [(79.5, 60.0, 360.0), (97.5, 140.0, 220.0), (97.5, 230.0, 310.0),
+                     (105.5, 60.0, 360.0), (165.5, 60.0, 360.0)], "the trimmed segments must leave a 10 pt gap between the full-width rules"
+    # WHEN the trimmed rule is considered as the source of the table's columns
+    code, receipt, markdown = service.run(path)
+    # THEN both header groups keep their own two body columns
+    assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
+        "| Model | Speed |  | Quality |  |", "| --- | --- | --- | --- | --- |",
+        "|  | Warm | Cold | Exact | Fuzzy |", "| OLMo | 11 | 12 | 13 | 14 |",
+        "| Llama | 21 | 22 | 23 | 24 |",
+    ], 1), "a trimmed cmidrule must keep its grouped header table whichever segment group is chosen"
