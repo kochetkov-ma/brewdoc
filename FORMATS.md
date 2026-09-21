@@ -7,9 +7,27 @@ dependencies stay at two (`pdfplumber`, `python-calamine`): every planned format
 
 | in | reader | mechanism |
 |---|---|---|
-| `.pdf` | pdfplumber | text layer required; each region routed by its own ruling (drawn table, implied grid, rule segments, tabular band, captioned band, two-column prose, prose) |
-| `.docx` | stdlib `zipfile` + `xml.etree` | `word/document.xml`, `w:p` paragraphs and `w:tbl` tables in reading order; one `## <heading>` chapter per Word heading |
-| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | one section per sheet, addressed by name; numbers as stored, dates as ISO days |
+| `.pdf` | pdfplumber | text layer required; anchored page units; each region routed by its own ruling |
+| `.docx` | stdlib `zipfile` + `xml.etree` | paragraphs and tables in reading order; anchored chapters retain duplicate and empty headings |
+| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | exact sheet selection in caller order with full-source ordinal keys; cached values in Markdown |
+
+All supported routes emit `brewdoc.markdown/2`: quoted source title, deterministic metadata,
+artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
+PDF pages, selected empty sheets, and heading-created empty DOCX chapters remain navigable.
+
+## Workbook artifacts
+
+| input | formulas | VBA project | limit |
+|---|---|---|---|
+| `.xlsx` | `brewdoc.formulas/1` JSON per selected formula-bearing sheet | unavailable | formulas are copied without evaluation, rewriting, or dependency inference |
+| `.xlsm` | same as `.xlsx` | one related `vbaProject.bin`, when present | exact opaque bytes only |
+| `.xlsb` | unavailable through the pinned Python binding | one related `vbaProject.bin`, when present | exact opaque bytes only |
+| `.xls` `.ods` | unavailable through the pinned Python binding | unavailable | cached values still render |
+
+Readable VBA source modules are unavailable for every format. Module and script counts are unknown,
+and brewdoc never executes a project. Generic formula and VBA artifact output uses explicit stable
+keys; the typed Python formula API can also enumerate selected formula sheets. Artifact requests do
+not change Markdown bytes.
 
 ## Planned
 

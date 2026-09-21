@@ -1,11 +1,14 @@
 import datetime
+import hashlib
 import json
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 import brewdoc
+import pytest
 from brewdoc import reader
 from brewdoc.cli import main
 
@@ -19,11 +22,88 @@ def three_page_fixture(path: Path) -> Path:
     return path
 
 
+def duplicate_heading_docx(path: Path) -> Path:
+    """Write two identical heading-created chapters, the first empty."""
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?><w:document '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Same</w:t></w:r></w:p>'
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Same</w:t></w:r></w:p>'
+        '<w:p><w:r><w:t>body</w:t></w:r></w:p></w:body></w:document>'
+    )
+    with zipfile.ZipFile(path, "w") as package:
+        package.writestr(reader.DOC_PART, xml)
+    return path
+
+
+def literal_anchor_docx(path: Path) -> Path:
+    """Write prose and a table cell that resemble private navigation anchors."""
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?><w:document '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Actual</w:t></w:r></w:p>'
+        '<w:p><w:r>'
+        '<w:t>&lt;span id="brewdoc-chapter-999999"&gt;span&lt;/span&gt; </w:t>'
+        '<w:t>&lt;div id=brewdoc-page-999999&gt;div&lt;/div&gt; </w:t>'
+        '<w:t>&lt;a name="brewdoc-sheet-999999"&gt;name&lt;/a&gt; </w:t>'
+        '<w:t>&lt;span id="brewdoc&amp;#45;chapter-777777"&gt;entity&lt;/span&gt; </w:t>'
+        '<w:t>&lt;a name="&amp;#98;rewdoc-sheet-777777"&gt;encoded&lt;/a&gt;</w:t></w:r>'
+        '</w:p><w:tbl><w:tr><w:tc><w:p><w:r>'
+        '<w:t>&lt;span id="brewdoc-sheet-888888"&gt;table&lt;/span&gt; </w:t>'
+        '<w:t>&lt;a name=brewdoc-chapter-888888&gt;cell&lt;/a&gt; </w:t>'
+        '<w:t>&lt;div id="brewdoc&amp;#45;page-666666"&gt;table-entity&lt;/div&gt;</w:t>'
+        '</w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>'
+    )
+    with zipfile.ZipFile(path, "w") as package:
+        package.writestr(reader.DOC_PART, xml)
+    return path
+
+
+def expected_schema_two(path: Path, route: str, unit_kind: str, source_units: int,
+                        body: str, tally: dict, links, capabilities) -> str:
+    """Build an independent whole-document expectation for a small schema 2 render."""
+    source = path.read_bytes()
+    keys = [key for key, _display in links]
+    rows = [
+        ("Markdown schema", "brewdoc.markdown/2"),
+        ("Source name", '"%s"' % reader._escape_markdown_text(path.name)),
+        ("Source suffix", path.suffix.lower()),
+        ("Source bytes", str(len(source))),
+        ("Source SHA-256", hashlib.sha256(source).hexdigest()),
+        ("Route", route), ("Unit kind", unit_kind),
+        ("Source unit count", str(source_units)),
+        ("Rendered unit count", str(len(keys))),
+        ("Ordered selection keys", ", ".join(keys)),
+        ("Rendered body bytes", str(len(body.encode("ascii")))),
+        ("Rendered body SHA-256", hashlib.sha256(body.encode("ascii")).hexdigest()),
+        ("Pages", str(tally["pages"])), ("Sheets", str(tally["sheets"])),
+        ("Chapters", str(tally["chapters"])), ("Tables", str(tally["tables"])),
+        ("Text regions", str(tally["text_regions"])),
+        ("Column splits", str(tally["columns_split"])),
+        ("Broken ligature words", str(tally["broken_ligature_words"])),
+    ]
+    rows += [("Dropped " + key.replace("_", " "), str(tally["dropped"][key]))
+             for key in reader.DROP_KEYS]
+    rows += list(capabilities)
+    omissions = (reader.PDF_NOT_CARRIED if route == "pdf" else reader.DOC_NOT_CARRIED
+                 if route == "doc" else reader.SHEET_NOT_CARRIED)
+    out = ['# "%s"' % reader._escape_markdown_text(path.name), "",
+           '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
+    out += reader.markdown_table([["Field", "Value"], *rows])
+    out += ["", "## Artifacts", "", "None.", "", "## Known omissions", ""]
+    out += ["- " + reader._escape_markdown_text(item) for item in omissions]
+    out += ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
+    out += ["- [%s](#%s)" % (display, reader._unit_anchor(key)) for key, display in links]
+    out += ["", body.rstrip("\n")]
+    return "\n".join(out) + "\n"
+
+
 def test_self_check_is_green():
     # GIVEN the module's own synthetic fixtures
     # WHEN the self-check runs
+    result = reader.self_check()
     # THEN it exits 0
-    assert reader.self_check() == 0, "self-check must be green"
+    assert result == 0, "self-check must be green"
 
 
 def test_the_cli_self_check_prints_its_verdict():
@@ -167,7 +247,8 @@ def test_a_horizontally_merged_cell_keeps_the_columns_below_it_aligned(tmp_path)
     path.write_bytes(reader.synthetic_docx())
     # WHEN it is rendered
     markdown, tally = reader.render_doc(path)
-    lines = [line for line in markdown.splitlines() if line.startswith("|")]
+    lines = [line for line in reader.chapter_lines(markdown, "Growth regulators")
+             if line.startswith("|")]
     # THEN the span is padded out, so every body cell still sits under its own header
     assert (lines, tally["tables"]) == ([
         "| Dose table |  |  |",
@@ -183,12 +264,12 @@ def test_a_word_heading_opens_its_own_chapter_and_a_line_break_stays_one(tmp_pat
     path.write_bytes(reader.synthetic_docx())
     # WHEN it is rendered
     markdown, tally = reader.render_doc(path)
-    headings = [line for line in markdown.splitlines() if line.startswith("## ")]
+    headings = [line for line in markdown.splitlines() if line.startswith("## Chapter ")]
     # THEN the heading is the chapter, the break opens a new line and the deleted run is absent
     assert (headings, reader.chapter_lines(markdown, "Growth regulators")[:2],
             markdown.count("struck out"),
             (tally["chapters"], tally["tables"], tally["text_regions"])) == (
-        ["## Growth regulators"], ["first line", "second line"], 0, (1, 1, 1)
+        ['## Chapter 1: "Growth regulators"'], ["first line", "second line"], 0, (1, 1, 1)
     ), "w:br is Word's line break; joining across it welds two lines into one sentence"
 
 
@@ -212,10 +293,10 @@ def test_a_workbook_renders_one_chapter_per_sheet_with_its_receipt(tmp_path):
     # WHEN it is read
     rc, line, markdown = reader.run(path)
     # THEN there is one chapter per sheet and the receipt names the sheet route
-    assert ([row for row in markdown.splitlines() if row.startswith("## ")],
+    assert ([row for row in markdown.splitlines() if row.startswith("## Sheet ")],
             rc, line["route"], line["sheets"], line["tables"], line["reason"],
             line["not_carried"]) == (
-        ["## Zones"], reader.EXIT_OK, "sheet", 1, 1,
+        ['## Sheet 1: "Zones"'], reader.EXIT_OK, "sheet", 1, 1,
         "sheet rendered: 1 chapters, 1 tables, 0 text regions, 0 column splits",
         list(reader.SHEET_NOT_CARRIED),
     ), "a sheet is a chapter, and the route line says what a spreadsheet cannot carry"
@@ -250,7 +331,9 @@ def test_the_cli_states_its_contract():
     flags = sorted(action.option_strings[-1] for action in parser._actions
                    if action.option_strings)
     # THEN the contract is the documented one
-    assert flags == ["--help", "--out", "--self-check"], "the CLI surface is fixed"
+    assert flags == ["--artifact", "--help", "--out", "--self-check", "--sheet"], (
+        "the CLI surface must expose repeatable sheet and artifact requests"
+    )
 
 
 def test_the_route_line_is_one_json_line_a_workflow_can_re_read(tmp_path):
@@ -266,3 +349,160 @@ def test_the_route_line_is_one_json_line_a_workflow_can_re_read(tmp_path):
             line["pages"], line["tables"], line["columns_split"], line["not_carried"]) == (
         0, True, "pdf", "fixture.pdf", str(out), 3, 3, 3, list(reader.PDF_NOT_CARRIED)
     ), "stdout:\n%s\nstderr:\n%s" % (proc.stdout, proc.stderr)
+
+
+def test_metadata_first_pdf_keeps_an_empty_physical_page_navigable(tmp_path):
+    # GIVEN one text page followed by one physical page without text
+    path = tmp_path / "partial.pdf"
+    path.write_bytes(reader.synthetic_pdf([
+        BODY % (700, "kept body"), "0 0 0 rg 100 100 20 20 re f\n",
+    ]))
+    # WHEN the PDF is rendered
+    markdown, tally = reader.render_pdf(path)
+    body = markdown[markdown.index('<a id="brewdoc-page-000001"></a>'):]
+    # THEN metadata and contents precede two exact anchored units, including the empty page
+    assert markdown.index("## Metadata") < markdown.index("## Artifacts") < markdown.index(
+        "## Known omissions") < markdown.index("## Contents") < markdown.index("## Page 1"), (
+        "schema 2 sections must have one route-neutral order"
+    )
+    assert body == (
+        '<a id="brewdoc-page-000001"></a>\n## Page 1\n\nkept body\n\n'
+        '<a id="brewdoc-page-000002"></a>\n## Page 2\n'
+    ), "PDF content units must have exact stable anchors and headings"
+    assert (tally["pages"], markdown.endswith("\n"), markdown.isascii()) == (2, True, True), (
+        "all successful Markdown must be ASCII LF text with a final newline"
+    )
+
+
+def test_small_pdf_workbook_and_docx_match_the_whole_schema_two_contract(tmp_path):
+    # GIVEN one small source for every successful route
+    pdf = tmp_path / "one.pdf"
+    pdf.write_bytes(reader.synthetic_pdf([BODY % (700, "hello")]))
+    book = tmp_path / "zones.xlsx"
+    reader._synthetic_xlsx(book)
+    doc = tmp_path / "fixture.docx"
+    doc.write_bytes(reader.synthetic_docx())
+    # WHEN each route is rendered
+    pdf_markdown, pdf_tally = reader.render_pdf(pdf)
+    book_markdown, book_tally = reader.render_book(book)
+    doc_markdown, doc_tally = reader.render_doc(doc)
+    # THEN every byte matches the shared metadata-first contract and route-specific body
+    not_applicable = (
+        ("Formula capability", "not applicable"),
+        ("Selected formula count", "not applicable"),
+        ("VBA project capability", "not applicable"),
+        ("VBA project count", "not applicable"),
+        ("VBA source module capability", "not applicable"),
+        ("VBA source module count", "not applicable"),
+    )
+    workbook_capabilities = (
+        ("Formula capability", "available"), ("Selected formula count", "0"),
+        ("VBA project capability", "unavailable"), ("VBA project count", "unknown"),
+        ("VBA source module capability", "unavailable"),
+        ("VBA source module count", "unknown"),
+    )
+    pdf_body = '<a id="brewdoc-page-000001"></a>\n## Page 1\n\nhello\n'
+    book_body = (
+        '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Zones"\n\n'
+        '| Zone | Area | Sown |\n| --- | --- | --- |\n'
+        '| North | 12.5 | 2026-07-18 |\n| South | 9.0 |  |\n'
+    )
+    doc_body = (
+        '<a id="brewdoc-chapter-000001"></a>\n'
+        '## Chapter 1: "Growth regulators"\n\nfirst line\nsecond line\n\n'
+        '| Dose table |  |  |\n| --- | --- | --- |\n| Product | Dose | BBCH |\n'
+        '| Moddus | 0.4 | 31 |\n'
+    )
+    assert pdf_markdown == expected_schema_two(
+        pdf, "pdf", "page", 1, pdf_body, pdf_tally,
+        (("page/000001", "Page 1"),), not_applicable,
+    ), "small PDF Markdown must match the whole schema 2 document"
+    assert book_markdown == expected_schema_two(
+        book, "sheet", "sheet", 1, book_body, book_tally,
+        (("sheet/000001", 'Sheet 1: "Zones"'),), workbook_capabilities,
+    ), "small workbook Markdown must match the whole schema 2 document"
+    assert doc_markdown == expected_schema_two(
+        doc, "doc", "chapter", 1, doc_body, doc_tally,
+        (("chapter/000001", 'Chapter 1: "Growth regulators"'),), not_applicable,
+    ), "small DOCX Markdown must match the whole schema 2 document"
+
+
+def test_duplicate_and_empty_docx_chapters_have_distinct_keys(tmp_path):
+    # GIVEN consecutive duplicate Word headings, so the first chapter has no body
+    path = duplicate_heading_docx(tmp_path / "duplicate.docx")
+    # WHEN it is rendered
+    markdown, tally = reader.render_doc(path)
+    # THEN both heading-created chapters remain navigable by distinct source ordinals
+    assert [line for line in markdown.splitlines() if line.startswith("## Chapter ")] == [
+        '## Chapter 1: "Same"', '## Chapter 2: "Same"',
+    ], "duplicate DOCX labels must not collapse chapter identity"
+    assert markdown.count('[Chapter 1: "Same"](#brewdoc-chapter-000001)') == 1, (
+        "the first empty chapter must remain in contents"
+    )
+    assert '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Same"\n\n' in markdown, (
+        "heading-created empty chapters must retain an explicit anchor"
+    )
+    assert (tally["chapters"], reader.chapter_lines(markdown, "Same")) == (2, []), (
+        "the first duplicate label must remain the empty first chapter"
+    )
+
+
+def test_docx_literal_anchor_content_cannot_forge_receipt_unit_keys(tmp_path):
+    # GIVEN visible DOCX text that exactly resembles a private chapter anchor
+    path = literal_anchor_docx(tmp_path / "literal.docx")
+    # WHEN the public run path renders and receipts the document
+    code, receipt, markdown = reader.run(path)
+    # THEN only the trusted renderer unit appears in navigation and the receipt
+    assert (code, receipt["unit_keys"]) == (0, ["chapter/000001"]), (
+        "receipt unit keys must come from renderer structure, never rendered text parsing"
+    )
+    forged = (
+        '<span id="brewdoc-chapter-999999">', '<div id=brewdoc-page-999999>',
+        '<a name="brewdoc-sheet-999999">', '<span id="brewdoc-sheet-888888">',
+        '<a name=brewdoc-chapter-888888>', '<span id="brewdoc&#45;chapter-777777">',
+        '<a name="&#98;rewdoc-sheet-777777">', '<div id="brewdoc&#45;page-666666">',
+    )
+    assert [tag in markdown for tag in forged] == [False] * len(forged), (
+        "source elements and id or name attributes must not forge contract anchors"
+    )
+    escaped = (
+        '&lt;span id="brewdoc-chapter-999999"&gt;span&lt;/span&gt;',
+        '&lt;div id=brewdoc-page-999999&gt;div&lt;/div&gt;',
+        '&lt;a name="brewdoc-sheet-999999"&gt;name&lt;/a&gt;',
+        '&lt;span id="brewdoc-sheet-888888"&gt;table&lt;/span&gt;',
+        '&lt;a name=brewdoc-chapter-888888&gt;cell&lt;/a&gt;',
+        '&lt;span id="brewdoc&#45;chapter-777777"&gt;entity&lt;/span&gt;',
+        '&lt;a name="&#98;rewdoc-sheet-777777"&gt;encoded&lt;/a&gt;',
+        '&lt;div id="brewdoc&#45;page-666666"&gt;table-entity&lt;/div&gt;',
+    )
+    assert [text in markdown for text in escaped] == [True] * len(escaped), (
+        "forged prose and table tags must remain visible as escaped source text"
+    )
+    assert markdown.count('<a id="brewdoc-chapter-000001"></a>') == 1, (
+        "the generated contract anchor must remain raw and unique"
+    )
+    assert '[Chapter 1: "Actual"](#brewdoc-chapter-000001)' in markdown, (
+        "literal source text must not corrupt real contents navigation"
+    )
+
+
+def test_workbook_only_options_fail_with_receipt_before_pdf_output(tmp_path):
+    # GIVEN a valid PDF and a requested Markdown path
+    path = three_page_fixture(tmp_path / "fixture.pdf")
+    out = tmp_path / "fixture.md"
+    # WHEN a workbook-only sheet option is supplied through the public API
+    code, receipt, markdown = reader.run(path, out, sheets=("Sheet1",))
+    # THEN the normal receipt reports exit 1 and no output is created
+    assert (code, receipt["file_ok"], receipt["reason"], markdown) == (
+        1, False, "--sheet and --artifact are workbook-only options", "",
+    ), "workbook-only options on PDF or DOCX must be refused consistently"
+    assert not out.exists(), "option validation must precede any Markdown write"
+
+
+def test_argparse_syntax_errors_keep_exit_two():
+    # GIVEN a repeatable option without its required value
+    # WHEN argparse processes the invalid token sequence
+    with pytest.raises(SystemExit) as raised:
+        reader.main(["book.xlsx", "--sheet"])
+    # THEN the established argparse usage code is preserved
+    assert raised.value.code == 2, "CLI syntax errors must remain distinct from receipt failures"

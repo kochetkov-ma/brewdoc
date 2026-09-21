@@ -31,7 +31,11 @@ import datetime
 import hashlib
 import io
 import json
+import os
+import posixpath
 import re
+import secrets
+import stat
 import statistics
 import sys
 import tempfile
@@ -39,6 +43,8 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import pdfplumber
@@ -49,17 +55,27 @@ from python_calamine import CalamineWorkbook
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
 RENDERED_BY = "brewdoc"
+MARKDOWN_SCHEMA = "brewdoc.markdown/2"
+FORMULA_SCHEMA = "brewdoc.formulas/1"
 PDF_SUFFIX = ".pdf"
 DOC_SUFFIX = ".docx"
 SHEET_SUFFIXES = (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx")
+FORMULA_SUFFIXES = (".xlsm", ".xlsx")
+VBA_SUFFIXES = (".xlsb", ".xlsm")
 SUFFIXES = " ".join(sorted((PDF_SUFFIX, DOC_SUFFIX) + SHEET_SUFFIXES))
+
+VBA_PROJECT_KEY = "vba/project/000001"
+VBA_RELATIONSHIP_TYPE = "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
+# The two project fixtures top out at 17,920 bytes; 16 MiB is the passive-read boundary.
+MAX_VBA_PROJECT_BYTES = 16 * 1024 * 1024
 
 PDF_NOT_CARRIED = ("images, figures and the text drawn inside them",
                    "a table that spans a page break",
                    "text rotated out of the horizontal reading order")
-SHEET_NOT_CARRIED = ("cell formulas - only the value the writer cached",
+SHEET_NOT_CARRIED = ("cell formulas in Markdown content - only cached values are rendered",
                      "formatting, colours, comments and data validation",
-                     "charts and embedded images")
+                     "charts and embedded images",
+                     "readable VBA source modules")
 DOC_NOT_CARRIED = ("images, charts and the text drawn inside them",
                    "tracked changes, comments, footnotes, headers and footers",
                    "a table's own formatting - only its cells, row by row")
@@ -132,6 +148,119 @@ for _glyph_stem, _glyph_token in (("parenleft", "("), ("parenright", ")"),
 
 class BrewdocError(Exception):
     """A refusal naming what was not found or not parsed, and where."""
+
+
+@dataclass(frozen=True)
+class ArtifactRef:
+    """A retrievable workbook artifact described without retaining its payload."""
+
+    key: str
+    kind: str
+    availability: str
+    count: int | None
+    location: str
+    media_type: str
+    byte_size: int | None = None
+    sha256: str | None = None
+
+    def to_dict(self, out=None) -> dict:
+        """Return the stable receipt fields for this artifact."""
+        return {"availability": self.availability, "byte_size": self.byte_size,
+                "count": self.count, "key": self.key, "kind": self.kind,
+                "location": self.location, "media_type": self.media_type,
+                "out": str(out) if out is not None else None, "sha256": self.sha256}
+
+
+@dataclass(frozen=True)
+class CellFormula:
+    """A passive OOXML formula attached to one source cell."""
+
+    sheet: str
+    cell: str
+    formula: str
+    attributes: tuple[tuple[str, str], ...]
+
+    def to_dict(self) -> dict:
+        """Return a JSON-ready formula without changing its source text."""
+        return {"attributes": dict(self.attributes), "cell": self.cell,
+                "formula": self.formula, "sheet": self.sheet}
+
+
+@dataclass(frozen=True)
+class FormulaArtifact:
+    """All recoverable formulas from one source worksheet."""
+
+    key: str
+    source_name: str
+    source_sha256: str
+    source_ordinal: int
+    sheet: str
+    formulas: tuple[CellFormula, ...]
+
+    def to_dict(self) -> dict:
+        """Return the complete artifact as deterministic JSON-ready data."""
+        return {"formulas": [formula.to_dict() for formula in self.formulas],
+                "key": self.key, "kind": "formula", "sheet": self.sheet,
+                "source_name": self.source_name, "source_ordinal": self.source_ordinal,
+                "source_sha256": self.source_sha256}
+
+
+@dataclass(frozen=True)
+class FormulaArtifactRef:
+    """A formula artifact key and count without retained expression text."""
+
+    key: str
+    source_name: str
+    source_sha256: str
+    source_ordinal: int
+    sheet: str
+    formula_count: int
+
+    def to_dict(self) -> dict:
+        """Return discovery metadata as deterministic JSON-ready data."""
+        return {"formula_count": self.formula_count, "key": self.key, "kind": "formula",
+                "sheet": self.sheet, "source_name": self.source_name,
+                "source_ordinal": self.source_ordinal, "source_sha256": self.source_sha256}
+
+
+@dataclass(frozen=True)
+class OpaqueVbaProjectRef:
+    """Identity metadata for one losslessly recoverable opaque VBA project."""
+
+    key: str
+    source_name: str
+    source_sha256: str
+    relationship_type: str
+    package_part: str
+    byte_size: int
+    project_sha256: str
+
+    def to_dict(self) -> dict:
+        """Return deterministic discovery metadata without binary project data."""
+        return {"byte_size": self.byte_size, "key": self.key, "kind": "vba-project",
+                "package_part": self.package_part, "project_sha256": self.project_sha256,
+                "relationship_type": self.relationship_type, "representation": "opaque",
+                "source_name": self.source_name, "source_sha256": self.source_sha256}
+
+
+@dataclass(frozen=True)
+class OpaqueVbaProject:
+    """A complete related VBA project preserved as passive bytes."""
+
+    key: str
+    source_name: str
+    source_sha256: str
+    relationship_type: str
+    package_part: str
+    byte_size: int
+    project_sha256: str
+    data: bytes
+
+    def reference(self) -> OpaqueVbaProjectRef:
+        """Return the count-only discovery form without retaining project bytes."""
+        return OpaqueVbaProjectRef(
+            self.key, self.source_name, self.source_sha256, self.relationship_type,
+            self.package_part, self.byte_size, self.project_sha256)
 
 
 def new_tally() -> dict:
@@ -1290,25 +1419,167 @@ def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
     return kept
 
 
-def _assemble(name: str, digest: str, chapters: list[tuple[str, list[tuple]]],
-              heads: set[str], numbers: set[str], tally: dict) -> str:
-    name = sanitise(name, tally).strip()
-    out = ["# " + name, "",
-           "<!-- rendered by %s from %s sha256 %s -->" % (RENDERED_BY, name, digest), ""]
-    for heading, blocks in chapters:
-        out += ["## " + heading, ""]
-        for kind, payload in blocks:
-            if kind == "table":
+def _escape_markdown_text(text: str) -> str:
+    """Preserve semantic text as ASCII without exposing Markdown or HTML syntax."""
+    escaped = []
+    markdown_punctuation = "\\`*_{}[]()#+-.!|"
+    for character in str(text):
+        if character == "&":
+            escaped.append("&amp;")
+        elif character == "<":
+            escaped.append("&lt;")
+        elif character == ">":
+            escaped.append("&gt;")
+        elif character == '"':
+            escaped.append("&quot;")
+        elif not character.isascii():
+            escaped.append("&#%d;" % ord(character))
+        elif character in markdown_punctuation:
+            escaped.append("\\" + character)
+        elif character in "\r\n\t":
+            escaped.append(" ")
+        elif ord(character) < 32 or ord(character) == 127:
+            escaped.append("&#%d;" % ord(character))
+        else:
+            escaped.append(character)
+    return "".join(escaped)
+
+
+def _unit_key(kind: str, ordinal: int) -> str:
+    return "%s/%06d" % (kind, ordinal)
+
+
+def _unit_anchor(key: str) -> str:
+    return "brewdoc-" + key.replace("/", "-")
+
+
+def _unit_heading(kind: str, ordinal: int, label: str) -> str:
+    if kind == "page":
+        return "Page %d" % ordinal
+    title = _escape_markdown_text(label)
+    return "%s %d: \"%s\"" % (kind.title(), ordinal, title)
+
+
+def _escape_source_html(line: str) -> str:
+    """Keep every source HTML-like fragment visible instead of active."""
+    return line.replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
+                  heads: set[str], numbers: set[str], tally: dict) -> tuple[str, tuple[str, ...]]:
+    """Render anchored content units before metadata so all loss tallies are final."""
+    out = []
+    keys = []
+    for ordinal, label, blocks in units:
+        key = _unit_key(kind, ordinal)
+        keys.append(key)
+        out += ['<a id="%s"></a>' % _unit_anchor(key),
+                "## " + _unit_heading(kind, ordinal, label), ""]
+        for block_kind, payload in blocks:
+            if block_kind == "table":
                 rendered = markdown_table(payload)
-            elif kind == "math":
+            elif block_kind == "math":
                 rendered = payload
             else:
                 rendered = _drop_furniture(payload, heads, numbers, tally)
-                if kind == "block" and len(rendered) <= 2:
+                if block_kind == "block" and len(rendered) <= 2:
                     rendered = [line for line in rendered if line != "```"]
             if rendered:
+                rendered = [_escape_source_html(line) for line in rendered]
                 out += rendered + [""]
-    return "\n".join(out).rstrip("\n") + "\n"
+    body = "\n".join(out).rstrip("\n") + "\n"
+    return body, tuple(keys)
+
+
+def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
+                   unit_keys: tuple[str, ...], body: str, tally: dict,
+                   artifacts: tuple[ArtifactRef, ...]) -> list[tuple[str, str]]:
+    source = path.read_bytes()
+    suffix = path.suffix.lower()
+    if route == "sheet":
+        formula_refs = tuple(item for item in artifacts if item.kind == "formula")
+        vba_refs = tuple(item for item in artifacts if item.kind == "vba-project")
+        formula_capability = "available" if suffix in FORMULA_SUFFIXES else "unavailable"
+        formula_count = str(sum(item.count or 0 for item in formula_refs)) \
+            if formula_capability == "available" else "unknown"
+        vba_capability = "available" if suffix in VBA_SUFFIXES else "unavailable"
+        vba_count = str(len(vba_refs)) if vba_capability == "available" else "unknown"
+        module_capability, module_count = "unavailable", "unknown"
+    else:
+        formula_capability = formula_count = "not applicable"
+        vba_capability = vba_count = "not applicable"
+        module_capability = module_count = "not applicable"
+    rows = [
+        ("Markdown schema", MARKDOWN_SCHEMA),
+        ("Source name", '"%s"' % _escape_markdown_text(path.name)),
+        ("Source suffix", suffix),
+        ("Source bytes", str(len(source))),
+        ("Source SHA-256", hashlib.sha256(source).hexdigest()),
+        ("Route", route),
+        ("Unit kind", unit_kind),
+        ("Source unit count", str(source_units)),
+        ("Rendered unit count", str(len(unit_keys))),
+        ("Ordered selection keys", ", ".join(unit_keys) or "none"),
+        ("Rendered body bytes", str(len(body.encode("ascii")))),
+        ("Rendered body SHA-256", hashlib.sha256(body.encode("ascii")).hexdigest()),
+        ("Pages", str(tally["pages"])),
+        ("Sheets", str(tally["sheets"])),
+        ("Chapters", str(tally["chapters"])),
+        ("Tables", str(tally["tables"])),
+        ("Text regions", str(tally["text_regions"])),
+        ("Column splits", str(tally["columns_split"])),
+        ("Broken ligature words", str(tally["broken_ligature_words"])),
+    ]
+    rows += [("Dropped " + key.replace("_", " "), str(tally["dropped"][key]))
+             for key in DROP_KEYS]
+    rows += [
+        ("Formula capability", formula_capability),
+        ("Selected formula count", formula_count),
+        ("VBA project capability", vba_capability),
+        ("VBA project count", vba_count),
+        ("VBA source module capability", module_capability),
+        ("VBA source module count", module_count),
+    ]
+    return rows
+
+
+def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
+    if not artifacts:
+        return ["None."]
+    rows = [["Key", "Kind", "Availability", "Count", "Location", "Media type", "Bytes",
+             "SHA-256"]]
+    for artifact in artifacts:
+        label = "metadata" if artifact.kind == "vba-project" else artifact.key.split("/", 1)[1]
+        location = "[%s](%s)" % (label, artifact.location)
+        rows.append([artifact.key, artifact.kind, artifact.availability,
+                     str(artifact.count) if artifact.count is not None else "unknown",
+                     location, artifact.media_type,
+                     str(artifact.byte_size) if artifact.byte_size is not None else "not applicable",
+                     artifact.sha256 or "not applicable"])
+    return markdown_table(rows)
+
+
+def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
+              units: list[tuple[int, str, list[tuple]]], heads: set[str], numbers: set[str],
+              tally: dict, artifacts: tuple[ArtifactRef, ...] = ()) -> str:
+    """Build schema 2 after a first pass has finalized content and loss counters."""
+    body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally)
+    metadata = _metadata_rows(
+        path, route, unit_kind, source_units, unit_keys, body, tally, artifacts)
+    out = ['# "%s"' % _escape_markdown_text(path.name), "",
+           '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
+    out += markdown_table([["Field", "Value"], *metadata]) + ["", "## Artifacts", ""]
+    out += _artifacts_markdown(artifacts) + ["", "## Known omissions", ""]
+    omissions = (PDF_NOT_CARRIED if route == "pdf" else DOC_NOT_CARRIED
+                 if route == "doc" else SHEET_NOT_CARRIED)
+    out += ["- " + _escape_markdown_text(item) for item in omissions]
+    out += ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
+    out += ["- [%s](#%s)" % (_unit_heading(unit_kind, ordinal, label), _unit_anchor(
+        _unit_key(unit_kind, ordinal))) for ordinal, label, _blocks in units]
+    out += ["", body.rstrip("\n")]
+    markdown = "\n".join(out).rstrip("\n") + "\n"
+    markdown.encode("ascii")
+    return markdown
 
 
 def render_pdf(path) -> tuple[str, dict]:
@@ -1330,9 +1601,9 @@ def render_pdf(path) -> tuple[str, dict]:
             "no text layer: %d of %d pages carry zero characters in %s - this reader does no OCR"
             % (empty, tally["pages"], path))
     heads, numbers = furniture(margins)
-    chapters = [("Page %d" % number, blocks) for number, blocks in enumerate(pages, 1)]
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, heads, numbers, tally), tally
+    units = [(number, "Page %d" % number, blocks)
+             for number, blocks in enumerate(pages, 1)]
+    return _assemble(path, "pdf", "page", len(pages), units, heads, numbers, tally), tally
 
 
 def _sheet_grid(rows, tally: dict) -> list[list[str]]:
@@ -1342,25 +1613,371 @@ def _sheet_grid(rows, tally: dict) -> list[list[str]]:
     return [row[:width] for row in grid] if width else []
 
 
-def render_book(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a spreadsheet: one `## <sheet name>` chapter per sheet, in order."""
+def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
+    """Validate a selection and retain each sheet's one-based source ordinal."""
+    available = tuple(available)
+    if sheets is None:
+        requested = available
+    else:
+        if isinstance(sheets, (str, bytes)):
+            raise BrewdocError("sheet selection must be a sequence of names")
+        requested = tuple(sheets)
+        if not requested:
+            raise BrewdocError("sheet selection is empty")
+        if any(not isinstance(name, str) for name in requested):
+            raise BrewdocError("sheet selection names must be strings")
+        seen = set()
+        for name in requested:
+            if name in seen:
+                raise BrewdocError("duplicate sheet selection: %s" % name)
+            seen.add(name)
+        unknown = [name for name in requested if name not in available]
+        if unknown:
+            raise BrewdocError("unknown sheet selection: %s; available sheets: %s"
+                               % (", ".join(unknown), ", ".join(available)))
+    ordinals = {name: index for index, name in enumerate(available, 1)}
+    return tuple((ordinals[name], name) for name in requested)
+
+
+def _render_book(path, sheets=None) -> tuple[str, dict, tuple[ArtifactRef, ...], tuple[str, ...]]:
+    """Render a workbook and retain its artifact inventory for receipt reuse."""
     path = Path(path)
     tally = new_tally()
     try:
-        book = CalamineWorkbook.from_path(str(path))
+        with CalamineWorkbook.from_path(str(path)) as book:
+            selected = _select_sheets(book.sheet_names, sheets)
+            source_units = len(book.sheet_names)
+            units = []
+            for ordinal, name in selected:
+                raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
+                rows = _sheet_grid(raw, tally)
+                tally["sheets"] += 1
+                if rows:
+                    tally["tables"] += 1
+                units.append((ordinal, name, [("table", rows)] if rows else []))
+    except BrewdocError:
+        raise
     except Exception as exc:                      # calamine raises its own error types
         raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
-    chapters = []
-    for name in book.sheet_names:
-        raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
-        rows = _sheet_grid(raw, tally)
-        tally["sheets"] += 1
-        if rows:
-            tally["tables"] += 1
-        chapters.append((sanitise(name, tally).strip() or name,
-                         [("table", rows)] if rows else []))
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, set(), set(), tally), tally
+    artifacts = list_book_artifacts(path, sheets=sheets)
+    markdown = _assemble(path, "sheet", "sheet", source_units, units, set(), set(), tally,
+                         artifacts)
+    unit_keys = tuple(_unit_key("sheet", ordinal) for ordinal, _name, _blocks in units)
+    return markdown, tally, artifacts, unit_keys
+
+
+def render_book(path, *, sheets=None) -> tuple[str, dict]:
+    """Render cached values for selected sheets with full-source ordinal navigation."""
+    markdown, tally, _artifacts, _unit_keys = _render_book(path, sheets)
+    return markdown, tally
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_part(package: zipfile.ZipFile, part: str) -> ET.Element:
+    """Read one required OOXML part and name missing or malformed XML."""
+    try:
+        data = package.read(part)
+    except KeyError as exc:
+        raise BrewdocError("OOXML part is missing: %s" % part) from exc
+    try:
+        return ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
+
+
+def _resolve_ooxml_part(base: str, target: str) -> str:
+    """Resolve one internal relationship target without leaving the package root."""
+    if not target:
+        raise BrewdocError("OOXML relationship target is missing")
+    if target.startswith("/"):
+        raise BrewdocError("OOXML relationship target is absolute: %s" % target)
+    if ".." in target.split("/"):
+        raise BrewdocError("OOXML relationship target contains traversal: %s" % target)
+    joined = posixpath.join(posixpath.dirname(base), target)
+    resolved = posixpath.normpath(joined)
+    if resolved in ("", ".", "..") or resolved.startswith("../"):
+        raise BrewdocError("OOXML relationship target leaves the package: %s" % target)
+    return resolved
+
+
+def _relationship_elements(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
+    """Read relationship elements without hiding duplicate identifiers or types."""
+    root = _xml_part(package, part)
+    return tuple(element for element in root.iter()
+                 if _local_name(element.tag) == "Relationship")
+
+
+def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]:
+    return {element.attrib["Id"]: element for element in _relationship_elements(package, part)
+            if "Id" in element.attrib}
+
+
+def _workbook_part(package: zipfile.ZipFile) -> str:
+    """Find the workbook through its package-level office relationship."""
+    relationships = _relationships(package, "_rels/.rels")
+    for relationship in relationships.values():
+        if (relationship.attrib.get("Type", "").endswith("/officeDocument")
+                and relationship.attrib.get("TargetMode") != "External"):
+            return _resolve_ooxml_part("", relationship.attrib.get("Target", ""))
+    raise BrewdocError("OOXML office document relationship is missing")
+
+
+def _relationship_part(part: str) -> str:
+    directory, name = posixpath.split(part)
+    return posixpath.join(directory, "_rels", name + ".rels")
+
+
+def _sheet_relation_id(element: ET.Element, name: str) -> str:
+    for key, value in element.attrib.items():
+        if _local_name(key) == "id":
+            return value
+    raise BrewdocError("worksheet relationship is missing for sheet %s" % name)
+
+
+def _formula_elements(root: ET.Element, sheet: str):
+    """Yield addressed formula elements in worksheet XML order."""
+    for cell in (element for element in root.iter() if _local_name(element.tag) == "c"):
+        formula = next((child for child in cell if _local_name(child.tag) == "f"), None)
+        if formula is None:
+            continue
+        address = cell.attrib.get("r")
+        if not address:
+            raise BrewdocError("formula cell address is missing in sheet %s" % sheet)
+        yield address, formula
+
+
+def _formula_cells(root: ET.Element, sheet: str) -> tuple[CellFormula, ...]:
+    """Read formula elements, including empty shared followers."""
+    return tuple(CellFormula(sheet, address, "".join(formula.itertext()),
+                             tuple(sorted(formula.attrib.items())))
+                 for address, formula in _formula_elements(root, sheet))
+
+
+def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
+    """Read full artifacts or count-only references with stable source ordinals."""
+    suffix = path.suffix.lower()
+    if suffix not in FORMULA_SUFFIXES:
+        raise BrewdocError("formula artifacts unavailable for '%s'; supported suffixes: %s"
+                           % (suffix, " ".join(FORMULA_SUFFIXES)))
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        with zipfile.ZipFile(path) as package:
+            workbook_part = _workbook_part(package)
+            workbook = _xml_part(package, workbook_part)
+            entries = []
+            for ordinal, element in enumerate(
+                    (node for node in workbook.iter() if _local_name(node.tag) == "sheet"), 1):
+                name = element.attrib.get("name")
+                if name is None:
+                    raise BrewdocError("OOXML worksheet name is missing")
+                entries.append((ordinal, name, _sheet_relation_id(element, name)))
+            selected = _select_sheets((name for _ordinal, name, _relation in entries), sheets)
+            by_name = {name: (ordinal, relation) for ordinal, name, relation in entries}
+            relationships = _relationships(package, _relationship_part(workbook_part))
+            artifacts = []
+            for _selected_ordinal, name in selected:
+                ordinal, relation_id = by_name[name]
+                relationship = relationships.get(relation_id)
+                if relationship is None:
+                    raise BrewdocError("worksheet relationship %s is missing for sheet %s"
+                                       % (relation_id, name))
+                if not relationship.attrib.get("Type", "").endswith("/worksheet"):
+                    continue
+                if relationship.attrib.get("TargetMode") == "External":
+                    raise BrewdocError("worksheet relationship is external for sheet %s" % name)
+                target = _resolve_ooxml_part(
+                    workbook_part, relationship.attrib.get("Target", ""))
+                root = _xml_part(package, target)
+                key = "formula/sheet/%06d" % ordinal
+                if references:
+                    count = sum(1 for _address, _formula in _formula_elements(root, name))
+                    if count:
+                        artifacts.append(FormulaArtifactRef(
+                            key, path.name, digest, ordinal, name, count))
+                else:
+                    formulas = _formula_cells(root, name)
+                    if formulas:
+                        artifacts.append(FormulaArtifact(
+                            key, path.name, digest, ordinal, name, formulas))
+            return tuple(artifacts)
+    except BrewdocError:
+        raise
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise BrewdocError("formula artifact unreadable: %s: %s" % (path, exc)) from exc
+
+
+def read_formulas(path, *, sheets=None) -> tuple[FormulaArtifact, ...]:
+    """Read formula-bearing OOXML sheets as immutable keyed artifacts."""
+    return _read_formula_artifacts(Path(path), sheets)
+
+
+def discover_formula_artifacts(path, *, sheets=None) -> tuple[FormulaArtifactRef, ...]:
+    """List one stable reference per formula-bearing OOXML source sheet."""
+    return _read_formula_artifacts(Path(path), sheets, references=True)
+
+
+def read_formula_artifact(path, key: str) -> FormulaArtifact:
+    """Read one formula artifact by its full-source ordinal key."""
+    for artifact in read_formulas(path):
+        if artifact.key == key:
+            return artifact
+    raise BrewdocError("formula artifact not found: %s" % key)
+
+
+def _vba_relationship(package: zipfile.ZipFile, workbook_part: str):
+    """Return the single internal VBA relationship or a known absent result."""
+    relationships = tuple(
+        relationship for relationship in _relationship_elements(
+            package, _relationship_part(workbook_part))
+        if relationship.attrib.get("Type") == VBA_RELATIONSHIP_TYPE
+    )
+    if len(relationships) > 1:
+        raise BrewdocError("multiple VBA project relationships")
+    if not relationships:
+        return None
+    relationship = relationships[0]
+    if relationship.attrib.get("TargetMode") == "External":
+        raise BrewdocError("VBA project relationship is external")
+    package_part = _resolve_ooxml_part(
+        workbook_part, relationship.attrib.get("Target", ""))
+    return relationship.attrib["Type"], package_part
+
+
+def _vba_member(package: zipfile.ZipFile, package_part: str, retain_data: bool):
+    """Hash one bounded project member and optionally retain its exact bytes."""
+    matches = tuple(info for info in package.infolist() if info.filename == package_part)
+    if not matches:
+        raise BrewdocError("OOXML part is missing: %s" % package_part)
+    if len(matches) > 1:
+        raise BrewdocError("OOXML part occurs more than once: %s" % package_part)
+    info = matches[0]
+    if info.flag_bits & 1:
+        raise BrewdocError("VBA project part is encrypted: %s" % package_part)
+    if info.file_size > MAX_VBA_PROJECT_BYTES:
+        raise BrewdocError("VBA project part exceeds %d bytes: %s"
+                           % (MAX_VBA_PROJECT_BYTES, package_part))
+    digest = hashlib.sha256()
+    chunks = []
+    size = 0
+    with package.open(info) as source:
+        while True:
+            chunk = source.read(min(64 * 1024, MAX_VBA_PROJECT_BYTES - size + 1))
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_VBA_PROJECT_BYTES:
+                raise BrewdocError("VBA project part exceeds %d bytes: %s"
+                                   % (MAX_VBA_PROJECT_BYTES, package_part))
+            digest.update(chunk)
+            if retain_data:
+                chunks.append(chunk)
+    return size, digest.hexdigest(), b"".join(chunks) if retain_data else None
+
+
+def _read_vba_artifacts(path: Path, retain_data=False) -> tuple:
+    """Discover or read the one allowed opaque project without parsing its streams."""
+    suffix = path.suffix.lower()
+    if suffix not in VBA_SUFFIXES:
+        raise BrewdocError("VBA artifacts unavailable for '%s'; supported suffixes: %s"
+                           % (suffix, " ".join(VBA_SUFFIXES)))
+    try:
+        source_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        with zipfile.ZipFile(path) as package:
+            relationship = _vba_relationship(package, _workbook_part(package))
+            if relationship is None:
+                return ()
+            relationship_type, package_part = relationship
+            size, project_digest, data = _vba_member(package, package_part, retain_data)
+            fields = (VBA_PROJECT_KEY, path.name, source_digest, relationship_type,
+                      package_part, size, project_digest)
+            if retain_data:
+                return (OpaqueVbaProject(*fields, data),)
+            return (OpaqueVbaProjectRef(*fields),)
+    except BrewdocError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise BrewdocError("VBA artifact unreadable: %s: %s" % (path, exc)) from exc
+
+
+def discover_vba_artifacts(path) -> tuple[OpaqueVbaProjectRef, ...]:
+    """List the related workbook-level VBA project without retaining its bytes."""
+    return _read_vba_artifacts(Path(path))
+
+
+def read_vba_artifact(path, key: str) -> OpaqueVbaProject:
+    """Read one opaque VBA project by its stable workbook-level key."""
+    for artifact in _read_vba_artifacts(Path(path), retain_data=True):
+        if artifact.key == key:
+            return artifact
+    raise BrewdocError("VBA artifact not found: %s" % key)
+
+
+def _validated_sheet_names(path: Path, sheets) -> tuple[str, ...]:
+    """Validate generic artifact selection through the value reader for every format."""
+    try:
+        with CalamineWorkbook.from_path(str(path)) as book:
+            return tuple(name for _ordinal, name in _select_sheets(book.sheet_names, sheets))
+    except BrewdocError:
+        raise
+    except Exception as exc:
+        raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
+
+
+def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
+    """List selected formula sheets and the workbook-level opaque VBA project."""
+    path = Path(path)
+    if path.suffix.lower() not in SHEET_SUFFIXES:
+        raise BrewdocError("workbook artifacts unavailable for '%s'" % path.suffix.lower())
+    selected = _validated_sheet_names(path, sheets)
+    artifacts = []
+    if path.suffix.lower() in FORMULA_SUFFIXES:
+        for reference in discover_formula_artifacts(path, sheets=selected):
+            artifacts.append(ArtifactRef(
+                reference.key, "formula", "available", reference.formula_count,
+                "#" + _unit_anchor(_unit_key("sheet", reference.source_ordinal)),
+                "application/json"))
+    if path.suffix.lower() in VBA_SUFFIXES:
+        for reference in discover_vba_artifacts(path):
+            artifacts.append(ArtifactRef(
+                reference.key, "vba-project", "available", 1, "#brewdoc-metadata",
+                "application/vnd.ms-office.vbaProject", reference.byte_size,
+                reference.project_sha256))
+    return tuple(artifacts)
+
+
+def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
+    """Serialize one formula-bearing sheet as versioned deterministic ASCII JSON."""
+    source = path.read_bytes()
+    payload = {
+        "formulas": [formula.to_dict() for formula in artifact.formulas],
+        "schema": FORMULA_SCHEMA,
+        "sheet": {"key": _unit_key("sheet", artifact.source_ordinal),
+                  "name": artifact.sheet, "ordinal": artifact.source_ordinal},
+        "source": {"bytes": len(source), "name": path.name,
+                   "sha256": hashlib.sha256(source).hexdigest(),
+                   "suffix": path.suffix.lower()},
+    }
+    return (json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
+
+
+def read_book_artifact(path, key: str, *, sheets=None) -> bytes:
+    """Return deterministic formula JSON or exact opaque VBA project bytes by key."""
+    path = Path(path)
+    references = list_book_artifacts(path, sheets=sheets)
+    reference = next((item for item in references if item.key == key), None)
+    if reference is None:
+        raise BrewdocError("workbook artifact not found: %s" % key)
+    if reference.kind == "formula":
+        selected = _validated_sheet_names(path, sheets)
+        artifact = next((item for item in read_formulas(path, sheets=selected)
+                         if item.key == key), None)
+        if artifact is None:
+            raise BrewdocError("workbook artifact not found: %s" % key)
+        return _formula_json(path, artifact)
+    return read_vba_artifact(path, key).data
 
 
 # --- .docx: `word/document.xml`, `w:p` paragraphs and `w:tbl` tables in reading order ---------
@@ -1384,6 +2001,17 @@ def _doc_lines(node, tally: dict) -> list[str]:
             current = []
     lines.append("".join(current))
     return [text for text in (sanitise(line, tally).strip() for line in lines) if text]
+
+
+def _doc_label(node) -> str:
+    """Read a heading label without folding semantic Unicode before Markdown escaping."""
+    parts = []
+    for element in node.iter():
+        if element.tag == W + "t":
+            parts.append(element.text or "")
+        elif element.tag in (W + "tab", W + "br"):
+            parts.append(" ")
+    return re.sub(r"\s+", " ", "".join(parts)).strip() or "Untitled"
 
 
 def _doc_style(node) -> str:
@@ -1438,23 +2066,26 @@ def render_doc(path) -> tuple[str, dict]:
             if not lines:
                 continue
             if HEADING_STYLE_RE.match(_doc_style(node)):
-                chapters.append((heading, blocks))
-                heading, blocks = " ".join(lines), []
+                if blocks or heading != DOC_BODY:
+                    chapters.append((heading, blocks))
+                heading, blocks = _doc_label(node), []
             else:
                 tally["text_regions"] += 1
                 blocks.append(("text", lines))
-    chapters.append((heading, blocks))
-    chapters = [pair for pair in chapters if pair[1]]
+    if blocks or heading != DOC_BODY or not chapters:
+        chapters.append((heading, blocks))
     tally["chapters"] = len(chapters)
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, set(), set(), tally), tally
+    units = [(ordinal, heading, chapter_blocks)
+             for ordinal, (heading, chapter_blocks) in enumerate(chapters, 1)]
+    return _assemble(path, "doc", "chapter", len(units), units, set(), set(), tally), tally
 
 
 # --- CLI --------------------------------------------------------------------------------------
 def _line(route: str, file_ok: bool, reason: str, path, tally: dict | None = None,
-          out=None) -> dict:
+          out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
+          selected_sheets=None) -> dict:
     tally = tally or new_tally()
-    return {"file_ok": file_ok, "route": route, "reason": reason,
+    line = {"file_ok": file_ok, "route": route, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
             "pages": tally["pages"], "sheets": tally["sheets"], "tables": tally["tables"],
             "text_regions": tally["text_regions"], "columns_split": tally["columns_split"],
@@ -1463,9 +2094,368 @@ def _line(route: str, file_ok: bool, reason: str, path, tally: dict | None = Non
             "not_carried": list(PDF_NOT_CARRIED if route == "pdf" else
                                 DOC_NOT_CARRIED if route == "doc" else
                                 SHEET_NOT_CARRIED if route == "sheet" else ())}
+    if file_ok:
+        line.update({"artifacts": list(artifacts), "markdown_schema": MARKDOWN_SCHEMA,
+                     "unit_keys": list(unit_keys)})
+        if selected_sheets is not None:
+            line["selected_sheets"] = list(selected_sheets)
+    return line
 
 
-def run(path, out=None) -> tuple[int, dict, str]:
+def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...]:
+    """Normalize mapping, pair, or CLI KEY=PATH artifact assignments."""
+    if artifact_outputs is None:
+        return ()
+    if isinstance(artifact_outputs, Mapping):
+        assignments = tuple(artifact_outputs.items())
+    elif isinstance(artifact_outputs, (str, bytes)):
+        assignments = (artifact_outputs,)
+    else:
+        try:
+            assignments = tuple(artifact_outputs)
+        except TypeError as exc:
+            raise BrewdocError("artifact outputs must be KEY=PATH assignments") from exc
+    pairs = []
+    keys = set()
+    for assignment in assignments:
+        if isinstance(assignment, str):
+            if "=" not in assignment:
+                raise BrewdocError("malformed artifact assignment: %s" % assignment)
+            key, raw_path = assignment.split("=", 1)
+        else:
+            try:
+                key, raw_path = assignment
+            except (TypeError, ValueError) as exc:
+                raise BrewdocError("malformed artifact assignment: %r" % (assignment,)) from exc
+        if not isinstance(key, str) or not key or raw_path is None or str(raw_path) == "":
+            raise BrewdocError("malformed artifact assignment: %r" % (assignment,))
+        if key in keys:
+            raise BrewdocError("duplicate artifact key: %s" % key)
+        keys.add(key)
+        try:
+            target = Path(raw_path)
+        except TypeError as exc:
+            raise BrewdocError("malformed artifact assignment: %r" % (assignment,)) from exc
+        pairs.append((key, target, str(raw_path)))
+    return tuple(pairs)
+
+
+def _existing_directory(path: Path) -> Path:
+    """Return the nearest existing directory that owns a prospective path."""
+    candidate = path.resolve(strict=False)
+    if not candidate.is_dir():
+        candidate = candidate.parent
+    while not candidate.exists():
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+    if not candidate.is_dir():
+        raise BrewdocError("output parent is not a directory: %s" % candidate)
+    return candidate
+
+
+def _filesystem_case_sensitive(path: Path) -> bool:
+    """Probe the owning filesystem with one temporary case-variant name."""
+    directory = _existing_directory(Path(path))
+    descriptor, raw_probe = tempfile.mkstemp(prefix=".brewdoc-CaSe-", dir=directory)
+    os.close(descriptor)
+    probe = Path(raw_probe)
+    variant = probe.with_name(probe.name.swapcase())
+    try:
+        try:
+            aliases = os.path.samefile(probe, variant)
+        except FileNotFoundError:
+            aliases = False
+        return not aliases
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def _filesystem_normalization_sensitive(path: Path) -> bool:
+    """Probe whether composed and decomposed Unicode names stay distinct."""
+    directory = _existing_directory(Path(path))
+    descriptor, raw_probe = tempfile.mkstemp(prefix=".brewdoc-é-", dir=directory)
+    os.close(descriptor)
+    probe = Path(raw_probe)
+    variant = probe.with_name(probe.name.replace("é", "e\u0301", 1))
+    try:
+        try:
+            aliases = os.path.samefile(probe, variant)
+        except FileNotFoundError:
+            aliases = False
+        return not aliases
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def _paths_alias(first: Path, second: Path) -> bool:
+    first_resolved = first.resolve(strict=False)
+    second_resolved = second.resolve(strict=False)
+    if first_resolved == second_resolved:
+        return True
+    try:
+        return os.path.samefile(first, second)
+    except (FileNotFoundError, OSError):
+        pass
+    first_text = str(first_resolved)
+    second_text = str(second_resolved)
+    first_normalized = unicodedata.normalize("NFC", first_text)
+    second_normalized = unicodedata.normalize("NFC", second_text)
+    if first_normalized.casefold() != second_normalized.casefold():
+        return False
+    first_owner = _existing_directory(first_resolved)
+    second_owner = _existing_directory(second_resolved)
+    if first_owner.stat().st_dev != second_owner.stat().st_dev:
+        return False
+    case_difference = first_normalized != second_normalized
+    normalization_difference = (first_text != first_normalized
+                                or second_text != second_normalized)
+    if case_difference and _filesystem_case_sensitive(first_owner):
+        return False
+    if normalization_difference and _filesystem_normalization_sensitive(first_owner):
+        return False
+    return True
+
+
+def _validate_output_target(target: Path) -> None:
+    """Reject directories, links, and special files before any final output write."""
+    if os.path.lexists(target) and not stat.S_ISREG(target.lstat().st_mode):
+        raise BrewdocError("output target is not a regular file: %s" % target)
+    _existing_directory(target)
+
+
+def _validate_output_paths(source: Path, out, pairs: tuple[tuple[str, Path, str], ...]) -> None:
+    """Reject every source or target alias before a renderer can write output."""
+    markdown_path = Path(out) if out is not None else None
+    if markdown_path is not None and _paths_alias(source, markdown_path):
+        raise BrewdocError("Markdown output aliases the source: %s" % out)
+    if markdown_path is not None:
+        _validate_output_target(markdown_path)
+    seen = []
+    for key, target, shown in pairs:
+        if _paths_alias(source, target):
+            raise BrewdocError("artifact output aliases the source: %s=%s" % (key, shown))
+        if markdown_path is not None and _paths_alias(markdown_path, target):
+            raise BrewdocError("Markdown and artifact outputs collide: %s" % shown)
+        for other_key, other_target, _other_shown in seen:
+            if _paths_alias(other_target, target):
+                raise BrewdocError("artifact outputs collide: %s and %s" % (other_key, key))
+        _validate_output_target(target)
+        seen.append((key, target, shown))
+
+
+@dataclass
+class _OutputPlan:
+    """One output with a captured target, stage, mode, and anonymous rollback data."""
+
+    target: Path
+    payload: bytes
+    final_target: Path | None = None
+    stage: Path | None = None
+    backup: object | None = None
+    mode: int | None = None
+    published: bool = False
+
+
+_OPEN_RECOVERY_BACKUPS = []
+
+
+def _open_unique_output(parent: Path, prefix: str) -> tuple[int, Path]:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    for _attempt in range(100):
+        path = parent / (prefix + secrets.token_hex(12))
+        try:
+            return os.open(path, flags, 0o666), path
+        except FileExistsError:
+            continue
+    raise OSError("could not allocate a unique temporary output in %s" % parent)
+
+
+def _open_stage(parent: Path) -> tuple[int, Path]:
+    """Atomically create a 0666-and-umask stage with an unpredictable name."""
+    return _open_unique_output(parent, ".brewdoc-stage-")
+
+
+def _open_recovery(parent: Path) -> tuple[int, Path]:
+    """Atomically create a non-overwriting emergency recovery output."""
+    return _open_unique_output(parent, ".brewdoc-recovery-")
+
+
+def _copy_stream(source, destination) -> None:
+    while True:
+        chunk = source.read(64 * 1024)
+        if not chunk:
+            return
+        destination.write(chunk)
+
+
+def _cleanup_staged_outputs(plans: list[_OutputPlan]) -> None:
+    for plan in plans:
+        if plan.stage is not None:
+            plan.stage.unlink(missing_ok=True)
+
+
+def _close_output_backups(plans: list[_OutputPlan]) -> None:
+    """Best-effort close anonymous data after every target state is resolved."""
+    for plan in plans:
+        backup = plan.backup
+        plan.backup = None
+        if backup is None:
+            continue
+        try:
+            backup.close()
+        except Exception:
+            if not getattr(backup, "closed", False):
+                try:
+                    backup.close()
+                except Exception:
+                    pass
+
+
+def _stage_backup(plan: _OutputPlan) -> None:
+    """Copy an existing target into anonymous same-filesystem rollback storage."""
+    if plan.mode is None:
+        return
+    plan.backup = tempfile.TemporaryFile(dir=plan.final_target.parent)
+    with plan.final_target.open("rb") as source:
+        _copy_stream(source, plan.backup)
+    plan.backup.flush()
+    plan.backup.seek(0)
+
+
+def _write_backup_copy(plan: _OutputPlan, descriptor: int, path: Path) -> None:
+    """Write a mode-preserving copy of anonymous rollback data to one secure path."""
+    try:
+        os.chmod(path, plan.mode)
+        destination = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        with destination:
+            plan.backup.seek(0)
+            _copy_stream(plan.backup, destination)
+            destination.flush()
+            os.fsync(destination.fileno())
+    except OSError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        path.unlink(missing_ok=True)
+        raise
+
+
+def _prepare_restore_stage(plan: _OutputPlan) -> Path:
+    descriptor, restore_stage = _open_stage(plan.final_target.parent)
+    _write_backup_copy(plan, descriptor, restore_stage)
+    return restore_stage
+
+
+def _materialize_recovery(plan: _OutputPlan) -> Path:
+    descriptor, recovery = _open_recovery(plan.final_target.parent)
+    _write_backup_copy(plan, descriptor, recovery)
+    return recovery
+
+
+def _retain_anonymous_recovery(plan: _OutputPlan) -> str:
+    """Keep the last anonymous copy open when no pathname can be materialized."""
+    descriptor = plan.backup.fileno()
+    _OPEN_RECOVERY_BACKUPS.append(plan.backup)
+    plan.backup = None
+    return "open anonymous recovery descriptor %d" % descriptor
+
+
+def _rollback_outputs(plans: list[_OutputPlan]) -> None:
+    """Restore originals and remove newly published files after a publish failure."""
+    failures = []
+    for plan in reversed(plans):
+        if not plan.published:
+            continue
+        if plan.backup is None:
+            try:
+                plan.final_target.unlink(missing_ok=True)
+            except OSError as exc:
+                failures.append("%s: %s" % (plan.final_target, exc))
+            continue
+        restore_stage = None
+        restore_error = None
+        try:
+            restore_stage = _prepare_restore_stage(plan)
+            os.replace(restore_stage, plan.final_target)
+        except OSError as exc:
+            restore_error = exc
+        if restore_error is None:
+            continue
+        try:
+            recovery = _materialize_recovery(plan)
+        except OSError as recovery_error:
+            if restore_stage is not None and restore_stage.exists():
+                state = "original bytes retained at %s" % restore_stage
+            else:
+                state = "original bytes retained in %s" % _retain_anonymous_recovery(plan)
+            failures.append(
+                "%s: %s; target retains published bytes; recovery materialization failed: %s; %s"
+                % (plan.final_target, restore_error, recovery_error, state))
+        else:
+            if restore_stage is not None:
+                restore_stage.unlink(missing_ok=True)
+            failures.append(
+                "%s: %s; target retains published bytes; original bytes saved at %s"
+                % (plan.final_target, restore_error, recovery))
+    if failures:
+        raise OSError("output rollback failed: %s" % "; ".join(failures))
+
+
+def _write_outputs(outputs: tuple[tuple[Path, bytes], ...], source: Path | None = None) -> None:
+    """Stage every payload, then atomically publish all or restore prior targets."""
+    plans = [_OutputPlan(target, payload) for target, payload in outputs]
+    try:
+        for index, plan in enumerate(plans):
+            plan.target.parent.mkdir(parents=True, exist_ok=True)
+            real_parent = plan.target.parent.resolve(strict=True)
+            plan.final_target = real_parent / plan.target.name
+            if source is not None and _paths_alias(source, plan.final_target):
+                raise BrewdocError("captured output target aliases the source: %s" % plan.target)
+            for earlier in plans[:index]:
+                if _paths_alias(earlier.final_target, plan.final_target):
+                    raise BrewdocError("captured output targets collide: %s and %s"
+                                       % (earlier.target, plan.target))
+            _validate_output_target(plan.final_target)
+            if os.path.lexists(plan.final_target):
+                plan.mode = stat.S_IMODE(plan.final_target.stat().st_mode)
+            descriptor, plan.stage = _open_stage(real_parent)
+            try:
+                if plan.mode is not None:
+                    os.chmod(plan.stage, plan.mode)
+                stream = os.fdopen(descriptor, "wb")
+                descriptor = -1
+                with stream:
+                    stream.write(plan.payload)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            except OSError:
+                if descriptor >= 0:
+                    os.close(descriptor)
+                raise
+            _stage_backup(plan)
+    except (BrewdocError, OSError):
+        _cleanup_staged_outputs(plans)
+        _close_output_backups(plans)
+        raise
+    try:
+        for plan in plans:
+            os.replace(plan.stage, plan.final_target)
+            plan.stage = None
+            plan.published = True
+    except OSError:
+        try:
+            _rollback_outputs(plans)
+        finally:
+            _cleanup_staged_outputs(plans)
+            _close_output_backups(plans)
+        raise
+    _close_output_backups(plans)
+
+
+def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
     suffix = path.suffix.lower()
@@ -1477,21 +2467,51 @@ def run(path, out=None) -> tuple[int, dict, str]:
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
-        markdown, tally = (render_pdf(path) if route == "pdf" else
-                           render_doc(path) if route == "doc" else render_book(path))
+        pairs = _artifact_output_pairs(artifact_outputs)
+        if route != "sheet" and (sheets is not None or pairs):
+            raise BrewdocError("--sheet and --artifact are workbook-only options")
+        _validate_output_paths(path, out, pairs)
+        if route == "pdf":
+            markdown, tally = render_pdf(path)
+            references = ()
+            unit_keys = tuple(_unit_key("page", ordinal)
+                              for ordinal in range(1, tally["pages"] + 1))
+        elif route == "doc":
+            markdown, tally = render_doc(path)
+            references = ()
+            unit_keys = tuple(_unit_key("chapter", ordinal)
+                              for ordinal in range(1, tally["chapters"] + 1))
+        else:
+            markdown, tally, references, unit_keys = _render_book(path, sheets)
+        by_key = {reference.key: reference for reference in references}
+        unknown = [key for key, _target, _shown in pairs if key not in by_key]
+        if unknown:
+            raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
+        markdown_bytes = markdown.encode("ascii")
+        artifact_bytes = tuple((key, target, shown,
+                                read_book_artifact(path, key, sheets=sheets))
+                               for key, target, shown in pairs)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
     except Exception as exc:
         return EXIT_FAIL, _line(route, False, "%s unreadable: %s: %s: %s"
                                 % (route, path, type(exc).__name__, exc), path), ""
-    if out:
-        Path(out).parent.mkdir(parents=True, exist_ok=True)
-        Path(out).write_text(markdown, encoding="ascii")
+    outputs = ((Path(out), markdown_bytes),) if out is not None else ()
+    outputs += tuple((target, payload) for _key, target, _shown, payload in artifact_bytes)
+    try:
+        _write_outputs(outputs, path)
+    except (BrewdocError, OSError) as exc:
+        return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
     reason = "%s rendered: %d chapters, %d tables, %d text regions, %d column splits" % (
         route, tally["pages"] or tally["sheets"] or tally["chapters"], tally["tables"],
         tally["text_regions"],
         tally["columns_split"])
-    return EXIT_OK, _line(route, True, reason, path, tally, out), markdown
+    output_by_key = {key: shown for key, _target, shown, _payload in artifact_bytes}
+    receipt_artifacts = tuple(reference.to_dict(output_by_key.get(reference.key))
+                              for reference in references)
+    selection = tuple(sheets) if sheets is not None else None
+    return EXIT_OK, _line(route, True, reason, path, tally, out, unit_keys,
+                          receipt_artifacts, selection), markdown
 
 
 # --- self-check: synthetic documents, no fixture file needed ----------------------------------
@@ -1684,7 +2704,8 @@ def self_check() -> int:
         doc_path = Path(tmp, "fixture.docx")
         doc_path.write_bytes(synthetic_docx())
         markdown, tally = render_doc(doc_path)
-        want("a Word heading opens its own chapter", markdown.count("## Growth regulators"), 1)
+        want("a Word heading opens its own chapter",
+             markdown.count('## Chapter 1: "Growth regulators"'), 1)
         want("a w:br is a line break, and a deleted run is not carried",
              chapter_lines(markdown, "Growth regulators")[:2], ["first line", "second line"])
         want("a spanning cell is padded, so every column stays under its own head",
@@ -1739,7 +2760,8 @@ def self_check() -> int:
         _synthetic_xlsx(book_path)
         book_md, book_tally = render_book(book_path)
         want("one chapter per sheet",
-             [row for row in book_md.splitlines() if row.startswith("## ")], ["## Zones"])
+             [row for row in book_md.splitlines() if row.startswith("## Sheet ")],
+             ['## Sheet 1: "Zones"'])
         want("the sheet's measured types survive",
              chapter_lines(book_md, "Zones"),
              ["| Zone | Area | Sown |", "| --- | --- | --- |",
@@ -1760,16 +2782,28 @@ def self_check() -> int:
 
 
 def chapter_lines(markdown: str, heading: str) -> list[str]:
-    """The non-blank lines under one `## heading`."""
+    """Return content under an old label or a schema 2 unit display label."""
     lines = markdown.splitlines()
-    start = lines.index("## " + heading) + 1
-    rest = [index for index, line in enumerate(lines[start:], start) if line.startswith("## ")]
+    escaped = _escape_markdown_text(heading)
+    candidates = ("## " + heading, '## Page ' + heading.removeprefix("Page "),
+                  ': "%s"' % escaped)
+    matched = next((index for index, line in enumerate(lines)
+                    if line == candidates[0]
+                    or (heading.startswith("Page ") and line == candidates[1])
+                    or (line.startswith(("## Sheet ", "## Chapter "))
+                        and line.endswith(candidates[2]))), None)
+    if matched is None:
+        raise ValueError("chapter heading not found: %s" % heading)
+    start = matched + 1
+    rest = [index for index, line in enumerate(lines[start:], start)
+            if line.startswith("## ")
+            or re.match(r'<a id="brewdoc-(?:page|sheet|chapter)-\d{6}"></a>', line)]
     body = lines[start:rest[0]] if rest else lines[start:]
     return [line for line in body if line.strip()]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The command-line parser: one document, optional `--out`, `--self-check`."""
+    """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
         description="Render a PDF, a Word document or a spreadsheet as deterministic, "
@@ -1791,6 +2825,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("document", nargs="?",
                         help="the .pdf, .docx or spreadsheet to render")
     parser.add_argument("--out", help="write the Markdown here (ASCII); default stdout")
+    parser.add_argument("--sheet", action="append",
+                        help="render this exact workbook sheet; repeat for caller order")
+    parser.add_argument("--artifact", action="append",
+                        help="write one listed workbook artifact as KEY=PATH; repeat as needed")
     parser.add_argument("--self-check", action="store_true", dest="self_check",
                         help="render synthetic fixtures twice and compare; exits 0 when green")
     return parser
@@ -1805,10 +2843,11 @@ def main(argv=None) -> int:
     if not args.document:
         parser.print_usage()
         return EXIT_USAGE
-    rc, line, markdown = run(args.document, args.out)
+    rc, line, markdown = run(
+        args.document, args.out, sheets=args.sheet, artifact_outputs=args.artifact)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
-        print(markdown)
+        sys.stdout.write(markdown)
     return rc
 
 

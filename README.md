@@ -30,8 +30,21 @@ cryptography) and `python-calamine`.
 ```
 brewdoc file.pdf --out file.md
 brewdoc file.xlsx                # no --out: receipt line, then the Markdown, on stdout
+brewdoc file.xlsx --sheet Calc --sheet Inputs
+brewdoc file.xlsm --artifact formula/sheet/000002=formulas.json
+brewdoc file.xlsm --artifact vba/project/000001=vbaProject.bin
 brewdoc --self-check             # renders synthetic fixtures twice, compares sha256, exit 0 when green
 ```
+
+`--sheet` is repeatable. Names are exact and case-sensitive. Output follows caller order while
+keeping each sheet's full-workbook ordinal. `--artifact` is also repeatable. Use keys listed in the
+Markdown artifact table. brewdoc validates every request and output collision before writing.
+
+Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,
+Artifacts, Known omissions, Contents, then anchored content units. PDF keys are `page/000001`,
+workbook keys are `sheet/000001`, and DOCX keys are `chapter/000001`. Metadata contains deterministic
+source identity, selection, content hashes, conversion tallies, and artifact capabilities. It excludes
+paths, timestamps, permissions, host data, and unsupported author metadata.
 
 One JSON receipt line always goes to stdout first:
 
@@ -53,6 +66,8 @@ One JSON receipt line always goes to stdout first:
 | `dropped` | sanitised items removed on purpose, counted by kind (running heads, page numbers, ...) |
 | `not_carried` | what this route structurally cannot represent - read it before concluding a fact is absent |
 | `out` | the Markdown path, or `null` when it went to stdout |
+| `markdown_schema`, `unit_keys` | the contract and ordered full-source content keys |
+| `artifacts` | available keyed formula or opaque VBA outputs and requested output paths |
 
 Paths resolve against the current working directory; `--out` creates parent directories.
 Exit code is non-zero on refusal; the receipt line is still printed.
@@ -63,7 +78,23 @@ Exit code is non-zero on refusal; the receipt line is still printed.
 |---|---|---|
 | `.pdf` | pdfplumber | needs a text layer; route chosen per region, never per page |
 | `.docx` | stdlib zip + XML | paragraphs and tables |
-| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | one section per sheet, addressed by name; numbers as stored (`85.0`), dates as ISO days |
+| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | selected sheets keep full-source ordinals; numbers as stored (`85.0`), dates as ISO days |
+
+`.xlsx` and `.xlsm` expose original OOXML formulas as one deterministic JSON artifact per
+formula-bearing selected sheet. Markdown still contains cached values. `.xlsm` and `.xlsb` can expose
+one complete related `vbaProject.bin` as opaque bytes. brewdoc does not execute macros, decompile VBA,
+report source-module counts, evaluate formulas, or infer dependency graphs.
+
+The public Python API keeps the existing render tuples and adds generic artifact access:
+
+```python
+refs = brewdoc.list_book_artifacts("book.xlsm", sheets=("Calc",))
+payload = brewdoc.read_book_artifact("book.xlsm", refs[0].key, sheets=("Calc",))
+code, receipt, markdown = brewdoc.run(
+    "book.xlsm", out="book.md", sheets=("Calc",),
+    artifact_outputs={refs[0].key: "formulas.json"},
+)
+```
 
 Planned formats (all stdlib, zero new dependencies), deferred ones and the never-list: `FORMATS.md`.
 
@@ -89,6 +120,8 @@ PDF regions, in the order tried:
 | text rotated out of horizontal reading order | not carried |
 | sub/superscripts | folded back into their line (`NH4H2PO4`, not `NHHPO` over `4 2 4`) |
 | broken font CMaps (ligatures mapped to wrong code points) | counted (`broken_ligature_words`), folded to ASCII, never guessed back |
+| formula calculation | cached values in Markdown; passive source formulas only for `.xlsx` and `.xlsm` |
+| readable VBA source | unavailable; `.xlsm` and `.xlsb` preserve a related project only as opaque bytes |
 
 ## Determinism
 

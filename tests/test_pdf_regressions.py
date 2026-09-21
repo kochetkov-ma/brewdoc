@@ -327,7 +327,8 @@ def test_sparse_numeric_ruling_keeps_six_columns_and_grouped_headers(tmp_path):
     code, receipt, markdown = reader.run(path)
     # THEN stubs and units stay associated with all four values under the grouped header
     assert (code, receipt["file_ok"]) == (0, True), "the sparse six-column source must render successfully"
-    assert re.findall(r"^\|.*\|$", markdown, re.MULTILINE) == [
+    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | Unit | Score |  | Rate |  |", "| --- | --- | --- | --- | --- | --- |",
         "|  |  | A | B | C | D |", "| Alpha | kg | 11 | 12 | 13 | 14 |",
         "| Beta | kg | 21 | 22 | 23 | 24 |",
@@ -406,7 +407,8 @@ def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
     code, receipt, markdown = reader.run(path)
     # THEN the long model and adjacent hardware retain their own cells
     assert (code, receipt["file_ok"]) == (0, True), "the valid four-column source must render successfully"
-    assert re.findall(r"^\|.*\|$", markdown, re.MULTILINE) == [
+    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | GPU | Power | Carbon |", "| --- | --- | --- | --- |",
         "| Alpha | V100 | 10 | 20 |", "| Beta | V100 | 30 | 40 |",
         "| BLOOM-176B | A100-80GB | 50 | 60 |",
