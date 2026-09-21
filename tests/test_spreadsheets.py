@@ -1,5 +1,7 @@
 import hashlib
+import io
 import json
+import os
 import re
 import stat
 import zipfile
@@ -798,9 +800,6 @@ def test_double_publish_and_restore_failure_materializes_exact_recovery(tmp_path
     assert recovery.read_bytes() == b"old markdown", (
         "the recovery file must preserve every original Markdown byte"
     )
-    assert stat.S_IMODE(recovery.stat().st_mode) == 0o640, (
-        "the recovery file must preserve the original output mode"
-    )
     assert first_out.read_bytes() == b"old artifact", (
         "unrelated published outputs must still roll back successfully"
     )
@@ -861,9 +860,6 @@ def test_recovery_materialization_failure_retains_and_reports_complete_stage(
     retained = Path(retained_match.group(1))
     assert retained.read_bytes() == b"old markdown", (
         "the retained restore stage must preserve every original byte"
-    )
-    assert stat.S_IMODE(retained.stat().st_mode) == 0o640, (
-        "the retained restore stage must preserve the original mode"
     )
     assert first_out.read_bytes() == b"old artifact", (
         "unrelated outputs must roll back despite recovery materialization failure"
@@ -1062,7 +1058,8 @@ def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path,
     )
 
 
-def test_output_modes_preserve_existing_and_follow_umask_for_new_files(tmp_path):
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
+def test_posix_output_modes_preserve_existing_and_follow_umask_for_new_files(tmp_path):
     # GIVEN one existing target mode and a control file created with 0666 under the current umask
     path = formula_book(tmp_path / "book.xlsx")
     markdown_out = tmp_path / "book.md"
@@ -1090,26 +1087,62 @@ def test_output_modes_preserve_existing_and_follow_umask_for_new_files(tmp_path)
     )
 
 
-def test_mode_preservation_does_not_require_unix_fchmod(tmp_path, monkeypatch):
-    # GIVEN an existing output mode on a runtime without os.fchmod
+def test_publication_does_not_require_unix_fchmod(tmp_path, monkeypatch):
+    # GIVEN an existing output on a runtime without os.fchmod
+    path = formula_book(tmp_path / "book.xlsx")
+    markdown_out = tmp_path / "book.md"
+    markdown_out.write_bytes(b"old markdown")
+    monkeypatch.delattr(reader.os, "fchmod", raising=False)
+    # WHEN the existing output is replaced
+    code, _receipt, markdown = reader.run(path, markdown_out)
+    # THEN the portable path publishes exact bytes and leaves no stage or uncaught error
+    assert code == 0, "publication must work without the Unix-only fchmod API"
+    assert markdown_out.read_bytes() == markdown.encode("ascii"), (
+        "portable publication must still write the requested bytes"
+    )
+    assert list(tmp_path.glob(".brewdoc-stage-*")) == [], (
+        "portable publication must not leak a stage file"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
+def test_posix_mode_preservation_does_not_require_fchmod(tmp_path, monkeypatch):
+    # GIVEN an existing POSIX output mode on a runtime without os.fchmod
     path = formula_book(tmp_path / "book.xlsx")
     markdown_out = tmp_path / "book.md"
     markdown_out.write_bytes(b"old markdown")
     markdown_out.chmod(0o640)
     monkeypatch.delattr(reader.os, "fchmod", raising=False)
     # WHEN the existing output is replaced
-    code, _receipt, markdown = reader.run(path, markdown_out)
-    # THEN the portable path preserves mode and leaves no stage or uncaught error
-    assert code == 0, "mode preservation must work without the Unix-only fchmod API"
-    assert markdown_out.read_bytes() == markdown.encode("ascii"), (
-        "portable mode handling must still publish the requested bytes"
-    )
+    code, _receipt, _markdown = reader.run(path, markdown_out)
+    # THEN portable chmod preserves the exact existing mode
+    assert code == 0, "POSIX mode preservation must work without fchmod"
     assert stat.S_IMODE(markdown_out.stat().st_mode) == 0o640, (
-        "portable chmod must preserve the existing output mode"
+        "portable chmod must preserve the existing POSIX output mode"
     )
-    assert list(tmp_path.glob(".brewdoc-stage-*")) == [], (
-        "portable mode handling must not leak a stage file"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
+def test_posix_recovery_outputs_preserve_original_mode(tmp_path):
+    # GIVEN rollback bytes and the captured mode of an existing POSIX output
+    target = tmp_path / "book.md"
+    plan = reader._OutputPlan(
+        target=target, payload=b"new markdown", final_target=target,
+        backup=io.BytesIO(b"old markdown"), mode=0o640,
     )
+    # WHEN both durable and retained recovery copies are materialized
+    recovery = reader._materialize_recovery(plan)
+    retained = reader._prepare_restore_stage(plan)
+    # THEN each copy preserves both the original bytes and permission mode
+    assert (recovery.read_bytes(), retained.read_bytes()) == (
+        b"old markdown", b"old markdown",
+    ), "both recovery forms must preserve every original byte"
+    assert (
+        stat.S_IMODE(recovery.stat().st_mode),
+        stat.S_IMODE(retained.stat().st_mode),
+    ) == (0o640, 0o640), "both recovery forms must preserve the original POSIX mode"
+    recovery.unlink()
+    retained.unlink()
 
 
 def test_formula_inventory_has_one_linked_row_per_sheet_not_per_cell(tmp_path):
