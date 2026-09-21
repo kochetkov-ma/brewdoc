@@ -37,7 +37,7 @@ Issues = "https://github.com/kochetkov-ma/brewdoc/issues"
 brewdoc = "brewdoc.cli:main"
 
 [dependency-groups]
-dev = ["pytest==9.1.1"]
+dev = ["pytest==9.1.1", "pytest-randomly==5.0.0", "pytest-xdist==3.8.0"]
 
 [build-system]
 requires = ["hatchling==1.32.0"]
