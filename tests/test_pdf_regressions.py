@@ -419,3 +419,25 @@ def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
         "| Alpha | V100 | 10 | 20 |", "| Beta | V100 | 30 | 40 |",
         "| BLOOM-176B | A100-80GB | 50 | 60 |",
     ], "a narrow gap must not merge text fields from distinct repeated columns"
+
+
+def test_line_number_rail_keeps_each_code_line_whole_without_a_page_gutter(tmp_path):
+    # GIVEN a numbered code listing whose rail leaves a wide gap on every line
+    path = tmp_path / "numbered-listing.pdf"
+    body = ["def solve(a, b, c):", "delta = b * b - 4 * a * c", "if delta == 0:", "return None",
+            "root = delta ** 0.5", "left = (-b - root) / (2 * a)",
+            "right = (-b + root) / (2 * a)", "return left, right"]
+    indents = (100, 125, 125, 150, 125, 125, 125, 125)
+    commands = "".join(text_op(80, 700 - 12 * index, str(index + 1)) + text_op(x, 700 - 12 * index, text)
+                       for index, (x, text) in enumerate(zip(indents, body)))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    listing = ["%d %s" % (index + 1, text) for index, text in enumerate(body)]
+    assert source_lines(path) == listing, "the source must expose every line number beside its own code line"
+    with pdfplumber.open(path) as document:
+        glyph = document.pages[0].chars[1]
+    assert (glyph["text"], round(glyph["x0"], 2), round(glyph["x1"], 2)) == ("d", 100.0, 105.56), "the first code glyph must straddle the midpoint the indented gaps imply"
+    # WHEN the listing band is checked for repeated prose-column starts
+    code, receipt, markdown = service.run(path)
+    # THEN no gutter is taken and every glyph stays once on its own numbered line
+    assert (code, receipt["file_ok"]) == (0, True), "the valid listing source must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["columns_split"]) == (listing, 0), "a line-number rail is not a page gutter, so no glyph may be cut or duplicated"

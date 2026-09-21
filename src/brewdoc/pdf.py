@@ -151,8 +151,17 @@ def _prose_gutters(band, width: float) -> list[float]:
         if not clusters or gap[0] - clusters[-1][0][0] > COLUMN_TOLERANCE:
             clusters.append([])
         clusters[-1].append(gap)
-    return [(min(gap[0] for gap in group) + max(gap[1] for gap in group)) / 2
-            for group in clusters if len({gap[2] for gap in group}) >= max(3, len(band) * 0.35)]
+    gutters = []
+    for group in clusters:
+        rows = {gap[2] for gap in group}
+        if len(rows) < max(3, len(band) * 0.35):
+            continue
+        gutter = (min(gap[0] for gap in group) + max(gap[1] for gap in group)) / 2
+        # A left segment that is a bare integer on every line is a line-number rail, not a column.
+        if not all("".join(char["text"] for char in _line_chars(band[row]) if char["x1"] <= gutter).isdigit()
+                   for row in rows):
+            gutters.append(gutter)
+    return gutters
 
 
 def _crop(page, x0, top, x1, bottom):
