@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from brewdoc import reader
+from brewdoc import common, service
 
 pytestmark = pytest.mark.corpus
 
@@ -19,6 +19,7 @@ SNAPSHOT_KEYS = {
     True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
 }
 SCAN = "pdf/us-patent-223898-scan.pdf"
+CORPUS_BYTES = 5_713_778
 PROVENANCE = ("SOURCES.md", "receipts.json")
 ROW = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<url>\S+) \| \[(?P<license>[^\]]+)\]\((?P<link>[^)]+)\)"
                  r" \| `(?P<sha256>[0-9a-f]{64})` \| (?P<size>\d+) \| (?P<shape>.+) \|$")
@@ -49,11 +50,11 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_
     path = FIXTURES / rel
     out = tmp_path / (path.name + ".md")
     # WHEN it is rendered twice
-    rc, line, first = reader.run(path, out)
-    second = reader.run(path)[2]
+    rc, line, first = service.run(path, out)
+    second = service.run(path)[2]
     # THEN it exits 0 with exactly the recorded receipt, and both renders share one sha256
     assert snapshot(rc, line) == RECEIPTS[rel], "receipt drifted for %s: %s" % (rel, line["reason"])
-    assert reader.sha256(first) == reader.sha256(second), "the render of %s is not deterministic" % rel
+    assert common.sha256(first) == common.sha256(second), "the render of %s is not deterministic" % rel
     assert out.read_text(encoding="ascii") == first, "--out must hold the same bytes run() returns"
 
 
@@ -68,10 +69,10 @@ def test_the_scanned_patent_is_refused_by_name():
     # GIVEN a real five-page scan with no text layer
     path = FIXTURES / SCAN
     # WHEN it is read
-    rc, line, markdown = reader.run(path)
+    rc, line, markdown = service.run(path)
     # THEN the refusal names the page count, the path and the absence of OCR
     assert (rc, line["file_ok"], line["route"], line["reason"], markdown) == (
-        reader.EXIT_FAIL, False, "pdf",
+        service.EXIT_FAIL, False, "pdf",
         "no text layer: 5 of 5 pages carry zero characters in %s - this reader does no OCR" % path,
         "",
     ), "a scan must be refused, never rendered empty"
@@ -82,10 +83,10 @@ def test_a_planned_format_fixture_is_refused_today(rel):
     # GIVEN a real document of a format the reader plans but does not read yet
     path = FIXTURES / rel
     # WHEN it is read
-    rc, line, markdown = reader.run(path)
+    rc, line, markdown = service.run(path)
     # THEN it is refused with the exact suffix message - this assertion flips when support lands
     assert (rc, line["route"], line["reason"], markdown) == (
-        reader.EXIT_FAIL, "none",
+        service.EXIT_FAIL, "none",
         "unsupported suffix '%s' in %s: brewdoc reads .docx .ods .pdf .xls .xlsb .xlsm .xlsx"
         % (path.suffix, path),
         "",
@@ -122,9 +123,10 @@ def test_every_sources_row_carries_an_allowed_license_and_a_source_url():
 def test_the_corpus_stays_small():
     # GIVEN every fixture's size
     sizes = {rel: (FIXTURES / rel).stat().st_size for rel in fixture_files()}
-    # WHEN measured against the caps (3 MB per file, 20 MB in total)
+    # WHEN each file is measured against the 3 MB cap
     oversized = sorted(rel for rel, size in sizes.items() if size > 3_000_000)
-    # THEN no file and no total crosses them
-    assert (oversized, sum(sizes.values()) <= 20_000_000) == ([], True), (
-        "fixtures must stay small enough for a public CI checkout"
+    # THEN no file crosses it and the corpus keeps its recorded total, far below the 20 MB cap
+    assert (oversized, sum(sizes.values())) == ([], CORPUS_BYTES), (
+        "fixtures must stay small enough for a public CI checkout: 3 MB per file, 20 MB in total;"
+        " change CORPUS_BYTES with SOURCES.md when the corpus changes"
     )

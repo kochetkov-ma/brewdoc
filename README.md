@@ -22,7 +22,7 @@ Alternative, straight from git (no PyPI round-trip):
 uvx --from git+https://github.com/kochetkov-ma/brewdoc brewdoc file.pdf
 ```
 
-Requires Python >= 3.10. Runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
+Requires Python >= 3.12. Runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
 cryptography) and `python-calamine`.
 
 ## Usage

@@ -1,13 +1,13 @@
 """Synthetic regressions for PDF record boundaries, prose and technical notation."""
 
-from pathlib import Path
 import re
 
 import pdfplumber
-from pdfminer.pdftypes import resolve1
 import pytest
 
-from brewdoc import reader
+from brewdoc import common, selfcheck, service
+
+FONT_NAME = "BDTEST+CMEX10"
 
 
 def text_op(x, y, text):
@@ -28,7 +28,7 @@ def source_lines(path):
 
 def symbol_pdf(commands):
     """Add an explicitly encoded Symbol font while retaining valid PDF offsets."""
-    document = reader.synthetic_pdf([commands])
+    document = selfcheck.synthetic_pdf([commands])
     fonts = (rb"/Font << /F1 \1 0 R /F2 << /Type /Font /Subtype /Type1 /BaseFont /Symbol "
              rb"/Encoding << /Differences [45 /minus 98 /beta 112 /pi 229 /summation] >> >> >>")
     document = re.sub(rb"/Font << /F1 (\d+) 0 R >>", fonts, document)
@@ -41,50 +41,46 @@ def symbol_pdf(commands):
     return prefix + xref + trailer.encode()
 
 
-def font_identity_pdf(case):
-    """Embed complete public Type1 programs with isolated metadata ambiguities."""
-    source = Path(__file__).parent / "fixtures/pdf/arxiv-2305.18290v3.pdf"
-    with pdfplumber.open(source) as document:
-        fonts = resolve1(document.pages[2].page_obj.resources["Font"])
-        font = next(item for item in map(resolve1, fonts.values())
-                    if getattr(item.get("BaseFont"), "name", "").endswith("CMEX10"))
-        font_name = font["BaseFont"].name
-        stream = resolve1(resolve1(font["FontDescriptor"])["FontFile"])
-        program, length1, length2 = stream.get_data(), stream["Length1"], stream["Length2"]
-        cmap = resolve1(font["ToUnicode"]).get_data()
-    header, encrypted = program[:length1], program[length1:]
-    assert b"dup 80 /summationtext put" in header, "the public font must define code 80 as summation text"
-    assert b"/productdisplay" in header, "the alternate glyph must exist in the complete source font"
-    other = header.replace(b"dup 80 /summationtext put", b"dup 80 /productdisplay put")
-    if case == "unrelated-array":
-        header = header.replace(b"currentfile eexec", b"/Other 256 array dup 80 /productdisplay put readonly def\ncurrentfile eexec")
-    if case == "pdf-encoding-override":
-        header = header.replace(b"readonly def\ncurrentdict end",
-                                b"dup 255 /summationtext put\nreadonly def\ncurrentdict end")
-    second_font = "F2" if case == "duplicate-basefont" else "F1"
-    glyph = "\\377" if case == "pdf-encoding-override" else "P"
-    commands = f"BT /F1 10 Tf 1 0 0 1 80 690 Tm ({glyph}) Tj ET\n"
-    commands += f"BT /{second_font} 10 Tf 1 0 0 1 110 690 Tm ({glyph}) Tj ET\n"
-    original = reader.synthetic_pdf([commands]).split(b"xref\n", 1)[0]
+def type1_program(codes, trailing=""):
+    """A Type1 font header: `codes` is its builtin encoding, `trailing` holds later definitions."""
+    return (f"%!PS-AdobeFont-1.0: {FONT_NAME} 001.000\n"
+            f"/FontName /{FONT_NAME} def\n/FontType 1 def\n"
+            "/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n"
+            "/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n"
+            + "".join(f"dup {code} /{glyph} put\n" for code, glyph in codes)
+            + f"readonly def\n{trailing}currentdict end\ncurrentfile eexec\n")
+
+
+SUMMATION_PROGRAM = type1_program(((80, "summationtext"),))
+PRODUCT_PROGRAM = type1_program(((80, "productdisplay"),))
+UNRELATED_ARRAY_PROGRAM = type1_program(((80, "summationtext"),),
+                                        "/Other 256 array dup 80 /productdisplay put readonly def\n")
+OVERRIDDEN_PROGRAM = type1_program(((80, "summationtext"), (255, "summationtext")))
+PDF_DIFFERENCES = "/Encoding << /Differences [255 /productdisplay] >> "
+
+
+def font_identity_pdf(fonts, encoding, char_code):
+    """Show `char_code` once per `(resource name, Type1 program)` entry, each font embedded."""
+    commands = "".join(f"BT /{name} 10 Tf 1 0 0 1 {x} 690 Tm (\\{char_code:03o}) Tj ET\n"
+                       for x, (name, _) in zip((80, 110), fonts))
+    original = selfcheck.synthetic_pdf([commands]).split(b"xref\n", 1)[0]
     objects = {int(number): body for number, body in
                re.findall(rb"(?ms)^(\d+) 0 obj\n(.*?)\nendobj\n", original)}
-    font_records = [(5, 6, header)]
-    if case == "duplicate-basefont":
-        objects[3] = objects[3].replace(b"/F1 5 0 R", b"/F1 5 0 R /F2 8 0 R")
-        font_records.append((8, 9, other))
+    programs = dict(fonts)
+    numbers = {name: 5 + 2 * index for index, name in enumerate(programs)}
+    references = " ".join(f"/{name} {number} 0 R" for name, number in numbers.items())
+    objects[3] = objects[3].replace(b"/F1 5 0 R", references.encode())
     widths = " ".join(["500"] * 256)
-    for font_number, stream_number, prefix in font_records:
-        encoding = "/Encoding << /Differences [255 /productdisplay] >> " if case == "pdf-encoding-override" else ""
-        descriptor = (f"/Type /FontDescriptor /FontName /{font_name} /Flags 4 "
+    for name, program in programs.items():
+        data, stream_number = program.encode("ascii"), numbers[name] + 1
+        descriptor = (f"/Type /FontDescriptor /FontName /{FONT_NAME} /Flags 4 "
                       f"/FontBBox [-1000 -1000 2000 2000] /ItalicAngle 0 /Ascent 1000 "
                       f"/Descent -200 /CapHeight 700 /StemV 80 /FontFile {stream_number} 0 R")
-        objects[font_number] = (f"<< /Type /Font /Subtype /Type1 /BaseFont /{font_name} "
-                                f"/FirstChar 0 /LastChar 255 /Widths [{widths}] "
-                                f"{encoding}/ToUnicode 7 0 R /FontDescriptor << {descriptor} >> >>").encode()
-        data = prefix + encrypted
-        objects[stream_number] = (f"<< /Length {len(data)} /Length1 {len(prefix)} "
-                                  f"/Length2 {length2} /Length3 0 >>\nstream\n").encode() + data + b"\nendstream"
-    objects[7] = f"<< /Length {len(cmap)} >>\nstream\n".encode() + cmap + b"\nendstream"
+        objects[numbers[name]] = (f"<< /Type /Font /Subtype /Type1 /BaseFont /{FONT_NAME} "
+                                  f"/FirstChar 0 /LastChar 255 /Widths [{widths}] "
+                                  f"{encoding}/FontDescriptor << {descriptor} >> >>").encode()
+        objects[stream_number] = (f"<< /Length {len(data)} /Length1 {len(data)} "
+                                  "/Length2 0 /Length3 0 >>\nstream\n").encode() + data + b"\nendstream"
     output, offsets = b"%PDF-1.4\n", []
     for number, body in sorted(objects.items()):
         offsets.append(len(output))
@@ -93,7 +89,7 @@ def font_identity_pdf(case):
     output += f"xref\n0 {size}\n".encode() + b"0000000000 65535 f \n"
     output += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
     output += f"trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
-    return output, font_name
+    return output
 
 
 @pytest.mark.parametrize("horizontal_rules", [(700, 680, 590), (700, 680, 635, 590)],
@@ -108,14 +104,14 @@ def test_data_rows_remain_separate_without_individual_horizontal_rules(tmp_path,
     drawing += "".join(rule(x, 590, 0.5, 110) for x in (80, 190, 300, 410))
     drawing += "".join(text_op(x, y, value) for y, row in rows
                        for x, value in zip((85, 195, 305), row))
-    path.write_bytes(reader.synthetic_pdf([drawing]))
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == ["Region Q1 Q2", "Alpha 11 12", "Beta 21 22",
                                   "Gamma 31 32", "Delta 41 42"], "the source must contain four distinct records"
     # WHEN the PDF is rendered through the public entry point
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN every record retains its label and its two values in one row
     assert (code, receipt["file_ok"], receipt["route"]) == (0, True, "pdf"), "conversion must succeed on the valid source"
-    assert reader.chapter_lines(markdown, "Page 1") == [
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [
         "| Region | Q1 | Q2 |", "| --- | --- | --- |", "| Alpha | 11 | 12 |",
         "| Beta | 21 | 22 |", "| Gamma | 31 | 32 |", "| Delta | 41 | 42 |",
     ], "ruling bands must not merge independent table records"
@@ -132,13 +128,13 @@ def test_shaded_header_padding_does_not_add_columns_or_repeat_headers(tmp_path):
                        for x, value in zip((115, 213, 309, 404), ("DATE", "TYPE", "CHANGE", "PAGE")))
     drawing += "".join(text_op(x, 660, value)
                        for x, value in zip((85, 185, 285, 385), ("04/27", "Edit", "New label", "1")))
-    path.write_bytes(reader.synthetic_pdf([drawing]))
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == ["DATE TYPE CHANGE PAGE", "04/27 Edit New label 1"], "the source must have one header and one data row"
     # WHEN decoration overlaps the table's ruled region
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN header and body values occupy the same four columns
     assert (code, receipt["file_ok"]) == (0, True), "the shaded table must render successfully"
-    assert reader.chapter_lines(markdown, "Page 1") == [
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [
         "| DATE | TYPE | CHANGE | PAGE |", "| --- | --- | --- | --- |",
         "| 04/27 | Edit | New label | 1 |",
     ], "header padding must not become data columns or duplicate header text"
@@ -152,13 +148,13 @@ def test_boxed_prose_remains_three_sentences_without_a_false_table(tmp_path):
     drawing = "".join(rule(80, y, 330) for y in (700, 675, 640))
     drawing += "".join(rule(x, 640, 0.5, 60) for x in (80, 410))
     drawing += "".join(text_op(88, y, text) for y, text in zip((686, 670, 654), prose))
-    path.write_bytes(reader.synthetic_pdf([drawing]))
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == prose, "the boxed source must contain each sentence exactly once"
     # WHEN the boxed paragraph is classified
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN prose stays in reading order without being turned into table cells
     assert (code, receipt["file_ok"]) == (0, True), "the boxed paragraph must render successfully"
-    assert reader.chapter_lines(markdown, "Page 1") == prose, "a decorative box must not change or repeat paragraph structure"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == prose, "a decorative box must not change or repeat paragraph structure"
     assert receipt["tables"] == 0, "a single prose column is not a data table"
 
 
@@ -171,10 +167,10 @@ def test_right_hand_chart_grid_does_not_suppress_left_hand_prose(tmp_path):
     drawing += "".join(rule(x, 600, 0.5, 100) for x in (320, 360, 400, 440, 480, 520))
     drawing += "".join(text_op(60, y, text) for y, text in zip((690, 674, 650, 626), prose))
     drawing += text_op(420, 655, "Series A")
-    path.write_bytes(reader.synthetic_pdf([drawing]))
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == [prose[0], prose[1], "Series A", prose[2], prose[3]], "the source must keep the plot and all left-column text"
     # WHEN a right-hand plot produces closed rectangular candidates
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN each neighboring sentence and heading remains once in source order
     assert (code, receipt["file_ok"]) == (0, True), "the mixed-layout page must render successfully"
     assert re.findall("|".join(map(re.escape, prose)), markdown) == prose, "a plot candidate must not consume neighboring prose or its heading"
@@ -190,10 +186,10 @@ def test_scientific_notation_keeps_the_decoded_mathematical_minus(tmp_path):
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["3.0e−4"], "the source font must decode a mathematical minus rather than an ASCII hyphen"
     # WHEN scientific notation is converted to the PDF route's ASCII representation
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN the exponent sign and numeric magnitude remain unambiguous
     assert (code, receipt["file_ok"]) == (0, True), "the explicitly encoded PDF must render successfully"
-    assert reader.chapter_lines(markdown, "Page 1") == ["3.0e-4"], "a negative exponent must not become an unknown glyph"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == ["3.0e-4"], "a negative exponent must not become an unknown glyph"
     assert receipt["dropped"]["non_ascii_replaced"] == 0, "a recognized minus is preserved rather than replaced"
 
 
@@ -203,19 +199,19 @@ def test_greek_and_operator_glyphs_keep_distinct_pdf_tokens(tmp_path):
     path.write_bytes(symbol_pdf("BT /F2 10 Tf 1 0 0 1 80 660 Tm (b=p+\\345) Tj ET\n"))
     assert source_lines(path) == ["β=π+∑"], "the source must expose three distinct Unicode identities"
     # WHEN decoded mathematical glyphs pass through PDF-specific normalization
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN their identities remain distinct without inventing equation layout
     assert (code, receipt["file_ok"]) == (0, True), "the explicitly encoded symbols must render successfully"
-    assert reader.chapter_lines(markdown, "Page 1") == ["[beta]=[pi]+[sum]"], "decoded Greek letters and operators need stable distinct ASCII tokens"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == ["[beta]=[pi]+[sum]"], "decoded Greek letters and operators need stable distinct ASCII tokens"
     assert receipt["dropped"]["non_ascii_replaced"] == 0, "recognized symbols must not be counted as replacement loss"
 
 
 def test_pdf_notation_contract_does_not_change_shared_text_sanitising():
     # GIVEN the same glyphs outside the PDF-specific extraction route
     raw = "3.0e−4 β=π+∑"
-    tally = reader.new_tally()
+    tally = common.new_tally()
     # WHEN the shared text sanitizer is used directly
-    actual = reader.sanitise(raw, tally)
+    actual = common.sanitise(raw, tally)
     # THEN the existing non-PDF normalization contract stays intact
     assert (actual, tally["dropped"]["non_ascii_replaced"]) == (
         "3.0e?4 ?=?+?", 4), "PDF notation support must not silently change shared text normalization"
@@ -231,7 +227,7 @@ def test_displayed_fraction_keeps_its_bar_between_numerator_and_denominator(tmp_
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["β+∑", "(1)", "π"], "the source must place distinct numerator and denominator glyphs around the bar"
     # WHEN the PDF contains two-dimensional mathematical notation
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN one fixed-layout block preserves glyph identities and fraction geometry
     assert (code, receipt["file_ok"]) == (0, True), "the displayed equation must render successfully"
     blocks = re.findall(r"```\n(.*?)\n```", markdown, re.DOTALL)
@@ -259,10 +255,10 @@ def test_unknown_font_glyph_keeps_its_font_and_code_instead_of_disappearing(tmp_
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["left (cid:230) right"], "the undecoded source glyph must have an observable code"
     # WHEN the PDF route cannot establish the glyph's semantic identity
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN the unknown identity stays visible and is counted without guessing
     assert (code, receipt["file_ok"]) == (0, True), "an undecoded glyph must not refuse otherwise readable text"
-    assert reader.chapter_lines(markdown, "Page 1") == ["left [font-glyph:Symbol:230] right"], "unknown font glyphs need a visible font-scoped identity"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == ["left [font-glyph:Symbol:230] right"], "unknown font glyphs need a visible font-scoped identity"
     assert receipt["dropped"]["cid_survivors"] == 1, "the unresolved glyph must remain counted exactly once"
 
 
@@ -279,16 +275,16 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
                             for x in (left, left + 90, left + 180))
         commands += "".join(text_op(x, y, value) for y, row in zip(baselines, rows)
                             for x, value in zip((left + 5, left + 95), row))
-    path.write_bytes(reader.synthetic_pdf([commands]))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
     with pdfplumber.open(path) as document:
         source_values = sorted(word["text"] for word in document.pages[0].extract_words())
     expected_values = ["1", "2", "3", "4", "5", "6", "A", "B", "C", "D", "E", "F"]
     assert source_values == expected_values, "each source cell must contain one distinct value"
     # WHEN adjacent table boxes have overlapping vertical ranges
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN every cell remains once and belongs to its own two-column table row
     assert (code, receipt["file_ok"]) == (0, True), "all three valid tables must render successfully"
-    content = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    content = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
     assert sorted(re.findall(r"\b[A-F1-6]\b", content)) == expected_values, "table cells must not also appear in neighboring prose regions"
     assert sorted(re.findall(r"^\| [A-F1-6] \| [A-F1-6] \|$", content, re.MULTILINE)) == [
         "| 1 | 2 |", "| 3 | 4 |", "| 5 | 6 |", "| A | B |", "| C | D |", "| E | F |",
@@ -296,23 +292,22 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
     assert receipt["tables"] == 3, "exactly the three source tables must be recorded"
 
 
-@pytest.mark.parametrize("case, expected, unresolved, cid", [
-    ("duplicate-basefont", "[font-glyph:EQJBOC+CMEX10:80] [font-glyph:EQJBOC+CMEX10:80]", 2, 80),
-    ("unrelated-array", "[sum] [sum]", 0, 80),
-    ("pdf-encoding-override", "[font-glyph:EQJBOC+CMEX10:255] [font-glyph:EQJBOC+CMEX10:255]", 2, 255),
+@pytest.mark.parametrize("fonts, encoding, char_code, expected, unresolved", [
+    ((("F1", SUMMATION_PROGRAM), ("F2", PRODUCT_PROGRAM)), "", 80,
+     f"[font-glyph:{FONT_NAME}:80] [font-glyph:{FONT_NAME}:80]", 2),
+    ((("F1", UNRELATED_ARRAY_PROGRAM),), "", 80, "[sum]", 0),
+    ((("F1", OVERRIDDEN_PROGRAM),), PDF_DIFFERENCES, 255, f"[font-glyph:{FONT_NAME}:255]", 1),
 ], ids=["duplicate-basefont", "unrelated-array", "pdf-encoding-override"])
-def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, case, expected, unresolved, cid):
-    # GIVEN complete Type1 resources and an unmapped Unicode code
+def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, fonts, encoding, char_code, expected, unresolved):
+    # GIVEN embedded Type1 encodings and one character code without a Unicode mapping
     path = tmp_path / "font-identity.pdf"
-    data, font_name = font_identity_pdf(case)
-    path.write_bytes(data)
-    assert font_name == "EQJBOC+CMEX10", "the synthetic PDF must retain the inspected public font identity"
-    assert source_lines(path) == [f"(cid:{cid}) (cid:{cid})"], "both source characters must remain undecoded before recovery"
+    path.write_bytes(font_identity_pdf(fonts, encoding, char_code))
+    assert source_lines(path) == [" ".join(f"(cid:{char_code})" for _ in fonts)], "every source character must remain undecoded before recovery"
     # WHEN explicit font encodings are considered for the public PDF conversion
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN conflicting declarations and unrelated arrays cannot determine glyph identity
     assert (code, receipt["file_ok"]) == (0, True), "the valid synthetic font resources must remain readable"
-    assert reader.chapter_lines(markdown, "Page 1") == [expected], "unproved or overridden font metadata must not determine a glyph identity"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [expected], "unproved or overridden font metadata must not determine a glyph identity"
     assert receipt["dropped"]["cid_survivors"] == unresolved, "only genuinely unresolved font identities must be counted"
 
 
@@ -330,14 +325,14 @@ def test_sparse_numeric_ruling_keeps_six_columns_and_grouped_headers(tmp_path):
                       (646, ("Beta", "kg", "21", "22", "23", "24"))):
         commands += "".join(text_op(x, y, value)
                              for x, value in zip((60, 120, 195, 275, 355, 435), values))
-    path.write_bytes(reader.synthetic_pdf([commands]))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
     assert source_lines(path) == ["Model Unit Score Rate", "A B C D",
                                   "Alpha kg 11 12 13 14", "Beta kg 21 22 23 24"], "the source must expose both stubs, grouped labels and four numeric fields"
     # WHEN the numeric ruling covers only part of the complete table
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN stubs and units stay associated with all four values under the grouped header
     assert (code, receipt["file_ok"]) == (0, True), "the sparse six-column source must render successfully"
-    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    page = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
     assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | Unit | Score |  | Rate |  |", "| --- | --- | --- | --- | --- | --- |",
         "|  |  | A | B | C | D |", "| Alpha | kg | 11 | 12 | 13 | 14 |",
@@ -357,16 +352,16 @@ def test_narrow_table_keeps_its_caption_separate_from_neighboring_prose(tmp_path
         commands += "".join(text_op(x, y, value) for x, value in zip((365, 410, 465), row))
     commands += text_op(360, 635, "Table 9: Small inventory.")
     commands += text_op(360, 623, "Values are synthetic.")
-    path.write_bytes(reader.synthetic_pdf([commands]))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
     with pdfplumber.open(path) as document:
         right = document.pages[0].crop((355, 85, 510, 180)).extract_text().splitlines()
     assert right == ["Item Qty Cost", "A 2 5", "B 3 7", "Table 9: Small inventory.",
                      "Values are synthetic."], "the source must contain a real narrow table followed by two caption lines"
     # WHEN the table and prose share the same vertical band
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN the prose lane is contiguous and the caption immediately follows its table
     assert (code, receipt["file_ok"]) == (0, True), "the narrow mixed-layout source must render successfully"
-    assert reader.chapter_lines(markdown, "Page 1") == prose + [
+    assert selfcheck.chapter_lines(markdown, "Page 1") == prose + [
         "| Item | Qty | Cost |", "| --- | --- | --- |", "| A | 2 | 5 |", "| B | 3 | 7 |",
         "Table 9: Small inventory.", "Values are synthetic.",
     ], "a narrow table, its caption and neighboring prose must remain separate ordered regions"
@@ -382,18 +377,18 @@ def test_spanning_table_header_outside_rule_end_keeps_every_character_once(tmp_p
     for y, row in ((685, ("Method", "Warm", "Cold")),
                    (666, ("DPO", "0.36", "0.31")), (646, ("PPO", "0.26", "0.23"))):
         commands += "".join(text_op(x, y, value) for x, value in zip((365, 425, 475), row))
-    path.write_bytes(reader.synthetic_pdf([commands]))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
     assert source_lines(path) == [heading, "Method Warm Cold", "DPO 0.36 0.31", "PPO 0.26 0.23"], "the complete source heading must be independently readable"
     with pdfplumber.open(path) as document:
         truth = next(word for word in document.pages[0].extract_words() if word["text"] == "truth")
-    assert truth["x0"] < 500 < truth["x1"], "the rule boundary must cross the source word truth"
+    assert (truth["text"], round(truth["x0"], 2), round(truth["x1"], 2)) == ("truth", 489.48, 509.49), "the source word truth must straddle the rule boundary at x=500"
     # WHEN a qualified table owns a heading wider than its numeric rules
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN the full heading survives once with its two source records
     assert (code, receipt["file_ok"]) == (0, True), "the valid source table must render successfully"
     assert markdown.count(heading) == 1, "the spanning heading must remain intact and occur once"
     assert len(re.findall(r"\btruth\b", markdown)) == 1, "the boundary word must not be duplicated in residual prose"
-    content = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    content = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
     assert sorted(re.findall(r"[A-Za-z]", content)) == sorted(re.findall(r"[A-Za-z]", heading + "Method Warm Cold DPO PPO")), "each source letter must belong to exactly one output region"
     assert re.findall(r"^\| (?:DPO|PPO).*\|$", markdown, re.MULTILINE) == [
         "| DPO | 0.36 | 0.31 |", "| PPO | 0.26 | 0.23 |",
@@ -410,16 +405,126 @@ def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
             (638, ("BLOOM-176B", "A100-80GB", "50", "60"))]
     for y, row in rows:
         commands += "".join(text_op(x, y, value) for x, value in zip((65, 134, 245, 330), row))
-    path.write_bytes(reader.synthetic_pdf([commands]))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
     assert source_lines(path) == ["Model GPU Power Carbon", "Alpha V100 10 20",
                                   "Beta V100 30 40", "BLOOM-176B A100-80GB 50 60"], "the source must expose four distinct fields on every record baseline"
     # WHEN repeated body columns establish separate model and hardware fields
-    code, receipt, markdown = reader.run(path)
+    code, receipt, markdown = service.run(path)
     # THEN the long model and adjacent hardware retain their own cells
     assert (code, receipt["file_ok"]) == (0, True), "the valid four-column source must render successfully"
-    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    page = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
     assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | GPU | Power | Carbon |", "| --- | --- | --- | --- |",
         "| Alpha | V100 | 10 | 20 |", "| Beta | V100 | 30 | 40 |",
         "| BLOOM-176B | A100-80GB | 50 | 60 |",
     ], "a narrow gap must not merge text fields from distinct repeated columns"
+
+
+def test_line_number_rail_keeps_each_code_line_whole_without_a_page_gutter(tmp_path):
+    # GIVEN a numbered code listing whose rail leaves a wide gap on every line
+    path = tmp_path / "numbered-listing.pdf"
+    body = ["def solve(a, b, c):", "delta = b * b - 4 * a * c", "if delta == 0:", "return None",
+            "root = delta ** 0.5", "left = (-b - root) / (2 * a)",
+            "right = (-b + root) / (2 * a)", "return left, right"]
+    indents = (100, 125, 125, 150, 125, 125, 125, 125)
+    commands = "".join(text_op(80, 700 - 12 * index, str(index + 1)) + text_op(x, 700 - 12 * index, text)
+                       for index, (x, text) in enumerate(zip(indents, body)))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    listing = ["%d %s" % (index + 1, text) for index, text in enumerate(body)]
+    assert source_lines(path) == listing, "the source must expose every line number beside its own code line"
+    with pdfplumber.open(path) as document:
+        glyph = document.pages[0].chars[1]
+    assert (glyph["text"], round(glyph["x0"], 2), round(glyph["x1"], 2)) == ("d", 100.0, 105.56), "the first code glyph must straddle the midpoint the indented gaps imply"
+    # WHEN the listing band is checked for repeated prose-column starts
+    code, receipt, markdown = service.run(path)
+    # THEN no gutter is taken and every glyph stays once on its own numbered line
+    assert (code, receipt["file_ok"]) == (0, True), "the valid listing source must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["columns_split"]) == (listing, 0), "a line-number rail is not a page gutter, so no glyph may be cut or duplicated"
+
+
+def test_adjacent_centred_header_heads_keep_their_own_body_columns(tmp_path):
+    # GIVEN a booktabs table whose two middle heads are centred one space apart
+    path = tmp_path / "centred-heads.pdf"
+    commands = "".join(rule(60, y, 300) for y in (712, 690, 626))
+    commands += text_op(65, 696, "Model") + text_op(185.28, 696, "MMLU AlpacaEval") + text_op(301.1, 696, "ToxiGen")
+    rows = [(676, "OLMo", (28.3, 12.5, 81.4)), (656, "Llama", (45.1, 10.2, 76.8)),
+            (636, "Falcon", (30.0, 55.0, 70.1))]
+    for y, name, values in rows:
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(centre - 9.73, y, str(value))
+                            for centre, value in zip((200, 242.51, 320), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["Model MMLU AlpacaEval ToxiGen", "OLMo 28.3 12.5 81.4",
+                                  "Llama 45.1 10.2 76.8", "Falcon 30.0 55.0 70.1"], "the source must expose four heads and three numeric records baseline"
+    with pdfplumber.open(path) as document:
+        heads = [(word["text"], round(word["x0"], 2), round(word["x1"], 2))
+                 for word in document.pages[0].extract_words() if word["text"] in ("MMLU", "AlpacaEval")]
+    assert heads == [("MMLU", 185.28, 214.72), ("AlpacaEval", 217.5, 267.52)], "the two heads must sit one space apart, closer than the header grouping threshold"
+    # WHEN the header band is mapped onto the columns the body records establish
+    code, receipt, markdown = service.run(path)
+    # THEN each centred head keeps its own column instead of merging into its neighbour
+    assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [
+        "| Model | MMLU | AlpacaEval | ToxiGen |", "| --- | --- | --- | --- |",
+        "| OLMo | 28.3 | 12.5 | 81.4 |", "| Llama | 45.1 | 10.2 | 76.8 |",
+        "| Falcon | 30.0 | 55.0 | 70.1 |",
+    ], "a centred head belongs to the body column it is centred over, never to its left neighbour"
+
+
+def test_separate_plot_axes_do_not_turn_a_figure_legend_into_a_table(tmp_path):
+    # GIVEN four plot panels whose axis segments sit on one baseline above a legend and tick labels
+    path = tmp_path / "figure-legend.pdf"
+    commands = "".join(rule(x, 600, 100) for x in (60, 185, 310, 435))
+    for y, values in ((640, ("0.82", "0.76", "Falcon-7B")), (628, ("0.76", "0.55", "LLaMA2-7B")),
+                      (616, ("0.55", "0.28", "MPT-7B"))):
+        commands += "".join(text_op(x, y, value) for x, value in zip((190, 315, 440), values))
+    commands += "".join(text_op(x, 588, "10 100 1000") for x in (60, 185, 310, 435))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["0.82 0.76 Falcon-7B", "0.76 0.55 LLaMA2-7B", "0.55 0.28 MPT-7B",
+                                  "10 100 1000 10 100 1000 10 100 1000 10 100 1000"], "the source must hold three legend entries above one shared tick line"
+    with pdfplumber.open(path) as document:
+        axes = [(round(box["x0"], 2), round(box["x1"], 2)) for box in document.pages[0].rects]
+    assert axes == [(60.0, 160.0), (185.0, 285.0), (310.0, 410.0), (435.0, 535.0)], "the panel axes must leave 25 pt gaps, far wider than a trimmed rule"
+    # WHEN the widest group of aligned horizontal segments is read as a column grid
+    code, receipt, markdown = service.run(path)
+    # THEN the legend keeps its fixed layout and no table is reported
+    assert (code, receipt["file_ok"]) == (0, True), "the synthetic figure page must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
+        "```",
+        "0.82             0.76              Falcon-7B",
+        "0.76             0.55              LLaMA2-7B",
+        "0.55             0.28              MPT-7B",
+        "```",
+        "10 100 1000 10 100 1000 10 100 1000 10 100 1000",
+    ], 0), "separate panel axes are not one segmented rule, so a figure must not become a table"
+
+
+def test_trimmed_cmidrule_segments_keep_their_grouped_header_table(tmp_path):
+    # GIVEN a booktabs table whose cmidrule is trimmed into two segments 10 pt apart
+    path = tmp_path / "cmidrule-table.pdf"
+    heads = ("Warm", "Cold", "Exact", "Fuzzy")
+    commands = "".join(rule(60, y, 300) for y in (712, 686, 626))
+    commands += rule(140, 694, 80) + rule(230, 694, 80)
+    commands += text_op(65, 700, "Model") + text_op(165, 700, "Speed") + text_op(250, 700, "Quality")
+    commands += "".join(text_op(x, 674, value) for x, value in zip((150, 195, 240, 285), heads))
+    for y, name, values in ((654, "OLMo", ("11", "12", "13", "14")),
+                            (636, "Llama", ("21", "22", "23", "24"))):
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(x, y, value) for x, value in zip((150, 195, 240, 285), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["Model Speed Quality", "Warm Cold Exact Fuzzy",
+                                  "OLMo 11 12 13 14", "Llama 21 22 23 24"], "the source must expose two header rows above two four-value records"
+    with pdfplumber.open(path) as document:
+        rules = sorted((round(box["top"], 2), round(box["x0"], 2), round(box["x1"], 2))
+                       for box in document.pages[0].rects)
+    assert rules == [(79.5, 60.0, 360.0), (97.5, 140.0, 220.0), (97.5, 230.0, 310.0),
+                     (105.5, 60.0, 360.0), (165.5, 60.0, 360.0)], "the trimmed segments must leave a 10 pt gap between the full-width rules"
+    # WHEN the trimmed rule is considered as the source of the table's columns
+    code, receipt, markdown = service.run(path)
+    # THEN both header groups keep their own two body columns
+    assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
+        "| Model | Speed |  | Quality |  |", "| --- | --- | --- | --- | --- |",
+        "|  | Warm | Cold | Exact | Fuzzy |", "| OLMo | 11 | 12 | 13 | 14 |",
+        "| Llama | 21 | 22 | 23 | 24 |",
+    ], 1), "a trimmed cmidrule must keep its grouped header table whichever segment group is chosen"

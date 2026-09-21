@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Maksim Kochetkov", email = "apmatypa88@gmail.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 keywords = ["pdf", "docx", "xlsx", "markdown", "llm", "table-extraction", "rag"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -16,11 +16,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
 dependencies = [
@@ -37,7 +33,7 @@ Issues = "https://github.com/kochetkov-ma/brewdoc/issues"
 brewdoc = "brewdoc.cli:main"
 
 [dependency-groups]
-dev = ["pytest==9.1.1"]
+dev = ["pytest==9.1.1", "pytest-randomly==5.0.0", "pytest-xdist==3.8.0"]
 
 [build-system]
 requires = ["hatchling==1.32.0"]
@@ -47,13 +43,21 @@ build-backend = "hatchling.build"
 packages = ["src/brewdoc"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "/.agents/**",
-    "/.codex/**",
-    "/docs/**",
-    "/AGENTS.md",
-    "/CLAUDE.md",
-    "/.github/pull_request_template.md",
+include = [
+    "/.gitattributes",
+    "/.github/dependabot.yml",
+    "/.github/workflows",
+    "/.gitignore",
+    "/.python-version",
+    "/FORMATS.md",
+    "/LICENSE",
+    "/README.md",
+    "/RELEASING.md",
+    "/benchmarks",
+    "/pyproject.toml",
+    "/src",
+    "/tests",
+    "/uv.lock",
 ]
 
 [tool.uv]
@@ -62,7 +66,6 @@ build-constraint-dependencies = [
     "packaging==26.3",
     "pathspec==1.1.1",
     "pluggy==1.6.0",
-    "tomli==2.4.1",
     "tomlkit==0.15.1",
     "trove-classifiers==2026.6.1.19",
 ]
