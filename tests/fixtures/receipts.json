@@ -173,8 +173,8 @@
   "rc": 0,
   "route": "pdf",
   "sheets": 0,
-  "tables": 7,
-  "text_regions": 85,
+  "tables": 16,
+  "text_regions": 92,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -213,8 +213,8 @@
   "rc": 0,
   "route": "pdf",
   "sheets": 0,
-  "tables": 4,
-  "text_regions": 77,
+  "tables": 2,
+  "text_regions": 170,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -253,8 +253,8 @@
   "rc": 0,
   "route": "pdf",
   "sheets": 0,
-  "tables": 6,
-  "text_regions": 115,
+  "tables": 10,
+  "text_regions": 77,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -302,7 +302,7 @@
   "route": "pdf",
   "sheets": 0,
   "tables": 1,
-  "text_regions": 1,
+  "text_regions": 2,
   "unit_keys": [
    "page/000001"
   ]
@@ -316,7 +316,7 @@
   "route": "pdf",
   "sheets": 0,
   "tables": 2,
-  "text_regions": 52,
+  "text_regions": 79,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -343,8 +343,8 @@
   "rc": 0,
   "route": "pdf",
   "sheets": 0,
-  "tables": 2,
-  "text_regions": 25,
+  "tables": 1,
+  "text_regions": 26,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -373,7 +373,7 @@
   "route": "pdf",
   "sheets": 0,
   "tables": 1,
-  "text_regions": 0,
+  "text_regions": 1,
   "unit_keys": [
    "page/000001"
   ]
