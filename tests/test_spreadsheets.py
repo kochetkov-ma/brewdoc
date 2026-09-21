@@ -247,7 +247,7 @@ def test_one_shot_sheet_iterator_selects_like_the_equivalent_tuple(tmp_path, cal
 def test_run_accepts_a_one_shot_sheet_iterator_like_the_equivalent_tuple(tmp_path, artifacts):
     # GIVEN a workbook and its successful run for a two-sheet tuple selection
     path = formula_book(tmp_path / "book.xlsx")
-    outputs = [(key, tmp_path / name) for key, name in artifacts]
+    outputs = {key: tmp_path / name for key, name in artifacts}
     expected = brewdoc.run(path, sheets=("Calc", "Inputs"), artifact_outputs=outputs)
     assert (expected[0], expected[1]["selected_sheets"]) == (0, ["Calc", "Inputs"]), (
         "the tuple selection must render successfully"
@@ -314,22 +314,6 @@ def test_ooxml_formula_models_preserve_source_text_attributes_and_ordinals(tmp_p
             ),
         ),
     ), "formula models must preserve XML content and full workbook identity"
-    assert artifacts[0].to_dict() == {
-        "formulas": [
-            {"attributes": {}, "cell": "A1", "formula": "SUM(Inputs!A1:A2)", "sheet": "Calc"},
-            {"attributes": {"ref": "B1:B2", "si": "7", "t": "shared"}, "cell": "B1",
-             "formula": "Inputs!A1*2", "sheet": "Calc"},
-            {"attributes": {"si": "7", "t": "shared"}, "cell": "B2", "formula": "", "sheet": "Calc"},
-            {"attributes": {"aca": "1", "bx": "0"}, "cell": "C3",
-             "formula": 'IF(A1<4,"café","")', "sheet": "Calc"},
-        ],
-        "key": "formula/sheet/000002",
-        "kind": "formula",
-        "sheet": "Calc",
-        "source_name": path.name,
-        "source_ordinal": 2,
-        "source_sha256": digest,
-    }, "artifact payload must be JSON-ready without losing formula attributes"
     with pytest.raises(FrozenInstanceError):
         artifacts[0].sheet = "Changed"
 
@@ -338,17 +322,18 @@ def test_formula_discovery_returns_one_reference_per_formula_sheet(tmp_path):
     # GIVEN two formula-bearing sheets, one with four formula cells
     path = formula_book(tmp_path / "book.xlsx")
     # WHEN artifacts are discovered and one key is read
-    references = reader.discover_formula_artifacts(path)
-    artifact = reader.read_formula_artifact(path, "formula/sheet/000002")
+    references = reader.list_book_artifacts(path)
+    artifact = json.loads(reader.read_book_artifact(path, "formula/sheet/000002"))
     # THEN discovery is per sheet, not per formula, and reading returns that sheet only
-    assert [(item.key, item.source_ordinal, item.sheet, item.formula_count) for item in references] == [
-        ("formula/sheet/000001", 1, "Inputs", 1),
-        ("formula/sheet/000002", 2, "Calc", 4),
+    assert [(item.key, item.location, item.count) for item in references] == [
+        ("formula/sheet/000001", "#brewdoc-sheet-000001", 1),
+        ("formula/sheet/000002", "#brewdoc-sheet-000002", 4),
     ], "each formula-bearing source sheet must own exactly one stable key"
-    assert artifact.formulas == reader.read_formulas(path, sheets=("Calc",))[0].formulas, (
-        "keyed reads and selected reads must return the same formula payload"
-    )
-    assert reader.discover_formula_artifacts(path, sheets=("Empty",)) == (), (
+    assert (artifact["sheet"], artifact["formulas"]) == (
+        {"key": "sheet/000002", "name": "Calc", "ordinal": 2},
+        [item.to_dict() for item in reader.read_formulas(path, sheets=("Calc",))[0].formulas],
+    ), "keyed reads and selected reads must return the same formula payload"
+    assert reader.list_book_artifacts(path, sheets=("Empty",)) == (), (
         "a supported formula-free sheet has a known zero inventory"
     )
 
@@ -364,7 +349,7 @@ def test_formula_status_is_unavailable_for_unsupported_formats(tmp_path, suffix)
         reader.BrewdocError,
         match=r"^formula artifacts unavailable for '%s'; supported suffixes: .xlsm .xlsx$" % suffix,
     ):
-        reader.discover_formula_artifacts(path)
+        reader.read_formulas(path)
 
 
 @pytest.mark.parametrize(
@@ -420,15 +405,9 @@ def test_absolute_opc_relationship_targets_render_like_relative_ones(
 
 def test_formula_api_is_public():
     # GIVEN the package root
-    expected = (
-        reader.CellFormula, reader.FormulaArtifact, reader.FormulaArtifactRef,
-        reader.discover_formula_artifacts, reader.read_formula_artifact, reader.read_formulas,
-    )
+    expected = (reader.CellFormula, reader.FormulaArtifact, reader.read_formulas)
     # WHEN formula APIs are inspected
-    actual = (
-        brewdoc.CellFormula, brewdoc.FormulaArtifact, brewdoc.FormulaArtifactRef,
-        brewdoc.discover_formula_artifacts, brewdoc.read_formula_artifact, brewdoc.read_formulas,
-    )
+    actual = (brewdoc.CellFormula, brewdoc.FormulaArtifact, brewdoc.read_formulas)
     # THEN the immutable layer is exported
     assert actual == expected, "formula models and keyed readers must be publicly available"
 
@@ -472,18 +451,6 @@ def test_vba_models_preserve_exact_related_project_bytes(relative, size, project
         package_part="xl/vbaProject.bin", byte_size=size,
         project_sha256=project_sha256, data=expected_data,
     ), "the keyed VBA read must preserve every related project byte"
-    assert artifact.reference() == references[0], "full and count-only models must agree exactly"
-    assert references[0].to_dict() == {
-        "byte_size": size,
-        "key": "vba/project/000001",
-        "kind": "vba-project",
-        "package_part": "xl/vbaProject.bin",
-        "project_sha256": project_sha256,
-        "relationship_type": VBA_RELATIONSHIP,
-        "representation": "opaque",
-        "source_name": path.name,
-        "source_sha256": source_sha256,
-    }, "VBA discovery metadata must be deterministic and explicit about opacity"
     with pytest.raises(FrozenInstanceError):
         artifact.data = b"changed"
 
@@ -712,7 +679,7 @@ def test_artifact_request_does_not_change_markdown_and_receipt_names_output(tmp_
     plain = reader.run(path, sheets=("Calc",))
     requested = reader.run(
         path, markdown_out, sheets=("Calc",),
-        artifact_outputs=[("formula/sheet/000002", artifact_out)],
+        artifact_outputs={"formula/sheet/000002": artifact_out},
     )
     # THEN Markdown is invariant and the receipt identifies the exact written artifact
     assert (plain[0], requested[0], plain[2], requested[2]) == (
@@ -766,14 +733,16 @@ def new_file_mode(directory: Path) -> int:
     ],
 )
 def test_invalid_artifact_requests_fail_before_any_write(
-        tmp_path, monkeypatch, artifact_outputs, reason):
-    # GIVEN an invalid artifact request resolved inside tmp_path and a valid Markdown destination
+        tmp_path, monkeypatch, capsys, artifact_outputs, reason):
+    # GIVEN an invalid CLI artifact request resolved inside tmp_path and a valid Markdown destination
     monkeypatch.chdir(tmp_path)
     path = formula_book(tmp_path / "book.xlsx")
     before = tree_state(tmp_path)
     # WHEN the request is validated
-    code, receipt, markdown = reader.run(
-        path, tmp_path / "book.md", sheets=("Calc",), artifact_outputs=artifact_outputs)
+    code = reader.main([str(path), "--out", str(tmp_path / "book.md"), "--sheet", "Calc",
+                        *(f"--artifact={item}" for item in artifact_outputs)])
+    line, _newline, markdown = capsys.readouterr().out.partition("\n")
+    receipt = json.loads(line)
     # THEN it fails with the exact receipt reason and writes nothing
     assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
         1, False, reason, "", before,
@@ -861,7 +830,7 @@ def test_invalid_output_plans_are_refused_before_any_write(
     outputs = [(key, tmp_path / name) for key, name in artifacts]
     before = tree_state(tmp_path)
     # WHEN the plan is requested through the public run path
-    code, receipt, markdown = reader.run(path, markdown_out, artifact_outputs=outputs)
+    code, receipt, markdown = reader.run(path, markdown_out, artifact_outputs=dict(outputs))
     # THEN it is refused with the exact reason and no file or stage changes
     assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
         1, False, reason.format(out=markdown_out, artifacts=[item for _key, item in outputs]),
@@ -892,7 +861,7 @@ def test_failed_replace_restores_earlier_targets_and_removes_new_ones(
         str(targets[failing_call - 1]))
     # WHEN publishing fails part way through
     code, receipt, markdown = reader.run(
-        path, targets[0], artifact_outputs=list(zip(FORMULA_KEYS, targets[1:])))
+        path, targets[0], artifact_outputs=dict(zip(FORMULA_KEYS, targets[1:])))
     # THEN originals keep bytes and modes, the new target is absent, and no stage remains
     named = re.fullmatch(pattern, receipt["reason"]) is not None
     assert (code, receipt["file_ok"], markdown, named, tree_state(tmp_path)) == (
@@ -913,7 +882,7 @@ def test_staging_failure_fails_with_a_receipt_and_leaves_no_file(tmp_path, monke
     # WHEN staging fails after one payload was prepared
     code, receipt, markdown = reader.run(
         path, tmp_path / "book.md",
-        artifact_outputs=list(zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
+        artifact_outputs=dict(zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
     # THEN the receipt reports the failure and neither outputs nor stages exist
     reason = re.fullmatch(r"output write failed: (?=.*injected staging failure).*",
                           receipt["reason"])
@@ -935,7 +904,7 @@ def test_keyboard_interrupt_during_staging_leaves_no_file(tmp_path, monkeypatch)
     # WHEN the interrupt propagates out of run
     with pytest.raises(KeyboardInterrupt):
         reader.run(path, tmp_path / "book.md",
-                   artifact_outputs=list(zip(FORMULA_KEYS, (tmp_path / "a.json",
+                   artifact_outputs=dict(zip(FORMULA_KEYS, (tmp_path / "a.json",
                                                             tmp_path / "b.json"))))
     # THEN no output or .brewdoc-* stage file remains
     assert tree_state(tmp_path) == before, "an interrupt must not leak stages or partial outputs"
@@ -953,7 +922,7 @@ def test_successful_run_writes_exact_bytes_keeps_modes_and_leaves_no_stage(tmp_p
     before = tree_state(tmp_path)
     # WHEN all three are published
     code, receipt, markdown = reader.run(
-        path, markdown_out, artifact_outputs=list(zip(FORMULA_KEYS, (first, later))))
+        path, markdown_out, artifact_outputs=dict(zip(FORMULA_KEYS, (first, later))))
     # THEN bytes are exact, existing modes survive, the new file follows 0666 & ~umask
     assert (code, receipt["file_ok"], tree_state(tmp_path)) == (0, True, {
         **before,

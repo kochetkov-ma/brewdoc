@@ -151,7 +151,7 @@ class BrewdocError(Exception):
     """A refusal naming what was not found or not parsed, and where."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ArtifactRef:
     """A retrievable workbook artifact described without retaining its payload."""
 
@@ -172,7 +172,7 @@ class ArtifactRef:
                 "out": str(out) if out is not None else None, "sha256": self.sha256}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CellFormula:
     """A passive OOXML formula attached to one source cell."""
 
@@ -187,7 +187,7 @@ class CellFormula:
                 "formula": self.formula, "sheet": self.sheet}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FormulaArtifact:
     """All recoverable formulas from one source worksheet."""
 
@@ -198,33 +198,8 @@ class FormulaArtifact:
     sheet: str
     formulas: tuple[CellFormula, ...]
 
-    def to_dict(self) -> dict:
-        """Return the complete artifact as deterministic JSON-ready data."""
-        return {"formulas": [formula.to_dict() for formula in self.formulas],
-                "key": self.key, "kind": "formula", "sheet": self.sheet,
-                "source_name": self.source_name, "source_ordinal": self.source_ordinal,
-                "source_sha256": self.source_sha256}
 
-
-@dataclass(frozen=True)
-class FormulaArtifactRef:
-    """A formula artifact key and count without retained expression text."""
-
-    key: str
-    source_name: str
-    source_sha256: str
-    source_ordinal: int
-    sheet: str
-    formula_count: int
-
-    def to_dict(self) -> dict:
-        """Return discovery metadata as deterministic JSON-ready data."""
-        return {"formula_count": self.formula_count, "key": self.key, "kind": "formula",
-                "sheet": self.sheet, "source_name": self.source_name,
-                "source_ordinal": self.source_ordinal, "source_sha256": self.source_sha256}
-
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class OpaqueVbaProjectRef:
     """Identity metadata for one losslessly recoverable opaque VBA project."""
 
@@ -236,15 +211,8 @@ class OpaqueVbaProjectRef:
     byte_size: int
     project_sha256: str
 
-    def to_dict(self) -> dict:
-        """Return deterministic discovery metadata without binary project data."""
-        return {"byte_size": self.byte_size, "key": self.key, "kind": "vba-project",
-                "package_part": self.package_part, "project_sha256": self.project_sha256,
-                "relationship_type": self.relationship_type, "representation": "opaque",
-                "source_name": self.source_name, "source_sha256": self.source_sha256}
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class OpaqueVbaProject:
     """A complete related VBA project preserved as passive bytes."""
 
@@ -256,12 +224,6 @@ class OpaqueVbaProject:
     byte_size: int
     project_sha256: str
     data: bytes
-
-    def reference(self) -> OpaqueVbaProjectRef:
-        """Return the count-only discovery form without retaining project bytes."""
-        return OpaqueVbaProjectRef(
-            self.key, self.source_name, self.source_sha256, self.relationship_type,
-            self.package_part, self.byte_size, self.project_sha256)
 
 
 def new_tally() -> dict:
@@ -1622,11 +1584,13 @@ def _sheet_grid(rows, tally: dict) -> list[list[str]]:
     return [row[:width] for row in grid] if width else []
 
 
-def _sheet_selection(sheets):
-    """Freeze a one-shot name iterable once; other values reach `_select_sheets` unchanged."""
-    if isinstance(sheets, Iterable) and not isinstance(sheets, (str, bytes)):
-        return tuple(sheets)
-    return sheets
+def _sheet_selection(sheets) -> tuple | None:
+    """Freeze a public sheet selection once; None keeps every sheet."""
+    if sheets is None:
+        return None
+    if isinstance(sheets, (str, bytes)) or not isinstance(sheets, Iterable):
+        raise BrewdocError("sheet selection must be a sequence of names")
+    return tuple(sheets)
 
 
 def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
@@ -1635,9 +1599,7 @@ def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
     if sheets is None:
         requested = available
     else:
-        if isinstance(sheets, (str, bytes)):
-            raise BrewdocError("sheet selection must be a sequence of names")
-        requested = tuple(sheets)
+        requested = sheets
         if not requested:
             raise BrewdocError("sheet selection is empty")
         if any(not isinstance(name, str) for name in requested):
@@ -1770,7 +1732,7 @@ def _formula_cells(root: ET.Element, sheet: str) -> tuple[CellFormula, ...]:
 
 
 def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
-    """Read full artifacts or count-only references with stable source ordinals."""
+    """Read full artifacts or count-only `ArtifactRef`s with stable source ordinals."""
     suffix = path.suffix.lower()
     if suffix not in FORMULA_SUFFIXES:
         raise BrewdocError("formula artifacts unavailable for '%s'; supported suffixes: %s"
@@ -1808,8 +1770,9 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
                 if references:
                     count = sum(1 for _address, _formula in _formula_elements(root, name))
                     if count:
-                        artifacts.append(FormulaArtifactRef(
-                            key, path.name, digest, ordinal, name, count))
+                        artifacts.append(ArtifactRef(
+                            key, "formula", "available", count,
+                            "#" + _unit_anchor(_unit_key("sheet", ordinal)), "application/json"))
                 else:
                     formulas = _formula_cells(root, name)
                     if formulas:
@@ -1824,20 +1787,7 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
 
 def read_formulas(path, *, sheets=None) -> tuple[FormulaArtifact, ...]:
     """Read formula-bearing OOXML sheets as immutable keyed artifacts."""
-    return _read_formula_artifacts(Path(path), sheets)
-
-
-def discover_formula_artifacts(path, *, sheets=None) -> tuple[FormulaArtifactRef, ...]:
-    """List one stable reference per formula-bearing OOXML source sheet."""
-    return _read_formula_artifacts(Path(path), sheets, references=True)
-
-
-def read_formula_artifact(path, key: str) -> FormulaArtifact:
-    """Read one formula artifact by its full-source ordinal key."""
-    for artifact in read_formulas(path):
-        if artifact.key == key:
-            return artifact
-    raise BrewdocError("formula artifact not found: %s" % key)
+    return _read_formula_artifacts(Path(path), _sheet_selection(sheets))
 
 
 def _vba_relationship(package: zipfile.ZipFile, workbook_part: str):
@@ -1944,14 +1894,10 @@ def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
     path = Path(path)
     if path.suffix.lower() not in SHEET_SUFFIXES:
         raise BrewdocError("workbook artifacts unavailable for '%s'" % path.suffix.lower())
-    selected = _validated_sheet_names(path, sheets)
+    selected = _validated_sheet_names(path, _sheet_selection(sheets))
     artifacts = []
     if path.suffix.lower() in FORMULA_SUFFIXES:
-        for reference in discover_formula_artifacts(path, sheets=selected):
-            artifacts.append(ArtifactRef(
-                reference.key, "formula", "available", reference.formula_count,
-                "#" + _unit_anchor(_unit_key("sheet", reference.source_ordinal)),
-                "application/json"))
+        artifacts += _read_formula_artifacts(path, selected, references=True)
     if path.suffix.lower() in VBA_SUFFIXES:
         for reference in discover_vba_artifacts(path):
             artifacts.append(ArtifactRef(
@@ -2117,41 +2063,39 @@ def _line(route: str, file_ok: bool, reason: str, path, tally: dict | None = Non
 
 
 def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...]:
-    """Normalize mapping, pair, or CLI KEY=PATH artifact assignments."""
+    """Validate a key -> path mapping; each pair keeps the caller's path text for the receipt."""
     if artifact_outputs is None:
         return ()
-    if isinstance(artifact_outputs, Mapping):
-        assignments = tuple(artifact_outputs.items())
-    elif isinstance(artifact_outputs, (str, bytes)):
-        assignments = (artifact_outputs,)
-    else:
-        try:
-            assignments = tuple(artifact_outputs)
-        except TypeError as exc:
-            raise BrewdocError("artifact outputs must be KEY=PATH assignments") from exc
+    if not isinstance(artifact_outputs, Mapping):
+        raise BrewdocError("artifact outputs must map keys to paths")
     pairs = []
-    keys = set()
-    for assignment in assignments:
-        if isinstance(assignment, str):
-            if "=" not in assignment:
-                raise BrewdocError("malformed artifact assignment: %s" % assignment)
-            key, raw_path = assignment.split("=", 1)
-        else:
-            try:
-                key, raw_path = assignment
-            except (TypeError, ValueError) as exc:
-                raise BrewdocError("malformed artifact assignment: %r" % (assignment,)) from exc
-        if not isinstance(key, str) or not key or raw_path is None or str(raw_path) == "":
-            raise BrewdocError("malformed artifact assignment: %r" % (assignment,))
-        if key in keys:
-            raise BrewdocError("duplicate artifact key: %s" % key)
-        keys.add(key)
-        try:
-            target = Path(raw_path)
-        except TypeError as exc:
-            raise BrewdocError("malformed artifact assignment: %r" % (assignment,)) from exc
-        pairs.append((key, target, str(raw_path)))
+    for key, raw_path in artifact_outputs.items():
+        if not (isinstance(key, str) and key and isinstance(raw_path, (str, os.PathLike))
+                and str(raw_path)):
+            raise BrewdocError("malformed artifact assignment: %r" % ((key, raw_path),))
+        pairs.append((key, Path(raw_path), str(raw_path)))
     return tuple(pairs)
+
+
+def _artifact_assignments(assignments) -> dict[str, str] | None:
+    """Turn repeated CLI KEY=PATH values into the `run` mapping; refuse bad or repeated keys."""
+    if assignments is None:
+        return None
+    mapping = {}
+    for assignment in assignments:
+        key, separator, path = assignment.partition("=")
+        if not (separator and key and path):
+            raise BrewdocError("malformed artifact assignment: %s" % assignment)
+        if key in mapping:
+            raise BrewdocError("duplicate artifact key: %s" % key)
+        mapping[key] = path
+    return mapping
+
+
+def _route(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return ("pdf" if suffix == PDF_SUFFIX else "doc" if suffix == DOC_SUFFIX
+            else "sheet" if suffix in SHEET_SUFFIXES else "none")
 
 
 def _output_targets(source: Path, out,
@@ -2238,12 +2182,10 @@ def _write_outputs(outputs: tuple[tuple[Path, bytes], ...]) -> None:
 def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
-    suffix = path.suffix.lower()
-    route = ("pdf" if suffix == PDF_SUFFIX else "doc" if suffix == DOC_SUFFIX
-             else "sheet" if suffix in SHEET_SUFFIXES else "none")
+    route = _route(path)
     if route == "none":
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
-                                % (suffix, path, SUFFIXES), path), ""
+                                % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
@@ -2620,8 +2562,14 @@ def main(argv=None) -> int:
     if not args.document:
         parser.print_usage()
         return EXIT_USAGE
-    rc, line, markdown = run(
-        args.document, args.out, sheets=args.sheet, artifact_outputs=args.artifact)
+    try:
+        artifact_outputs = _artifact_assignments(args.artifact)
+    except BrewdocError as exc:
+        rc, line, markdown = EXIT_FAIL, _line(
+            _route(Path(args.document)), False, str(exc), args.document), ""
+    else:
+        rc, line, markdown = run(
+            args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
         sys.stdout.write(markdown)

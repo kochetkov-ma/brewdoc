@@ -96,6 +96,8 @@ code, receipt, markdown = brewdoc.run(
 )
 ```
 
+`artifact_outputs` maps artifact keys to paths. The CLI builds it from repeated `--artifact KEY=PATH`.
+
 Planned formats (all stdlib, zero new dependencies), deferred ones and the never-list: `FORMATS.md`.
 
 PDF regions, in the order tried:
