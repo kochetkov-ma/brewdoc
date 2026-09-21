@@ -441,3 +441,32 @@ def test_line_number_rail_keeps_each_code_line_whole_without_a_page_gutter(tmp_p
     # THEN no gutter is taken and every glyph stays once on its own numbered line
     assert (code, receipt["file_ok"]) == (0, True), "the valid listing source must render successfully"
     assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["columns_split"]) == (listing, 0), "a line-number rail is not a page gutter, so no glyph may be cut or duplicated"
+
+
+def test_adjacent_centred_header_heads_keep_their_own_body_columns(tmp_path):
+    # GIVEN a booktabs table whose two middle heads are centred one space apart
+    path = tmp_path / "centred-heads.pdf"
+    commands = "".join(rule(60, y, 300) for y in (712, 690, 626))
+    commands += text_op(65, 696, "Model") + text_op(185.28, 696, "MMLU AlpacaEval") + text_op(301.1, 696, "ToxiGen")
+    rows = [(676, "OLMo", (28.3, 12.5, 81.4)), (656, "Llama", (45.1, 10.2, 76.8)),
+            (636, "Falcon", (30.0, 55.0, 70.1))]
+    for y, name, values in rows:
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(centre - 9.73, y, str(value))
+                            for centre, value in zip((200, 242.51, 320), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["Model MMLU AlpacaEval ToxiGen", "OLMo 28.3 12.5 81.4",
+                                  "Llama 45.1 10.2 76.8", "Falcon 30.0 55.0 70.1"], "the source must expose four heads and three numeric records baseline"
+    with pdfplumber.open(path) as document:
+        heads = [(word["text"], round(word["x0"], 2), round(word["x1"], 2))
+                 for word in document.pages[0].extract_words() if word["text"] in ("MMLU", "AlpacaEval")]
+    assert heads == [("MMLU", 185.28, 214.72), ("AlpacaEval", 217.5, 267.52)], "the two heads must sit one space apart, closer than the header grouping threshold"
+    # WHEN the header band is mapped onto the columns the body records establish
+    code, receipt, markdown = service.run(path)
+    # THEN each centred head keeps its own column instead of merging into its neighbour
+    assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [
+        "| Model | MMLU | AlpacaEval | ToxiGen |", "| --- | --- | --- | --- |",
+        "| OLMo | 28.3 | 12.5 | 81.4 |", "| Llama | 45.1 | 10.2 | 76.8 |",
+        "| Falcon | 30.0 | 55.0 | 70.1 |",
+    ], "a centred head belongs to the body column it is centred over, never to its left neighbour"

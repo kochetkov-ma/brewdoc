@@ -813,15 +813,43 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
 
     body_top = next((band[0]["top"] for band in bands if body_band(band)), bands[0][0]["top"])
     verticals = [edge for edge in page.edges if edge["orientation"] == "v"]
+    inferred = table is not None and getattr(table, "_brewdoc_body_grid", False)
+    horizontal = table is not None and hasattr(table, "_brewdoc_bounds")
+    spans = []
+    for band in bands:  # body cell spans per column: they anchor the header heads above them
+        if band[0]["top"] < body_top:
+            continue
+        cells = {}
+        for word in band:
+            column = column_at(word["x0"] + 1 if inferred else (word["x0"] + word["x1"]) / 2)
+            low, high = cells.get(column, (word["x0"], word["x1"]))
+            cells[column] = (min(low, word["x0"]), max(high, word["x1"]))
+        spans.append(cells)
+    centres, body_gaps = {}, {}
+    for column in {index for cells in spans for index in cells}:
+        centres[column] = statistics.median((cells[column][0] + cells[column][1]) / 2
+                                            for cells in spans if column in cells)
+        body_gaps[column] = min((cells[column + 1][0] - cells[column][1] for cells in spans
+                                 if column in cells and column + 1 in cells), default=0.0)
+
+    def headed(word):
+        """Body column a header span is centred over, or None when it is centred over none."""
+        centre = (word["x0"] + word["x1"]) / 2
+        column = min(centres, key=lambda index: abs(centres[index] - centre), default=None)
+        return column if column is not None and abs(centres[column] - centre) <= COLUMN_TOLERANCE else None
+
     rows = []
     for band in bands:
         ordered_words = sorted(band, key=lambda item: item["x0"])
-        inferred = table is not None and getattr(table, "_brewdoc_body_grid", False)
-        horizontal = table is not None and hasattr(table, "_brewdoc_bounds")
-        if horizontal and band[0]["top"] < body_top:
+        header = horizontal and band[0]["top"] < body_top
+        if header:
             grouped = []
             for word in ordered_words:
-                if grouped and word["x0"] - grouped[-1]["x1"] <= height * 0.4:
+                aim = headed(grouped[-1]) if grouped else None
+                # a head aimed further right keeps its own cell, unless the body columns touch
+                split = (aim is not None and body_gaps[aim] > height * 0.4
+                         and column_at((word["x0"] + word["x1"]) / 2) > aim)
+                if grouped and word["x0"] - grouped[-1]["x1"] <= height * 0.4 and not split:
                     grouped[-1]["text"] += " " + word["text"]
                     grouped[-1]["x1"] = word["x1"]
                     grouped[-1]["chars"] += word["chars"]
@@ -842,6 +870,8 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
             x = (word["x0"] + word["x1"]) / 2
             y = (word["top"] + word["bottom"]) / 2
             column = column_at(word["x0"] + 1) if inferred else column_at(x)
+            if header and (aim := headed(word)) is not None:
+                column = aim
             anchor = band[0]["top"]
             if table is not None and not horizontal and word["top"] < body_top:
                 separators = _snap([bbox[0], bbox[2]] + [edge["x0"] for edge in verticals
