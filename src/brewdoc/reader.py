@@ -35,6 +35,7 @@ import os
 import posixpath
 import re
 import secrets
+import shutil
 import stat
 import statistics
 import sys
@@ -43,7 +44,7 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1465,6 +1466,13 @@ def _escape_source_html(line: str) -> str:
     return line.replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _literal_fence(code: list[str]) -> list[str]:
+    """Fence source code verbatim; the fence outgrows every backtick run so none can close it."""
+    longest = max((len(run) for line in code for run in re.findall("`+", line)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [fence, *code, fence]
+
+
 def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                   heads: set[str], numbers: set[str], tally: dict) -> tuple[str, tuple[str, ...]]:
     """Render anchored content units before metadata so all loss tallies are final."""
@@ -1484,9 +1492,10 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                 rendered = _drop_furniture(payload, heads, numbers, tally)
                 if block_kind == "block" and len(rendered) <= 2:
                     rendered = [line for line in rendered if line != "```"]
-            if rendered:
-                rendered = [_escape_source_html(line) for line in rendered]
-                out += rendered + [""]
+            if rendered and block_kind in ("block", "math"):
+                out += _literal_fence(rendered[1:-1]) + [""]
+            elif rendered:
+                out += [_escape_source_html(line) for line in rendered] + [""]
     body = "\n".join(out).rstrip("\n") + "\n"
     return body, tuple(keys)
 
@@ -1613,6 +1622,13 @@ def _sheet_grid(rows, tally: dict) -> list[list[str]]:
     return [row[:width] for row in grid] if width else []
 
 
+def _sheet_selection(sheets):
+    """Freeze a one-shot name iterable once; other values reach `_select_sheets` unchanged."""
+    if isinstance(sheets, Iterable) and not isinstance(sheets, (str, bytes)):
+        return tuple(sheets)
+    return sheets
+
+
 def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
     """Validate a selection and retain each sheet's one-based source ordinal."""
     available = tuple(available)
@@ -1668,7 +1684,7 @@ def _render_book(path, sheets=None) -> tuple[str, dict, tuple[ArtifactRef, ...],
 
 def render_book(path, *, sheets=None) -> tuple[str, dict]:
     """Render cached values for selected sheets with full-source ordinal navigation."""
-    markdown, tally, _artifacts, _unit_keys = _render_book(path, sheets)
+    markdown, tally, _artifacts, _unit_keys = _render_book(path, _sheet_selection(sheets))
     return markdown, tally
 
 
@@ -1692,13 +1708,10 @@ def _resolve_ooxml_part(base: str, target: str) -> str:
     """Resolve one internal relationship target without leaving the package root."""
     if not target:
         raise BrewdocError("OOXML relationship target is missing")
-    if target.startswith("/"):
-        raise BrewdocError("OOXML relationship target is absolute: %s" % target)
-    if ".." in target.split("/"):
-        raise BrewdocError("OOXML relationship target contains traversal: %s" % target)
-    joined = posixpath.join(posixpath.dirname(base), target)
+    # join keeps an absolute target whole; OPC absolute part names start at the package root.
+    joined = posixpath.join(posixpath.dirname(base), target).removeprefix("/")
     resolved = posixpath.normpath(joined)
-    if resolved in ("", ".", "..") or resolved.startswith("../"):
+    if resolved in (".", "..") or resolved.startswith("../"):
         raise BrewdocError("OOXML relationship target leaves the package: %s" % target)
     return resolved
 
@@ -1966,6 +1979,7 @@ def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
 def read_book_artifact(path, key: str, *, sheets=None) -> bytes:
     """Return deterministic formula JSON or exact opaque VBA project bytes by key."""
     path = Path(path)
+    sheets = _sheet_selection(sheets)
     references = list_book_artifacts(path, sheets=sheets)
     reference = next((item for item in references if item.key == key), None)
     if reference is None:
@@ -2140,319 +2154,85 @@ def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...
     return tuple(pairs)
 
 
-def _existing_directory(path: Path) -> Path:
-    """Return the nearest existing directory that owns a prospective path."""
-    candidate = path.resolve(strict=False)
-    if not candidate.is_dir():
-        candidate = candidate.parent
-    while not candidate.exists():
-        parent = candidate.parent
-        if parent == candidate:
-            break
-        candidate = parent
-    if not candidate.is_dir():
-        raise BrewdocError("output parent is not a directory: %s" % candidate)
-    return candidate
-
-
-def _filesystem_case_sensitive(path: Path) -> bool:
-    """Probe the owning filesystem with one temporary case-variant name."""
-    directory = _existing_directory(Path(path))
-    descriptor, raw_probe = tempfile.mkstemp(prefix=".brewdoc-CaSe-", dir=directory)
-    os.close(descriptor)
-    probe = Path(raw_probe)
-    variant = probe.with_name(probe.name.swapcase())
-    try:
-        try:
-            aliases = os.path.samefile(probe, variant)
-        except FileNotFoundError:
-            aliases = False
-        return not aliases
-    finally:
-        probe.unlink(missing_ok=True)
-
-
-def _filesystem_normalization_sensitive(path: Path) -> bool:
-    """Probe whether composed and decomposed Unicode names stay distinct."""
-    directory = _existing_directory(Path(path))
-    descriptor, raw_probe = tempfile.mkstemp(prefix=".brewdoc-é-", dir=directory)
-    os.close(descriptor)
-    probe = Path(raw_probe)
-    variant = probe.with_name(probe.name.replace("é", "e\u0301", 1))
-    try:
-        try:
-            aliases = os.path.samefile(probe, variant)
-        except FileNotFoundError:
-            aliases = False
-        return not aliases
-    finally:
-        probe.unlink(missing_ok=True)
-
-
-def _paths_alias(first: Path, second: Path) -> bool:
-    first_resolved = first.resolve(strict=False)
-    second_resolved = second.resolve(strict=False)
-    if first_resolved == second_resolved:
-        return True
-    try:
-        return os.path.samefile(first, second)
-    except (FileNotFoundError, OSError):
-        pass
-    first_text = str(first_resolved)
-    second_text = str(second_resolved)
-    first_normalized = unicodedata.normalize("NFC", first_text)
-    second_normalized = unicodedata.normalize("NFC", second_text)
-    if first_normalized.casefold() != second_normalized.casefold():
-        return False
-    first_owner = _existing_directory(first_resolved)
-    second_owner = _existing_directory(second_resolved)
-    if first_owner.stat().st_dev != second_owner.stat().st_dev:
-        return False
-    case_difference = first_normalized != second_normalized
-    normalization_difference = (first_text != first_normalized
-                                or second_text != second_normalized)
-    if case_difference and _filesystem_case_sensitive(first_owner):
-        return False
-    if normalization_difference and _filesystem_normalization_sensitive(first_owner):
-        return False
-    return True
-
-
-def _validate_output_target(target: Path) -> None:
-    """Reject directories, links, and special files before any final output write."""
-    if os.path.lexists(target) and not stat.S_ISREG(target.lstat().st_mode):
-        raise BrewdocError("output target is not a regular file: %s" % target)
-    _existing_directory(target)
-
-
-def _validate_output_paths(source: Path, out, pairs: tuple[tuple[str, Path, str], ...]) -> None:
-    """Reject every source or target alias before a renderer can write output."""
-    markdown_path = Path(out) if out is not None else None
-    if markdown_path is not None and _paths_alias(source, markdown_path):
-        raise BrewdocError("Markdown output aliases the source: %s" % out)
-    if markdown_path is not None:
-        _validate_output_target(markdown_path)
+def _output_targets(source: Path, out,
+                    pairs: tuple[tuple[str, Path, str], ...]) -> tuple[Path, ...]:
+    """Resolve Markdown then artifact targets; refuse source aliases, collisions, bad targets."""
+    named = (((None, Path(out), str(out)),) if out is not None else ()) + pairs
     seen = []
-    for key, target, shown in pairs:
-        if _paths_alias(source, target):
-            raise BrewdocError("artifact output aliases the source: %s=%s" % (key, shown))
-        if markdown_path is not None and _paths_alias(markdown_path, target):
-            raise BrewdocError("Markdown and artifact outputs collide: %s" % shown)
-        for other_key, other_target, _other_shown in seen:
-            if _paths_alias(other_target, target):
-                raise BrewdocError("artifact outputs collide: %s and %s" % (other_key, key))
-        _validate_output_target(target)
-        seen.append((key, target, shown))
+    for key, path, shown in named:
+        target = path.parent.resolve() / path.name
+        if _same_file(source, target):
+            raise BrewdocError("Markdown output aliases the source: %s" % shown if key is None
+                               else "artifact output aliases the source: %s=%s" % (key, shown))
+        # Casefold + NFC on every filesystem: one plan must not depend on where it runs.
+        folded = unicodedata.normalize("NFC", str(target)).casefold()
+        for earlier_key, earlier, earlier_folded in seen:
+            if earlier_folded == folded or _same_file(earlier, target):
+                raise BrewdocError("Markdown and artifact outputs collide: %s" % shown
+                                   if earlier_key is None else
+                                   "artifact outputs collide: %s and %s" % (earlier_key, key))
+        if os.path.lexists(target) and not stat.S_ISREG(target.lstat().st_mode):
+            raise BrewdocError("output target is not a regular file: %s" % path)
+        parent = next((folder for folder in target.parents if folder.exists()),
+                      target.parents[-1])
+        if not parent.is_dir():
+            raise BrewdocError("output parent is not a directory: %s" % parent)
+        seen.append((key, target, folded))
+    return tuple(target for _key, target, _folded in seen)
 
 
-@dataclass
-class _OutputPlan:
-    """One output with a captured target, stage, mode, and anonymous rollback data."""
-
-    target: Path
-    payload: bytes
-    final_target: Path | None = None
-    stage: Path | None = None
-    backup: object | None = None
-    mode: int | None = None
-    published: bool = False
+def _same_file(first: Path, second: Path) -> bool:
+    return first.exists() and second.exists() and os.path.samefile(first, second)
 
 
-_OPEN_RECOVERY_BACKUPS = []
+def _stage(target: Path, payload: bytes, stages: list[Path]) -> Path:
+    """Write and fsync payload to a new stage beside target with its mode; record it in stages."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stage = target.with_name(".brewdoc-stage-" + secrets.token_hex(8))
+    stream = open(stage, "xb")
+    stages.append(stage)
+    with stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+    if target.exists():
+        shutil.copymode(target, stage)
+    return stage
 
 
-def _open_unique_output(parent: Path, prefix: str) -> tuple[int, Path]:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    for _attempt in range(100):
-        path = parent / (prefix + secrets.token_hex(12))
-        try:
-            return os.open(path, flags, 0o666), path
-        except FileExistsError:
-            continue
-    raise OSError("could not allocate a unique temporary output in %s" % parent)
-
-
-def _open_stage(parent: Path) -> tuple[int, Path]:
-    """Atomically create a 0666-and-umask stage with an unpredictable name."""
-    return _open_unique_output(parent, ".brewdoc-stage-")
-
-
-def _open_recovery(parent: Path) -> tuple[int, Path]:
-    """Atomically create a non-overwriting emergency recovery output."""
-    return _open_unique_output(parent, ".brewdoc-recovery-")
-
-
-def _copy_stream(source, destination) -> None:
-    while True:
-        chunk = source.read(64 * 1024)
-        if not chunk:
-            return
-        destination.write(chunk)
-
-
-def _cleanup_staged_outputs(plans: list[_OutputPlan]) -> None:
-    for plan in plans:
-        if plan.stage is not None:
-            plan.stage.unlink(missing_ok=True)
-
-
-def _close_output_backups(plans: list[_OutputPlan]) -> None:
-    """Best-effort close anonymous data after every target state is resolved."""
-    for plan in plans:
-        backup = plan.backup
-        plan.backup = None
-        if backup is None:
-            continue
-        try:
-            backup.close()
-        except Exception:
-            if not getattr(backup, "closed", False):
-                try:
-                    backup.close()
-                except Exception:
-                    pass
-
-
-def _stage_backup(plan: _OutputPlan) -> None:
-    """Copy an existing target into anonymous same-filesystem rollback storage."""
-    if plan.mode is None:
-        return
-    plan.backup = tempfile.TemporaryFile(dir=plan.final_target.parent)
-    with plan.final_target.open("rb") as source:
-        _copy_stream(source, plan.backup)
-    plan.backup.flush()
-    plan.backup.seek(0)
-
-
-def _write_backup_copy(plan: _OutputPlan, descriptor: int, path: Path) -> None:
-    """Write a mode-preserving copy of anonymous rollback data to one secure path."""
-    try:
-        os.chmod(path, plan.mode)
-        destination = os.fdopen(descriptor, "wb")
-        descriptor = -1
-        with destination:
-            plan.backup.seek(0)
-            _copy_stream(plan.backup, destination)
-            destination.flush()
-            os.fsync(destination.fileno())
-    except OSError:
-        if descriptor >= 0:
-            os.close(descriptor)
-        path.unlink(missing_ok=True)
-        raise
-
-
-def _prepare_restore_stage(plan: _OutputPlan) -> Path:
-    descriptor, restore_stage = _open_stage(plan.final_target.parent)
-    _write_backup_copy(plan, descriptor, restore_stage)
-    return restore_stage
-
-
-def _materialize_recovery(plan: _OutputPlan) -> Path:
-    descriptor, recovery = _open_recovery(plan.final_target.parent)
-    _write_backup_copy(plan, descriptor, recovery)
-    return recovery
-
-
-def _retain_anonymous_recovery(plan: _OutputPlan) -> str:
-    """Keep the last anonymous copy open when no pathname can be materialized."""
-    descriptor = plan.backup.fileno()
-    _OPEN_RECOVERY_BACKUPS.append(plan.backup)
-    plan.backup = None
-    return "open anonymous recovery descriptor %d" % descriptor
-
-
-def _rollback_outputs(plans: list[_OutputPlan]) -> None:
-    """Restore originals and remove newly published files after a publish failure."""
+def _restore(targets: list[Path], originals: list[bytes | None], stages: list[Path]) -> list[str]:
+    """Put original bytes back or delete new targets; return the ones that failed."""
     failures = []
-    for plan in reversed(plans):
-        if not plan.published:
-            continue
-        if plan.backup is None:
-            try:
-                plan.final_target.unlink(missing_ok=True)
-            except OSError as exc:
-                failures.append("%s: %s" % (plan.final_target, exc))
-            continue
-        restore_stage = None
-        restore_error = None
+    for target, original in zip(targets, originals):
         try:
-            restore_stage = _prepare_restore_stage(plan)
-            os.replace(restore_stage, plan.final_target)
-        except OSError as exc:
-            restore_error = exc
-        if restore_error is None:
-            continue
-        try:
-            recovery = _materialize_recovery(plan)
-        except OSError as recovery_error:
-            if restore_stage is not None and restore_stage.exists():
-                state = "original bytes retained at %s" % restore_stage
+            if original is None:
+                target.unlink()
             else:
-                state = "original bytes retained in %s" % _retain_anonymous_recovery(plan)
-            failures.append(
-                "%s: %s; target retains published bytes; recovery materialization failed: %s; %s"
-                % (plan.final_target, restore_error, recovery_error, state))
-        else:
-            if restore_stage is not None:
-                restore_stage.unlink(missing_ok=True)
-            failures.append(
-                "%s: %s; target retains published bytes; original bytes saved at %s"
-                % (plan.final_target, restore_error, recovery))
-    if failures:
-        raise OSError("output rollback failed: %s" % "; ".join(failures))
+                os.replace(_stage(target, original, stages), target)
+        except OSError as exc:
+            failures.append("%s (%s)" % (target, exc))
+    return failures
 
 
-def _write_outputs(outputs: tuple[tuple[Path, bytes], ...], source: Path | None = None) -> None:
-    """Stage every payload, then atomically publish all or restore prior targets."""
-    plans = [_OutputPlan(target, payload) for target, payload in outputs]
+def _write_outputs(outputs: tuple[tuple[Path, bytes], ...]) -> None:
+    """Stage every payload, then replace targets in order; a failed replace restores earlier ones."""
+    targets = [target for target, _payload in outputs]
+    stages: list[Path] = []
     try:
-        for index, plan in enumerate(plans):
-            plan.target.parent.mkdir(parents=True, exist_ok=True)
-            real_parent = plan.target.parent.resolve(strict=True)
-            plan.final_target = real_parent / plan.target.name
-            if source is not None and _paths_alias(source, plan.final_target):
-                raise BrewdocError("captured output target aliases the source: %s" % plan.target)
-            for earlier in plans[:index]:
-                if _paths_alias(earlier.final_target, plan.final_target):
-                    raise BrewdocError("captured output targets collide: %s and %s"
-                                       % (earlier.target, plan.target))
-            _validate_output_target(plan.final_target)
-            if os.path.lexists(plan.final_target):
-                plan.mode = stat.S_IMODE(plan.final_target.stat().st_mode)
-            descriptor, plan.stage = _open_stage(real_parent)
+        originals = [target.read_bytes() if target.exists() else None for target in targets]
+        staged = [_stage(target, payload, stages) for target, payload in outputs]
+        for index, (target, stage) in enumerate(zip(targets, staged)):
             try:
-                if plan.mode is not None:
-                    os.chmod(plan.stage, plan.mode)
-                stream = os.fdopen(descriptor, "wb")
-                descriptor = -1
-                with stream:
-                    stream.write(plan.payload)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-            except OSError:
-                if descriptor >= 0:
-                    os.close(descriptor)
-                raise
-            _stage_backup(plan)
-    except (BrewdocError, OSError):
-        _cleanup_staged_outputs(plans)
-        _close_output_backups(plans)
-        raise
-    try:
-        for plan in plans:
-            os.replace(plan.stage, plan.final_target)
-            plan.stage = None
-            plan.published = True
-    except OSError:
-        try:
-            _rollback_outputs(plans)
-        finally:
-            _cleanup_staged_outputs(plans)
-            _close_output_backups(plans)
-        raise
-    _close_output_backups(plans)
+                os.replace(stage, target)
+            except OSError as exc:
+                reason = "could not replace %s: %s" % (target, exc)
+                failures = _restore(targets[:index], originals, stages)
+                if failures:
+                    reason += "; could not restore %s" % ", ".join(failures)
+                raise BrewdocError(reason) from exc
+    finally:
+        for leftover in stages:
+            leftover.unlink(missing_ok=True)
 
 
 def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
@@ -2467,10 +2247,11 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
+        sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
         if route != "sheet" and (sheets is not None or pairs):
             raise BrewdocError("--sheet and --artifact are workbook-only options")
-        _validate_output_paths(path, out, pairs)
+        targets = _output_targets(path, out, pairs)
         if route == "pdf":
             markdown, tally = render_pdf(path)
             references = ()
@@ -2488,30 +2269,26 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
         if unknown:
             raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
         markdown_bytes = markdown.encode("ascii")
-        artifact_bytes = tuple((key, target, shown,
-                                read_book_artifact(path, key, sheets=sheets))
-                               for key, target, shown in pairs)
+        payloads = ((markdown_bytes,) if out is not None else ()) + tuple(
+            read_book_artifact(path, key, sheets=sheets) for key, _target, _shown in pairs)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
     except Exception as exc:
         return EXIT_FAIL, _line(route, False, "%s unreadable: %s: %s: %s"
                                 % (route, path, type(exc).__name__, exc), path), ""
-    outputs = ((Path(out), markdown_bytes),) if out is not None else ()
-    outputs += tuple((target, payload) for _key, target, _shown, payload in artifact_bytes)
     try:
-        _write_outputs(outputs, path)
+        _write_outputs(tuple(zip(targets, payloads)))
     except (BrewdocError, OSError) as exc:
         return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
     reason = "%s rendered: %d chapters, %d tables, %d text regions, %d column splits" % (
         route, tally["pages"] or tally["sheets"] or tally["chapters"], tally["tables"],
         tally["text_regions"],
         tally["columns_split"])
-    output_by_key = {key: shown for key, _target, shown, _payload in artifact_bytes}
+    output_by_key = {key: shown for key, _target, shown in pairs}
     receipt_artifacts = tuple(reference.to_dict(output_by_key.get(reference.key))
                               for reference in references)
-    selection = tuple(sheets) if sheets is not None else None
     return EXIT_OK, _line(route, True, reason, path, tally, out, unit_keys,
-                          receipt_artifacts, selection), markdown
+                          receipt_artifacts, sheets), markdown
 
 
 # --- self-check: synthetic documents, no fixture file needed ----------------------------------

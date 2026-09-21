@@ -351,6 +351,23 @@ def test_the_route_line_is_one_json_line_a_workflow_can_re_read(tmp_path):
     ), "stdout:\n%s\nstderr:\n%s" % (proc.stdout, proc.stderr)
 
 
+def test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes(tmp_path, capsys):
+    # GIVEN a one-page PDF, its --out Markdown and its stdout-mode receipt
+    path = tmp_path / "one.pdf"
+    path.write_bytes(reader.synthetic_pdf([BODY % (700, "hello")]))
+    out = tmp_path / "one.md"
+    assert main([str(path), "--out", str(out)]) == 0, "the --out render must succeed"
+    capsys.readouterr()
+    receipt = reader.run(path)[1]
+    # WHEN the CLI renders it without --out
+    code = main([str(path)])
+    # THEN stdout is one receipt line followed by exactly the --out file bytes
+    line = json.dumps(receipt, ensure_ascii=True, sort_keys=True)
+    assert (code, capsys.readouterr().out) == (
+        0, line + "\n" + out.read_text(encoding="ascii")
+    ), "stdout Markdown must equal the --out file, with no extra trailing blank line"
+
+
 def test_metadata_first_pdf_keeps_an_empty_physical_page_navigable(tmp_path):
     # GIVEN one text page followed by one physical page without text
     path = tmp_path / "partial.pdf"
@@ -484,6 +501,25 @@ def test_docx_literal_anchor_content_cannot_forge_receipt_unit_keys(tmp_path):
     assert '[Chapter 1: "Actual"](#brewdoc-chapter-000001)' in markdown, (
         "literal source text must not corrupt real contents navigation"
     )
+
+
+def test_fixed_layout_block_keeps_source_angle_brackets_and_ampersands_literal(tmp_path):
+    # GIVEN two aligned three-column code rows and one prose line, all with < > &
+    path = tmp_path / "code.pdf"
+    cells = [(72, 700, "if d > 0:"), (220, 700, "a < b"), (360, 700, "x & y"),
+             (72, 688, "while c:"), (220, 688, "c > d"), (360, 688, "p & q"),
+             (72, 600, "prose a < b & c > d")]
+    path.write_bytes(reader.synthetic_pdf(
+        ["".join("BT /F1 10 Tf 1 0 0 1 %d %d Tm (%s) Tj ET\n" % cell for cell in cells)]))
+    # WHEN the PDF is rendered
+    markdown, _tally = reader.render_pdf(path)
+    # THEN fenced code keeps source characters literally while prose stays escaped
+    assert markdown[markdown.index('<a id="brewdoc-page-000001"></a>'):] == (
+        '<a id="brewdoc-page-000001"></a>\n## Page 1\n\n```\n'
+        "if d > 0:            a < b              x & y\n"
+        "while c:             c > d              p & q\n"
+        "```\n\nprose a &lt; b & c &gt; d\n"
+    ), "fenced code is literal Markdown, so HTML escaping there corrupts source text"
 
 
 def test_workbook_only_options_fail_with_receipt_before_pdf_output(tmp_path):

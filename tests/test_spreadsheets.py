@@ -1,5 +1,5 @@
 import hashlib
-import io
+import itertools
 import json
 import os
 import re
@@ -105,16 +105,13 @@ def vba_book(path: Path, relationships: str, *, parts=()) -> Path:
     return path
 
 
-def rename_formula_sheet(path: Path, old: str, new_xml: str) -> None:
-    """Replace one workbook sheet label while preserving the synthetic package."""
+def rewrite_member(path: Path, member: str, old: bytes, new: bytes) -> None:
+    """Replace bytes in one package member while preserving the synthetic package."""
     with zipfile.ZipFile(path) as source:
         members = [(item.filename, source.read(item.filename)) for item in source.infolist()]
     with zipfile.ZipFile(path, "w") as target:
         for name, data in members:
-            if name == "xl/workbook.xml":
-                data = data.replace(('name="%s"' % old).encode(),
-                                    ('name="%s"' % new_xml).encode("utf-8"))
-            target.writestr(name, data)
+            target.writestr(name, data.replace(old, new) if name == member else data)
 
 
 def mark_member_encrypted(path: Path, member: str) -> None:
@@ -188,6 +185,77 @@ def test_invalid_sheet_selection_fails_before_rendering(tmp_path, selection, rea
     # THEN the exact selection error is raised
     with pytest.raises(reader.BrewdocError, match="^%s$" % reason):
         reader.render_book(path, sheets=selection)
+
+
+@pytest.mark.parametrize("selection", [5, "Calc", b"Calc"], ids=["int", "str", "bytes"])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda path, sheets: brewdoc.render_book(path, sheets=sheets),
+        lambda path, sheets: brewdoc.list_book_artifacts(path, sheets=sheets),
+        lambda path, sheets: brewdoc.read_book_artifact(
+            path, "formula/sheet/000002", sheets=sheets),
+        lambda path, sheets: brewdoc.read_formulas(path, sheets=sheets),
+    ],
+    ids=["render_book", "list_book_artifacts", "read_book_artifact", "read_formulas"],
+)
+def test_non_iterable_or_bare_string_selection_is_refused_as_a_selection_error(
+        tmp_path, call, selection):
+    # GIVEN a readable workbook and a selection that is not a sequence of names
+    path = formula_book(tmp_path / "book.xlsx")
+    # WHEN a public entry point receives it
+    # THEN it raises the one selection error, not a raw TypeError or unreadable-file error
+    with pytest.raises(reader.BrewdocError, match="^sheet selection must be a sequence of names$"):
+        call(path, selection)
+
+
+@pytest.mark.parametrize("selection", [5, "Calc", b"Calc"], ids=["int", "str", "bytes"])
+def test_run_reports_a_non_iterable_or_bare_string_selection_as_a_selection_error(
+        tmp_path, selection):
+    # GIVEN a readable workbook and a selection that is not a sequence of names
+    path = formula_book(tmp_path / "book.xlsx")
+    # WHEN run receives it
+    code, receipt, markdown = reader.run(path, sheets=selection)
+    # THEN the receipt carries the same selection error as the raising entry points
+    assert (code, receipt["file_ok"], receipt["reason"], markdown) == (
+        1, False, "sheet selection must be a sequence of names", "",
+    ), "run must report the shared selection error, not an unreadable-file error"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda path, sheets: brewdoc.render_book(path, sheets=sheets),
+        lambda path, sheets: brewdoc.list_book_artifacts(path, sheets=sheets),
+        lambda path, sheets: brewdoc.read_book_artifact(
+            path, "formula/sheet/000002", sheets=sheets),
+    ],
+    ids=["render_book", "list_book_artifacts", "read_book_artifact"],
+)
+def test_one_shot_sheet_iterator_selects_like_the_equivalent_tuple(tmp_path, call):
+    # GIVEN a workbook and its result for a two-sheet tuple selection
+    path = formula_book(tmp_path / "book.xlsx")
+    expected = call(path, ("Calc", "Inputs"))
+    # WHEN the same names arrive as a one-shot iterator
+    actual = call(path, iter(("Calc", "Inputs")))
+    # THEN the result is identical to the tuple selection
+    assert actual == expected, "any iterable of sheet names must be consumed exactly once"
+
+
+@pytest.mark.parametrize("artifacts", [(), (("formula/sheet/000002", "calc.json"),)],
+                         ids=["markdown", "markdown-and-artifact"])
+def test_run_accepts_a_one_shot_sheet_iterator_like_the_equivalent_tuple(tmp_path, artifacts):
+    # GIVEN a workbook and its successful run for a two-sheet tuple selection
+    path = formula_book(tmp_path / "book.xlsx")
+    outputs = [(key, tmp_path / name) for key, name in artifacts]
+    expected = brewdoc.run(path, sheets=("Calc", "Inputs"), artifact_outputs=outputs)
+    assert (expected[0], expected[1]["selected_sheets"]) == (0, ["Calc", "Inputs"]), (
+        "the tuple selection must render successfully"
+    )
+    # WHEN the same names arrive as a one-shot iterator
+    actual = brewdoc.run(path, sheets=iter(("Calc", "Inputs")), artifact_outputs=outputs)
+    # THEN exit code, receipt and Markdown are identical to the tuple selection
+    assert actual == expected, "run must consume any iterable of sheet names exactly once"
 
 
 def test_unknown_selection_is_validated_before_any_sheet_read(monkeypatch):
@@ -313,6 +381,41 @@ def test_malformed_ooxml_formula_parts_fail_clearly(tmp_path, options, reason):
     # THEN the failing source part is named
     with pytest.raises(reader.BrewdocError, match=reason):
         reader.read_formulas(path)
+
+
+def source_identity_rows(path: Path) -> str:
+    """The two adjacent metadata rows that identify one source file."""
+    return "| Source bytes | %d |\n| Source SHA-256 | %s |" % (
+        path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+@pytest.mark.parametrize(
+    ("member", "relative", "absolute", "count"),
+    [
+        ("_rels/.rels", b'Target="xl/workbook.xml"', b'Target="/xl/workbook.xml"', 1),
+        ("xl/_rels/workbook.xml.rels", b'Target="worksheets/', b'Target="/xl/worksheets/', 3),
+    ],
+    ids=["office-document", "worksheets"],
+)
+def test_absolute_opc_relationship_targets_render_like_relative_ones(
+        tmp_path, member, relative, absolute, count):
+    # GIVEN one workbook with relative targets and its twin with absolute ones, as openpyxl writes
+    (tmp_path / "relative").mkdir()
+    (tmp_path / "absolute").mkdir()
+    reference = formula_book(tmp_path / "relative" / "book.xlsx")
+    path = formula_book(tmp_path / "absolute" / "book.xlsx")
+    rewrite_member(path, member, relative, absolute)
+    with zipfile.ZipFile(path) as package:
+        assert package.read(member).count(absolute) == count, "twin must use absolute targets"
+    expected, expected_tally = brewdoc.render_book(reference)
+    assert expected.count(source_identity_rows(reference)) == 1, "source rows must be unique"
+    # WHEN the absolute-target twin is rendered
+    actual = brewdoc.render_book(path)
+    # THEN only the source identity rows differ from the relative-target render
+    assert actual == (
+        expected.replace(source_identity_rows(reference), source_identity_rows(path)),
+        expected_tally,
+    ), "absolute OPC part names are legal relationship targets and must resolve from the root"
 
 
 def test_formula_api_is_public():
@@ -451,15 +554,15 @@ def test_vba_status_is_unavailable_outside_xlsm_and_xlsb(tmp_path, suffix):
         ),
         (
             '<Relationships><Relationship Id="rId1" Type="%s" '
-            'Target="/xl/vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
-            (("xl/vbaProject.bin", b"project"),),
-            "OOXML relationship target is absolute: /xl/vbaProject.bin",
+            'Target="../../vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
+            (("vbaProject.bin", b"project"),),
+            r"^OOXML relationship target leaves the package: \.\./\.\./vbaProject\.bin$",
         ),
         (
             '<Relationships><Relationship Id="rId1" Type="%s" '
-            'Target="../vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
+            'Target="/../vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
             (("vbaProject.bin", b"project"),),
-            "OOXML relationship target contains traversal: ../vbaProject.bin",
+            r"^OOXML relationship target leaves the package: /\.\./vbaProject\.bin$",
         ),
         (
             '<Relationships><Relationship Id="rId1" Type="%s" '
@@ -482,6 +585,28 @@ def test_malformed_vba_relationships_fail_at_the_archive_boundary(
     # THEN the exact package boundary is refused
     with pytest.raises(reader.BrewdocError, match=reason):
         reader.discover_vba_artifacts(path)
+
+
+@pytest.mark.parametrize(
+    "target", ["vbaProject.bin", "/xl/vbaProject.bin", "../xl/vbaProject.bin"],
+    ids=["relative", "absolute", "parent-relative"],
+)
+def test_vba_relationship_target_resolves_to_its_opc_part_name(tmp_path, target):
+    # GIVEN an XLSM whose one VBA relationship names xl/vbaProject.bin in a legal OPC spelling
+    data = b"opaque project"
+    path = vba_book(
+        tmp_path / "book.xlsm",
+        '<Relationships><Relationship Id="rId1" Type="%s" Target="%s"/></Relationships>'
+        % (VBA_RELATIONSHIP, target),
+        parts=(("xl/vbaProject.bin", data),),
+    )
+    # WHEN the keyed project is read
+    project = brewdoc.read_vba_artifact(path, "vba/project/000001")
+    # THEN every spelling yields the same normalized part and exact bytes
+    assert project == brewdoc.OpaqueVbaProject(
+        "vba/project/000001", "book.xlsm", hashlib.sha256(path.read_bytes()).hexdigest(),
+        VBA_RELATIONSHIP, "xl/vbaProject.bin", len(data), hashlib.sha256(data).hexdigest(), data,
+    ), "absolute and in-package relative OPC targets must resolve like the plain relative one"
 
 
 def test_encrypted_vba_member_is_refused_before_read(tmp_path):
@@ -610,539 +735,258 @@ def test_artifact_request_does_not_change_markdown_and_receipt_names_output(tmp_
     )
 
 
+FORMULA_KEYS = ("formula/sheet/000001", "formula/sheet/000002")
+
+
+def tree_state(root: Path) -> dict:
+    """Map each path under root to its bytes and permission bits; directories map to None."""
+    return {
+        item.relative_to(root).as_posix():
+            (item.read_bytes(), stat.S_IMODE(item.lstat().st_mode)) if item.is_file() else None
+        for item in sorted(root.rglob("*"))
+    }
+
+
+def new_file_mode(directory: Path) -> int:
+    """Measure the mode a fresh 0666 file receives under the current umask."""
+    control = directory / "mode-control"
+    control.touch(mode=0o666)
+    mode = stat.S_IMODE(control.stat().st_mode)
+    control.unlink()
+    return mode
+
+
 @pytest.mark.parametrize(
     ("artifact_outputs", "reason"),
     [
-        (["formula/sheet/000002"], "malformed artifact assignment"),
+        (["formula/sheet/000002"], "malformed artifact assignment: formula/sheet/000002"),
         (["missing/key=missing.json"], "unknown artifact key: missing/key"),
         (["formula/sheet/000002=a.json", "formula/sheet/000002=b.json"],
          "duplicate artifact key: formula/sheet/000002"),
     ],
 )
-def test_invalid_artifact_requests_fail_before_any_write(tmp_path, artifact_outputs, reason):
-    # GIVEN an invalid artifact request and a valid Markdown destination
+def test_invalid_artifact_requests_fail_before_any_write(
+        tmp_path, monkeypatch, artifact_outputs, reason):
+    # GIVEN an invalid artifact request resolved inside tmp_path and a valid Markdown destination
+    monkeypatch.chdir(tmp_path)
     path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
+    before = tree_state(tmp_path)
     # WHEN the request is validated
     code, receipt, markdown = reader.run(
-        path, markdown_out, sheets=("Calc",), artifact_outputs=artifact_outputs)
-    # THEN it fails with a receipt and creates no output
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "invalid artifact requests must use the normal exit 1 receipt"
-    )
-    assert reason in receipt["reason"], "the receipt must identify the invalid request"
-    assert not markdown_out.exists(), "validation must precede the Markdown write"
-
-
-def test_every_output_collision_fails_without_partial_files(tmp_path):
-    # GIVEN two formula artifacts and output paths that alias each other or the source
-    path = formula_book(tmp_path / "book.xlsx")
-    first = tmp_path / "first.json"
-    before = path.read_bytes()
-    cases = [
-        (path, None),
-        (tmp_path / "same", [("formula/sheet/000001", tmp_path / "same")]),
-        (tmp_path / "book.md", [
-            ("formula/sheet/000001", first), ("formula/sheet/000002", first),
-        ]),
-        (tmp_path / "book.md", [("formula/sheet/000001", path)]),
-    ]
-    # WHEN each collision is requested
-    for markdown_out, outputs in cases:
-        code, receipt, markdown = reader.run(
-            path, markdown_out, artifact_outputs=outputs)
-        # THEN every request fails before a write
-        assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-            "source, Markdown, and artifact aliases must all be refused"
-        )
-    assert path.read_bytes() == before, "an alias refusal must leave the source unchanged"
-    assert not first.exists(), "artifact-to-artifact collision must not create a partial file"
-
-
-def test_case_variant_targets_follow_the_actual_filesystem_identity(tmp_path):
-    # GIVEN two formula outputs whose nonexistent names differ only by case
-    path = formula_book(tmp_path / "book.xlsx")
-    upper = tmp_path / "A.json"
-    lower = tmp_path / "a.json"
-    case_sensitive = reader._filesystem_case_sensitive(tmp_path)
-    # WHEN both targets are requested in one transaction
-    code, receipt, _markdown = reader.run(
-        path, artifact_outputs=[
-            ("formula/sheet/000001", upper), ("formula/sheet/000002", lower),
-        ])
-    # THEN insensitive aliases are refused, while a sensitive volume keeps both names distinct
-    assert (code == 0) is case_sensitive, (
-        "case variants must follow measured filesystem identity rather than OS assumptions"
-    )
-    assert (upper.exists() and lower.exists()) is case_sensitive, (
-        "an alias refusal must happen before either final artifact is written"
-    )
-    assert ("artifact outputs collide" in receipt["reason"]) is (not case_sensitive), (
-        "a case-insensitive collision must be named in the failure receipt"
-    )
-
-
-def test_directory_artifact_target_is_rejected_before_valid_markdown_write(tmp_path):
-    # GIVEN valid Markdown output and an artifact target that is an existing directory
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    directory_target = tmp_path / "artifact.json"
-    directory_target.mkdir()
-    # WHEN output paths are preflighted
-    code, receipt, markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[("formula/sheet/000001", directory_target)],
-    )
-    # THEN no Markdown is published and the directory remains untouched
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "non-regular artifact targets must fail through the receipt contract"
-    )
-    assert "output target is not a regular file" in receipt["reason"], (
-        "preflight must identify the invalid final target"
-    )
-    assert not markdown_out.exists(), "valid earlier outputs must not publish after preflight failure"
-    assert directory_target.is_dir(), "preflight must not replace or remove the invalid target"
-
-
-def test_later_publish_failure_rolls_back_existing_and_new_outputs(tmp_path, monkeypatch):
-    # GIVEN existing Markdown and first artifact bytes plus a new later artifact target
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    first_out = tmp_path / "first.json"
-    later_out = tmp_path / "later.json"
-    markdown_out.write_bytes(b"old markdown")
-    first_out.write_bytes(b"old artifact")
-    real_replace = reader.os.replace
-    failed = []
-
-    def fail_later_publish(source, target):
-        source = Path(source)
-        target = Path(target)
-        if (not failed and source.name.startswith(".brewdoc-stage-")
-                and target == later_out):
-            failed.append(target)
-            raise OSError("injected later publish failure")
-        return real_replace(source, target)
-
-    monkeypatch.setattr(reader.os, "replace", fail_later_publish)
-    # WHEN the last atomic publish fails after earlier outputs were replaced
-    code, receipt, markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[
-            ("formula/sheet/000001", first_out),
-            ("formula/sheet/000002", later_out),
-        ],
-    )
-    # THEN prior files are restored, the new file is absent, and staging files are cleaned
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "a publish failure must retain the normal failure receipt"
-    )
-    assert "injected later publish failure" in receipt["reason"], (
-        "the receipt must preserve the concrete publish failure"
-    )
-    assert markdown_out.read_bytes() == b"old markdown", (
-        "rollback must restore the previous Markdown bytes"
-    )
-    assert first_out.read_bytes() == b"old artifact", (
-        "rollback must restore the previous artifact bytes"
-    )
-    assert not later_out.exists(), "rollback must remove a newly published final target"
-    assert list(tmp_path.glob(".brewdoc-*-*")) == [], (
-        "rollback must remove every staged or backup file"
-    )
-
-
-def test_double_publish_and_restore_failure_materializes_exact_recovery(tmp_path, monkeypatch):
-    # GIVEN two existing outputs, a new later output, and failures in publish then restore
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    first_out = tmp_path / "first.json"
-    later_out = tmp_path / "later.json"
-    markdown_out.write_bytes(b"old markdown")
-    markdown_out.chmod(0o640)
-    first_out.write_bytes(b"old artifact")
-    new_markdown = reader.render_book(path)[0].encode("ascii")
-    real_replace = reader.os.replace
-    publish_failed = []
-    restore_failed = []
-
-    def fail_publish_then_restore(source, target):
-        source = Path(source)
-        target = Path(target)
-        if not publish_failed and source.name.startswith(".brewdoc-stage-") and target == later_out:
-            publish_failed.append(True)
-            raise OSError("injected artifact publish failure")
-        if (publish_failed and not restore_failed and source.name.startswith(".brewdoc-stage-")
-                and target == markdown_out):
-            restore_failed.append(True)
-            raise OSError("injected Markdown restore failure")
-        return real_replace(source, target)
-
-    monkeypatch.setattr(reader.os, "replace", fail_publish_then_restore)
-    # WHEN the later artifact fails and rollback cannot replace the prior Markdown
-    code, receipt, markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[
-            ("formula/sheet/000001", first_out),
-            ("formula/sheet/000002", later_out),
-        ],
-    )
-    recovery_match = re.search(r"original bytes saved at ([^;]+)", receipt["reason"])
-    # THEN the new target state and exact durable recovery path are disclosed
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "double failure must retain the failure receipt contract"
-    )
-    assert markdown_out.read_bytes() == new_markdown, (
-        "the receipt must describe a target that still contains the newly published bytes"
-    )
-    assert recovery_match is not None, "restore failure must report an exact recovery path"
-    recovery = Path(recovery_match.group(1))
-    assert recovery.read_bytes() == b"old markdown", (
-        "the recovery file must preserve every original Markdown byte"
-    )
-    assert first_out.read_bytes() == b"old artifact", (
-        "unrelated published outputs must still roll back successfully"
-    )
-    assert not later_out.exists(), "the failed new output must remain absent"
-    assert list(tmp_path.glob(".brewdoc-stage-*")) == [], (
-        "successful recovery materialization must leave no stage files"
-    )
-
-
-def test_recovery_materialization_failure_retains_and_reports_complete_stage(
-        tmp_path, monkeypatch):
-    # GIVEN the same double failure plus an injected recovery-file creation failure
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    first_out = tmp_path / "first.json"
-    later_out = tmp_path / "later.json"
-    markdown_out.write_bytes(b"old markdown")
-    markdown_out.chmod(0o640)
-    first_out.write_bytes(b"old artifact")
-    real_replace = reader.os.replace
-    publish_failed = []
-    restore_failed = []
-
-    def fail_publish_then_restore(source, target):
-        source = Path(source)
-        target = Path(target)
-        if not publish_failed and source.name.startswith(".brewdoc-stage-") and target == later_out:
-            publish_failed.append(True)
-            raise OSError("injected artifact publish failure")
-        if (publish_failed and not restore_failed and source.name.startswith(".brewdoc-stage-")
-                and target == markdown_out):
-            restore_failed.append(True)
-            raise OSError("injected Markdown restore failure")
-        return real_replace(source, target)
-
-    def fail_recovery_creation(_parent):
-        raise OSError("injected recovery materialization failure")
-
-    monkeypatch.setattr(reader.os, "replace", fail_publish_then_restore)
-    monkeypatch.setattr(reader, "_open_recovery", fail_recovery_creation)
-    # WHEN named recovery materialization also fails
-    code, receipt, markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[
-            ("formula/sheet/000001", first_out),
-            ("formula/sheet/000002", later_out),
-        ],
-    )
-    retained_match = re.search(r"original bytes retained at ([^;]+)", receipt["reason"])
-    # THEN the complete mode-preserving restore stage remains and is reported exactly
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "materialization failure must retain the failure receipt contract"
-    )
-    assert "injected recovery materialization failure" in receipt["reason"], (
-        "the receipt must disclose the failed durable-recovery step"
-    )
-    assert retained_match is not None, "the strongest remaining recovery path must be reported"
-    retained = Path(retained_match.group(1))
-    assert retained.read_bytes() == b"old markdown", (
-        "the retained restore stage must preserve every original byte"
-    )
-    assert first_out.read_bytes() == b"old artifact", (
-        "unrelated outputs must roll back despite recovery materialization failure"
-    )
-    assert not later_out.exists(), "the failed later output must remain absent"
-    retained.unlink()
-
-
-def test_later_staging_failure_cleans_all_temporary_and_final_outputs(tmp_path, monkeypatch):
-    # GIVEN three new outputs and an injected fsync failure during the second stage
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    first_out = tmp_path / "first.json"
-    second_out = tmp_path / "second.json"
-    real_fsync = reader.os.fsync
-    calls = []
-
-    def fail_second_stage(descriptor):
-        calls.append(descriptor)
-        if len(calls) == 2:
-            raise OSError("injected staging failure")
-        return real_fsync(descriptor)
-
-    monkeypatch.setattr(reader.os, "fsync", fail_second_stage)
-    # WHEN staging fails after one payload was fully prepared
-    code, receipt, markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[
-            ("formula/sheet/000001", first_out),
-            ("formula/sheet/000002", second_out),
-        ],
-    )
-    # THEN no final or temporary output survives the failed staging phase
-    assert (code, receipt["file_ok"], markdown) == (1, False, ""), (
-        "staging failures must retain the normal failure receipt"
-    )
-    assert "injected staging failure" in receipt["reason"], (
-        "the receipt must preserve the concrete staging failure"
-    )
-    assert [path.exists() for path in (markdown_out, first_out, second_out)] == [False] * 3, (
-        "staging must finish for every payload before any final target is published"
-    )
-    assert list(tmp_path.glob(".brewdoc-*-*")) == [], (
-        "a staging failure must remove every temporary file"
-    )
+        path, tmp_path / "book.md", sheets=("Calc",), artifact_outputs=artifact_outputs)
+    # THEN it fails with the exact receipt reason and writes nothing
+    assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
+        1, False, reason, "", before,
+    ), "invalid artifact requests must be refused before any write"
 
 
 @pytest.mark.parametrize(
-    ("first_name", "second_name", "case_difference"),
+    ("files", "dirs", "links", "out", "artifacts", "reason"),
     [
-        ("café.json", "cafe\u0301.json", False),
-        ("CAFÉ.json", "cafe\u0301.json", True),
+        pytest.param((), (), (), "book.xlsx", ((FORMULA_KEYS[0], "calc.json"),),
+                     "Markdown output aliases the source: {out}", id="markdown-is-source"),
+        pytest.param((), ("sub",), (), "sub/../book.xlsx", ((FORMULA_KEYS[0], "calc.json"),),
+                     "Markdown output aliases the source: {out}", id="markdown-source-spelling"),
+        pytest.param((), (), (("symlink_to", "alias.md", "book.xlsx"),), "alias.md",
+                     ((FORMULA_KEYS[0], "calc.json"),),
+                     "Markdown output aliases the source: {out}", id="markdown-source-symlink"),
+        pytest.param((), (), (("hardlink_to", "alias.md", "book.xlsx"),), "alias.md",
+                     ((FORMULA_KEYS[0], "calc.json"),),
+                     "Markdown output aliases the source: {out}", id="markdown-source-hardlink"),
+        pytest.param((), (), (), "book.md", ((FORMULA_KEYS[0], "book.xlsx"),),
+                     "artifact output aliases the source: formula/sheet/000001={artifacts[0]}",
+                     id="artifact-is-source"),
+        pytest.param((), ("sub",), (), "book.md", ((FORMULA_KEYS[0], "sub/../book.xlsx"),),
+                     "artifact output aliases the source: formula/sheet/000001={artifacts[0]}",
+                     id="artifact-source-spelling"),
+        pytest.param((), (), (("symlink_to", "alias.json", "book.xlsx"),), "book.md",
+                     ((FORMULA_KEYS[0], "alias.json"),),
+                     "artifact output aliases the source: formula/sheet/000001={artifacts[0]}",
+                     id="artifact-source-symlink"),
+        pytest.param((), (), (("hardlink_to", "alias.json", "book.xlsx"),), "book.md",
+                     ((FORMULA_KEYS[0], "alias.json"),),
+                     "artifact output aliases the source: formula/sheet/000001={artifacts[0]}",
+                     id="artifact-source-hardlink"),
+        pytest.param((), (), (), "same.out", ((FORMULA_KEYS[0], "same.out"),),
+                     "Markdown and artifact outputs collide: {artifacts[0]}",
+                     id="markdown-artifact-same-path"),
+        pytest.param((), (), (), "book.md",
+                     ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "calc.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="artifact-artifact-same-path"),
+        pytest.param((), ("sub",), (), "book.md",
+                     ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "sub/../calc.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="artifact-artifact-spelling"),
+        pytest.param((), (), (), "book.md", ((FORMULA_KEYS[0], "BOOK.md"),),
+                     "Markdown and artifact outputs collide: {artifacts[0]}",
+                     id="casefold-markdown-artifact"),
+        pytest.param((), (), (), "book.md",
+                     ((FORMULA_KEYS[0], "Calc.json"), (FORMULA_KEYS[1], "calc.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="casefold-artifact-artifact"),
+        pytest.param((), (), (), "book.md",
+                     ((FORMULA_KEYS[0], "café.json"), (FORMULA_KEYS[1], "café.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="nfc-artifact-artifact"),
+        pytest.param((), (), (), "book.md",
+                     ((FORMULA_KEYS[0], "CAFÉ.json"), (FORMULA_KEYS[1], "café.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="nfc-casefold-artifact-artifact"),
+        pytest.param((), ("book.md",), (), "book.md", ((FORMULA_KEYS[0], "calc.json"),),
+                     "output target is not a regular file: {out}", id="markdown-directory"),
+        pytest.param((), ("calc.json",), (), "book.md", ((FORMULA_KEYS[0], "calc.json"),),
+                     "output target is not a regular file: {artifacts[0]}",
+                     id="artifact-directory"),
+        pytest.param(("real.md",), (), (("symlink_to", "book.md", "real.md"),), "book.md",
+                     ((FORMULA_KEYS[0], "calc.json"),),
+                     "output target is not a regular file: {out}", id="markdown-symlink"),
+        pytest.param(("parent",), (), (), "parent/book.md", ((FORMULA_KEYS[0], "calc.json"),),
+                     "output parent is not a directory: {out.parent}",
+                     id="markdown-parent-is-file"),
     ],
 )
-def test_unicode_normalization_aliases_follow_the_actual_filesystem(
-        tmp_path, first_name, second_name, case_difference):
-    # GIVEN normalization-equivalent formula targets, optionally with a case difference
+def test_invalid_output_plans_are_refused_before_any_write(
+        tmp_path, files, dirs, links, out, artifacts, reason):
+    # GIVEN a workbook, prepared filesystem state, and an output plan that aliases,
+    # collides after NFC casefolding, or names a non-regular target
     path = formula_book(tmp_path / "book.xlsx")
-    first = tmp_path / first_name
-    second = tmp_path / second_name
-    normalization_sensitive = reader._filesystem_normalization_sensitive(tmp_path)
-    case_sensitive = reader._filesystem_case_sensitive(tmp_path)
-    expected_success = normalization_sensitive or case_difference and case_sensitive
-    # WHEN both nonexistent paths are requested in one transaction
-    code, receipt, _markdown = reader.run(
-        path, artifact_outputs=[
-            ("formula/sheet/000001", first), ("formula/sheet/000002", second),
-        ])
-    # THEN only actual filesystem aliases are refused before either final write
-    assert (code == 0) is expected_success, (
-        "normalization and case identity must use live filesystem behavior"
-    )
-    assert (first.exists() and second.exists()) is expected_success, (
-        "a Unicode alias refusal must precede every final output write"
-    )
-    assert ("artifact outputs collide" in receipt["reason"]) is (not expected_success), (
-        "normalization-equivalent aliases must be named as an output collision"
-    )
+    for name in files:
+        (tmp_path / name).write_bytes(b"old " + name.encode("ascii"))
+    for name in dirs:
+        (tmp_path / name).mkdir()
+    for method, link, target in links:
+        getattr(tmp_path / link, method)(tmp_path / target)
+    markdown_out = tmp_path / out
+    outputs = [(key, tmp_path / name) for key, name in artifacts]
+    before = tree_state(tmp_path)
+    # WHEN the plan is requested through the public run path
+    code, receipt, markdown = reader.run(path, markdown_out, artifact_outputs=outputs)
+    # THEN it is refused with the exact reason and no file or stage changes
+    assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
+        1, False, reason.format(out=markdown_out, artifacts=[item for _key, item in outputs]),
+        "", before,
+    ), "invalid output plans must be refused before any byte is written"
 
 
-def test_successful_publish_uses_no_named_backup_cleanup(tmp_path, monkeypatch):
-    # GIVEN an existing Markdown target and a trap for fallible named-backup deletion
+@pytest.mark.parametrize("failing_call", [1, 2, 3])
+def test_failed_replace_restores_earlier_targets_and_removes_new_ones(
+        tmp_path, monkeypatch, failing_call):
+    # GIVEN existing Markdown and artifact targets with their own modes, one new target,
+    # and os.replace failing on the Nth call
     path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
+    targets = [tmp_path / "book.md", tmp_path / "first.json", tmp_path / "later.json"]
+    targets[0].write_bytes(b"old markdown")
+    targets[0].chmod(0o640)
+    targets[1].write_bytes(b"old artifact")
+    targets[1].chmod(0o600)
+    before = tree_state(tmp_path)
+
+    def fail(_source, _target):
+        raise OSError("injected replace failure")
+
+    steps = itertools.chain(itertools.repeat(os.replace, failing_call - 1), [fail],
+                            itertools.repeat(os.replace))
+    monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
+    pattern = r"output write failed: (?=.*%s)(?=.*injected replace failure).*" % re.escape(
+        str(targets[failing_call - 1]))
+    # WHEN publishing fails part way through
+    code, receipt, markdown = reader.run(
+        path, targets[0], artifact_outputs=list(zip(FORMULA_KEYS, targets[1:])))
+    # THEN originals keep bytes and modes, the new target is absent, and no stage remains
+    named = re.fullmatch(pattern, receipt["reason"]) is not None
+    assert (code, receipt["file_ok"], markdown, named, tree_state(tmp_path)) == (
+        1, False, "", True, before,
+    ), "a failed replace must restore every target and name it: %s" % receipt["reason"]
+
+
+def test_staging_failure_fails_with_a_receipt_and_leaves_no_file(tmp_path, monkeypatch):
+    # GIVEN three new outputs and os.fsync failing while the second stage is written
+    path = formula_book(tmp_path / "book.xlsx")
+    before = tree_state(tmp_path)
+
+    def fail(_descriptor):
+        raise OSError("injected staging failure")
+
+    steps = itertools.chain([os.fsync], [fail], itertools.repeat(os.fsync))
+    monkeypatch.setattr(os, "fsync", lambda descriptor: next(steps)(descriptor))
+    # WHEN staging fails after one payload was prepared
+    code, receipt, markdown = reader.run(
+        path, tmp_path / "book.md",
+        artifact_outputs=list(zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
+    # THEN the receipt reports the failure and neither outputs nor stages exist
+    reason = re.fullmatch(r"output write failed: (?=.*injected staging failure).*",
+                          receipt["reason"])
+    assert (code, receipt["file_ok"], reason is not None, markdown, tree_state(tmp_path)) == (
+        1, False, True, "", before,
+    ), "a staging failure must leave the directory exactly as it was: %s" % receipt["reason"]
+
+
+def test_keyboard_interrupt_during_staging_leaves_no_file(tmp_path, monkeypatch):
+    # GIVEN three new outputs and an interrupt while the second stage is written
+    path = formula_book(tmp_path / "book.xlsx")
+    before = tree_state(tmp_path)
+
+    def interrupt(_descriptor):
+        raise KeyboardInterrupt
+
+    steps = itertools.chain([os.fsync], [interrupt], itertools.repeat(os.fsync))
+    monkeypatch.setattr(os, "fsync", lambda descriptor: next(steps)(descriptor))
+    # WHEN the interrupt propagates out of run
+    with pytest.raises(KeyboardInterrupt):
+        reader.run(path, tmp_path / "book.md",
+                   artifact_outputs=list(zip(FORMULA_KEYS, (tmp_path / "a.json",
+                                                            tmp_path / "b.json"))))
+    # THEN no output or .brewdoc-* stage file remains
+    assert tree_state(tmp_path) == before, "an interrupt must not leak stages or partial outputs"
+
+
+def test_successful_run_writes_exact_bytes_keeps_modes_and_leaves_no_stage(tmp_path):
+    # GIVEN existing Markdown and artifact targets with their own modes and one new target
+    path = formula_book(tmp_path / "book.xlsx")
+    markdown_out, first, later = (tmp_path / name for name in ("book.md", "a.json", "b.json"))
     markdown_out.write_bytes(b"old markdown")
-    real_unlink = Path.unlink
-    named_backup_calls = []
-
-    def reject_named_backup_cleanup(target, *args, **kwargs):
-        if target.name.startswith(".brewdoc-backup-"):
-            named_backup_calls.append(target)
-            raise OSError("named backup cleanup must not exist")
-        return real_unlink(target, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "unlink", reject_named_backup_cleanup)
-    # WHEN the existing target is replaced successfully
-    code, _receipt, markdown = reader.run(path, markdown_out)
-    # THEN commit succeeds without creating or deleting any named backup
-    assert code == 0, "successful commit must not depend on fallible named-backup cleanup"
-    assert markdown_out.read_bytes() == markdown.encode("ascii"), (
-        "the committed Markdown must contain the new bytes"
-    )
-    assert named_backup_calls == [], "anonymous rollback data must have no cleanup pathname"
-    assert list(tmp_path.glob(".brewdoc-backup-*")) == [], (
-        "successful publish must leave no named backup artifacts"
-    )
-    assert list(tmp_path.glob(".brewdoc-recovery-*")) == [], (
-        "successful publish must never create emergency recovery files"
-    )
-
-
-def test_backup_close_failure_cannot_overturn_a_committed_success(tmp_path, monkeypatch):
-    # GIVEN an existing output and an anonymous backup that closes then raises
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    markdown_out.write_bytes(b"old markdown")
-    real_temporary_file = reader.tempfile.TemporaryFile
-    wrappers = []
-
-    class CloseRaisesAfterClosing:
-        """Proxy an anonymous backup and inject one post-close error."""
-
-        def __init__(self, wrapped):
-            self.wrapped = wrapped
-
-        def __getattr__(self, name):
-            return getattr(self.wrapped, name)
-
-        def close(self):
-            self.wrapped.close()
-            raise OSError("injected backup close failure")
-
-    def close_failing_temporary_file(*args, **kwargs):
-        wrapper = CloseRaisesAfterClosing(real_temporary_file(*args, **kwargs))
-        wrappers.append(wrapper)
-        return wrapper
-
-    monkeypatch.setattr(reader.tempfile, "TemporaryFile", close_failing_temporary_file)
-    # WHEN the final target is committed before backup cleanup
-    code, receipt, markdown = reader.run(path, markdown_out)
-    # THEN cleanup failure cannot change the resolved successful transaction
-    assert (code, receipt["file_ok"]) == (0, True), (
-        "post-commit anonymous cleanup must not convert success into a refusal"
-    )
-    assert markdown and markdown_out.read_bytes() == markdown.encode("ascii"), (
-        "successful receipt and Markdown bytes must describe the committed output"
-    )
-    assert len(wrappers) == 1 and wrappers[0].wrapped.closed, (
-        "the injected anonymous backup must still be closed exactly once"
-    )
-    assert list(tmp_path.glob(".brewdoc-stage-*")) == [], (
-        "post-commit cleanup failure must not leave stage files"
-    )
-    assert list(tmp_path.glob(".brewdoc-recovery-*")) == [], (
-        "successful commit must not materialize emergency recovery files"
-    )
+    markdown_out.chmod(0o640)
+    first.write_bytes(b"old artifact")
+    first.chmod(0o604)
+    created_mode = new_file_mode(tmp_path)
+    before = tree_state(tmp_path)
+    # WHEN all three are published
+    code, receipt, markdown = reader.run(
+        path, markdown_out, artifact_outputs=list(zip(FORMULA_KEYS, (first, later))))
+    # THEN bytes are exact, existing modes survive, the new file follows 0666 & ~umask
+    assert (code, receipt["file_ok"], tree_state(tmp_path)) == (0, True, {
+        **before,
+        "book.md": (markdown.encode("ascii"), before["book.md"][1]),
+        "a.json": (reader.read_book_artifact(path, FORMULA_KEYS[0]), before["a.json"][1]),
+        "b.json": (reader.read_book_artifact(path, FORMULA_KEYS[1]), created_mode),
+    }), "success must publish exact bytes with preserved or umask modes and no stage files"
 
 
 def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path, monkeypatch):
-    # GIVEN an output parent symlink that initially resolves to directory A
+    # GIVEN an output parent symlink to directory A that is retargeted to B before publish
     path = formula_book(tmp_path / "book.xlsx")
-    first_parent = tmp_path / "dir-a"
-    second_parent = tmp_path / "dir-b"
+    first_parent, second_parent = tmp_path / "dir-a", tmp_path / "dir-b"
     first_parent.mkdir()
     second_parent.mkdir()
+    created_mode = new_file_mode(first_parent)
     link = tmp_path / "out"
     link.symlink_to(first_parent, target_is_directory=True)
-    lexical_out = link / "book.md"
-    real_replace = reader.os.replace
-    retargeted = []
 
-    def retarget_before_publish(source, target):
-        source = Path(source)
-        if not retargeted and source.name.startswith(".brewdoc-stage-"):
-            link.unlink()
-            link.symlink_to(second_parent, target_is_directory=True)
-            retargeted.append(True)
+    def retarget_then_replace(source, target):
+        link.unlink()
+        link.symlink_to(second_parent, target_is_directory=True)
         return real_replace(source, target)
 
-    monkeypatch.setattr(reader.os, "replace", retarget_before_publish)
-    # WHEN the lexical parent is retargeted immediately before atomic publish
-    code, _receipt, markdown = reader.run(path, lexical_out)
-    # THEN the captured real parent receives the output and neither directory leaks a stage
-    assert code == 0, "parent retargeting must not break a captured output transaction"
-    assert (first_parent / "book.md").read_bytes() == markdown.encode("ascii"), (
-        "publish must use the real parent captured before staging"
-    )
-    assert not (second_parent / "book.md").exists(), (
-        "retargeting the lexical symlink must not redirect the final output"
-    )
-    assert list(first_parent.glob(".brewdoc-stage-*")) == [], (
-        "captured parent must not retain staging files"
-    )
-    assert list(second_parent.glob(".brewdoc-stage-*")) == [], (
-        "retarget destination must not receive staging files"
-    )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
-def test_posix_output_modes_preserve_existing_and_follow_umask_for_new_files(tmp_path):
-    # GIVEN one existing target mode and a control file created with 0666 under the current umask
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    artifact_out = tmp_path / "formula.json"
-    markdown_out.write_bytes(b"old markdown")
-    markdown_out.chmod(0o640)
-    control = tmp_path / "control"
-    descriptor = reader.os.open(control, reader.os.O_WRONLY | reader.os.O_CREAT | reader.os.O_EXCL,
-                                0o666)
-    reader.os.close(descriptor)
-    expected_new_mode = stat.S_IMODE(control.stat().st_mode)
-    control.unlink()
-    # WHEN existing Markdown and a new artifact are published together
-    code, _receipt, _markdown = reader.run(
-        path, markdown_out,
-        artifact_outputs=[("formula/sheet/000001", artifact_out)],
-    )
-    # THEN the existing mode survives and the new file uses normal 0666 and umask semantics
-    assert code == 0, "mode-preserving transaction must publish successfully"
-    assert stat.S_IMODE(markdown_out.stat().st_mode) == 0o640, (
-        "replacement of an existing regular output must preserve its mode"
-    )
-    assert stat.S_IMODE(artifact_out.stat().st_mode) == expected_new_mode, (
-        "new outputs must use normal creation mode rather than mkstemp 0600"
-    )
-
-
-def test_publication_does_not_require_unix_fchmod(tmp_path, monkeypatch):
-    # GIVEN an existing output on a runtime without os.fchmod
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    markdown_out.write_bytes(b"old markdown")
-    monkeypatch.delattr(reader.os, "fchmod", raising=False)
-    # WHEN the existing output is replaced
-    code, _receipt, markdown = reader.run(path, markdown_out)
-    # THEN the portable path publishes exact bytes and leaves no stage or uncaught error
-    assert code == 0, "publication must work without the Unix-only fchmod API"
-    assert markdown_out.read_bytes() == markdown.encode("ascii"), (
-        "portable publication must still write the requested bytes"
-    )
-    assert list(tmp_path.glob(".brewdoc-stage-*")) == [], (
-        "portable publication must not leak a stage file"
-    )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
-def test_posix_mode_preservation_does_not_require_fchmod(tmp_path, monkeypatch):
-    # GIVEN an existing POSIX output mode on a runtime without os.fchmod
-    path = formula_book(tmp_path / "book.xlsx")
-    markdown_out = tmp_path / "book.md"
-    markdown_out.write_bytes(b"old markdown")
-    markdown_out.chmod(0o640)
-    monkeypatch.delattr(reader.os, "fchmod", raising=False)
-    # WHEN the existing output is replaced
-    code, _receipt, _markdown = reader.run(path, markdown_out)
-    # THEN portable chmod preserves the exact existing mode
-    assert code == 0, "POSIX mode preservation must work without fchmod"
-    assert stat.S_IMODE(markdown_out.stat().st_mode) == 0o640, (
-        "portable chmod must preserve the existing POSIX output mode"
-    )
-
-
-@pytest.mark.skipif(os.name == "nt", reason="Windows does not expose POSIX permission bits")
-def test_posix_recovery_outputs_preserve_original_mode(tmp_path):
-    # GIVEN rollback bytes and the captured mode of an existing POSIX output
-    target = tmp_path / "book.md"
-    plan = reader._OutputPlan(
-        target=target, payload=b"new markdown", final_target=target,
-        backup=io.BytesIO(b"old markdown"), mode=0o640,
-    )
-    # WHEN both durable and retained recovery copies are materialized
-    recovery = reader._materialize_recovery(plan)
-    retained = reader._prepare_restore_stage(plan)
-    # THEN each copy preserves both the original bytes and permission mode
-    assert (recovery.read_bytes(), retained.read_bytes()) == (
-        b"old markdown", b"old markdown",
-    ), "both recovery forms must preserve every original byte"
-    assert (
-        stat.S_IMODE(recovery.stat().st_mode),
-        stat.S_IMODE(retained.stat().st_mode),
-    ) == (0o640, 0o640), "both recovery forms must preserve the original POSIX mode"
-    recovery.unlink()
-    retained.unlink()
+    real_replace = os.replace
+    steps = itertools.chain([retarget_then_replace], itertools.repeat(real_replace))
+    monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
+    # WHEN the Markdown is published through the lexical symlink path
+    code, _receipt, markdown = reader.run(path, link / "book.md")
+    # THEN the parent captured before staging receives it and neither directory keeps a stage
+    assert (code, tree_state(first_parent), tree_state(second_parent)) == (
+        0, {"book.md": (markdown.encode("ascii"), created_mode)}, {},
+    ), "publish must use the real parent captured before staging"
 
 
 def test_formula_inventory_has_one_linked_row_per_sheet_not_per_cell(tmp_path):
@@ -1203,7 +1047,8 @@ def test_special_sheet_labels_and_selected_empty_sheet_remain_navigable(tmp_path
     # GIVEN a formula sheet with Unicode, Markdown and HTML punctuation plus an empty sheet
     path = formula_book(tmp_path / "book.xlsx")
     label = "R&D <Plan> café #1"
-    rename_formula_sheet(path, "Calc", "R&amp;D &lt;Plan&gt; café #1")
+    rewrite_member(path, "xl/workbook.xml", b'name="Calc"',
+                   'name="R&amp;D &lt;Plan&gt; café #1"'.encode("utf-8"))
     # WHEN both sheets are selected in caller order
     markdown, tally = reader.render_book(path, sheets=(label, "Empty"))
     # THEN semantic labels are safely ASCII encoded and the empty sheet keeps its own anchor
