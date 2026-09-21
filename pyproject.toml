@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Maksim Kochetkov", email = "apmatypa88@gmail.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 keywords = ["pdf", "docx", "xlsx", "markdown", "llm", "table-extraction", "rag"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -16,11 +16,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
 dependencies = [
@@ -70,7 +66,6 @@ build-constraint-dependencies = [
     "packaging==26.3",
     "pathspec==1.1.1",
     "pluggy==1.6.0",
-    "tomli==2.4.1",
     "tomlkit==0.15.1",
     "trove-classifiers==2026.6.1.19",
 ]
