@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import brewdoc
-from brewdoc import reader
+from brewdoc import common, selfcheck
 from brewdoc.cli import main
 
 OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -118,7 +118,7 @@ def text_op(x: int, y: int, text: str) -> str:
 
 def pdf(path: Path, *pages: str) -> Path:
     """Write a synthetic PDF with one content stream per page."""
-    path.write_bytes(reader.synthetic_pdf(list(pages)))
+    path.write_bytes(selfcheck.synthetic_pdf(list(pages)))
     return path
 
 
@@ -240,7 +240,7 @@ def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
     ("name", "build", "route", "reason"),
     [
         pytest.param(
-            "scan.pdf", lambda path: path.write_bytes(reader.synthetic_pdf(
+            "scan.pdf", lambda path: path.write_bytes(selfcheck.synthetic_pdf(
                 ["0 0 0 rg 100 100 200 200 re f\n"] * 2, font=False)), "pdf",
             "no text layer: 2 of 2 pages carry zero characters in {path} - this reader does no OCR",
             id="no-text-layer"),
@@ -282,7 +282,7 @@ def test_the_sanitiser_folds_to_ascii_and_counts_every_loss(raw, text, broken, d
     # GIVEN a fresh tally and text carrying hygiene classes or an ff ligature lifted as U+0161
     tally = zero_tally()
     # WHEN the text is sanitised
-    got = reader.sanitise(raw, tally)
+    got = common.sanitise(raw, tally)
     # THEN the text is folded to ASCII, never repaired, and every loss is counted by name
     assert (got, tally) == (
         text, {**zero_tally(), "broken_ligature_words": broken, "dropped": dropped},

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from brewdoc import reader
+from brewdoc import common, service
 
 pytestmark = pytest.mark.corpus
 
@@ -49,11 +49,11 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_
     path = FIXTURES / rel
     out = tmp_path / (path.name + ".md")
     # WHEN it is rendered twice
-    rc, line, first = reader.run(path, out)
-    second = reader.run(path)[2]
+    rc, line, first = service.run(path, out)
+    second = service.run(path)[2]
     # THEN it exits 0 with exactly the recorded receipt, and both renders share one sha256
     assert snapshot(rc, line) == RECEIPTS[rel], "receipt drifted for %s: %s" % (rel, line["reason"])
-    assert reader.sha256(first) == reader.sha256(second), "the render of %s is not deterministic" % rel
+    assert common.sha256(first) == common.sha256(second), "the render of %s is not deterministic" % rel
     assert out.read_text(encoding="ascii") == first, "--out must hold the same bytes run() returns"
 
 
@@ -68,10 +68,10 @@ def test_the_scanned_patent_is_refused_by_name():
     # GIVEN a real five-page scan with no text layer
     path = FIXTURES / SCAN
     # WHEN it is read
-    rc, line, markdown = reader.run(path)
+    rc, line, markdown = service.run(path)
     # THEN the refusal names the page count, the path and the absence of OCR
     assert (rc, line["file_ok"], line["route"], line["reason"], markdown) == (
-        reader.EXIT_FAIL, False, "pdf",
+        service.EXIT_FAIL, False, "pdf",
         "no text layer: 5 of 5 pages carry zero characters in %s - this reader does no OCR" % path,
         "",
     ), "a scan must be refused, never rendered empty"
@@ -82,10 +82,10 @@ def test_a_planned_format_fixture_is_refused_today(rel):
     # GIVEN a real document of a format the reader plans but does not read yet
     path = FIXTURES / rel
     # WHEN it is read
-    rc, line, markdown = reader.run(path)
+    rc, line, markdown = service.run(path)
     # THEN it is refused with the exact suffix message - this assertion flips when support lands
     assert (rc, line["route"], line["reason"], markdown) == (
-        reader.EXIT_FAIL, "none",
+        service.EXIT_FAIL, "none",
         "unsupported suffix '%s' in %s: brewdoc reads .docx .ods .pdf .xls .xlsb .xlsm .xlsx"
         % (path.suffix, path),
         "",
