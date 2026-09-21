@@ -59,9 +59,9 @@ OVERRIDDEN_PROGRAM = type1_program(((80, "summationtext"), (255, "summationtext"
 PDF_DIFFERENCES = "/Encoding << /Differences [255 /productdisplay] >> "
 
 
-def font_identity_pdf(fonts, encoding, code):
-    """Show character `code` once per `(resource name, Type1 program)` entry, each font embedded."""
-    commands = "".join(f"BT /{name} 10 Tf 1 0 0 1 {x} 690 Tm (\\{code:03o}) Tj ET\n"
+def font_identity_pdf(fonts, encoding, char_code):
+    """Show `char_code` once per `(resource name, Type1 program)` entry, each font embedded."""
+    commands = "".join(f"BT /{name} 10 Tf 1 0 0 1 {x} 690 Tm (\\{char_code:03o}) Tj ET\n"
                        for x, (name, _) in zip((80, 110), fonts))
     original = selfcheck.synthetic_pdf([commands]).split(b"xref\n", 1)[0]
     objects = {int(number): body for number, body in
@@ -292,18 +292,17 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
     assert receipt["tables"] == 3, "exactly the three source tables must be recorded"
 
 
-@pytest.mark.parametrize("fonts, encoding, code, expected, unresolved", [
+@pytest.mark.parametrize("fonts, encoding, char_code, expected, unresolved", [
     ((("F1", SUMMATION_PROGRAM), ("F2", PRODUCT_PROGRAM)), "", 80,
      f"[font-glyph:{FONT_NAME}:80] [font-glyph:{FONT_NAME}:80]", 2),
-    ((("F1", UNRELATED_ARRAY_PROGRAM), ("F1", UNRELATED_ARRAY_PROGRAM)), "", 80, "[sum] [sum]", 0),
-    ((("F1", OVERRIDDEN_PROGRAM), ("F1", OVERRIDDEN_PROGRAM)), PDF_DIFFERENCES, 255,
-     f"[font-glyph:{FONT_NAME}:255] [font-glyph:{FONT_NAME}:255]", 2),
+    ((("F1", UNRELATED_ARRAY_PROGRAM),), "", 80, "[sum]", 0),
+    ((("F1", OVERRIDDEN_PROGRAM),), PDF_DIFFERENCES, 255, f"[font-glyph:{FONT_NAME}:255]", 1),
 ], ids=["duplicate-basefont", "unrelated-array", "pdf-encoding-override"])
-def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, fonts, encoding, code, expected, unresolved):
+def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, fonts, encoding, char_code, expected, unresolved):
     # GIVEN embedded Type1 encodings and one character code without a Unicode mapping
     path = tmp_path / "font-identity.pdf"
-    path.write_bytes(font_identity_pdf(fonts, encoding, code))
-    assert source_lines(path) == [f"(cid:{code}) (cid:{code})"], "both source characters must remain undecoded before recovery"
+    path.write_bytes(font_identity_pdf(fonts, encoding, char_code))
+    assert source_lines(path) == [" ".join(f"(cid:{char_code})" for _ in fonts)], "every source character must remain undecoded before recovery"
     # WHEN explicit font encodings are considered for the public PDF conversion
     code, receipt, markdown = service.run(path)
     # THEN conflicting declarations and unrelated arrays cannot determine glyph identity
@@ -382,7 +381,7 @@ def test_spanning_table_header_outside_rule_end_keeps_every_character_once(tmp_p
     assert source_lines(path) == [heading, "Method Warm Cold", "DPO 0.36 0.31", "PPO 0.26 0.23"], "the complete source heading must be independently readable"
     with pdfplumber.open(path) as document:
         truth = next(word for word in document.pages[0].extract_words() if word["text"] == "truth")
-    assert truth["x0"] < 500 < truth["x1"], "the rule boundary must cross the source word truth"
+    assert (truth["text"], round(truth["x0"], 2), round(truth["x1"], 2)) == ("truth", 489.48, 509.49), "the source word truth must straddle the rule boundary at x=500"
     # WHEN a qualified table owns a heading wider than its numeric rules
     code, receipt, markdown = service.run(path)
     # THEN the full heading survives once with its two source records

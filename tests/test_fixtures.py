@@ -19,6 +19,7 @@ SNAPSHOT_KEYS = {
     True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
 }
 SCAN = "pdf/us-patent-223898-scan.pdf"
+CORPUS_BYTES = 5_713_778
 PROVENANCE = ("SOURCES.md", "receipts.json")
 ROW = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<url>\S+) \| \[(?P<license>[^\]]+)\]\((?P<link>[^)]+)\)"
                  r" \| `(?P<sha256>[0-9a-f]{64})` \| (?P<size>\d+) \| (?P<shape>.+) \|$")
@@ -122,9 +123,10 @@ def test_every_sources_row_carries_an_allowed_license_and_a_source_url():
 def test_the_corpus_stays_small():
     # GIVEN every fixture's size
     sizes = {rel: (FIXTURES / rel).stat().st_size for rel in fixture_files()}
-    # WHEN measured against the caps (3 MB per file, 20 MB in total)
+    # WHEN each file is measured against the 3 MB cap
     oversized = sorted(rel for rel, size in sizes.items() if size > 3_000_000)
-    # THEN no file and no total crosses them
-    assert (oversized, sum(sizes.values()) <= 20_000_000) == ([], True), (
-        "fixtures must stay small enough for a public CI checkout"
+    # THEN no file crosses it and the corpus keeps its recorded total, far below the 20 MB cap
+    assert (oversized, sum(sizes.values())) == ([], CORPUS_BYTES), (
+        "fixtures must stay small enough for a public CI checkout: 3 MB per file, 20 MB in total;"
+        " change CORPUS_BYTES with SOURCES.md when the corpus changes"
     )
