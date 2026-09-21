@@ -1,13 +1,13 @@
 """Synthetic regressions for PDF record boundaries, prose and technical notation."""
 
-from pathlib import Path
 import re
 
 import pdfplumber
-from pdfminer.pdftypes import resolve1
 import pytest
 
 from brewdoc import common, selfcheck, service
+
+FONT_NAME = "BDTEST+CMEX10"
 
 
 def text_op(x, y, text):
@@ -41,50 +41,46 @@ def symbol_pdf(commands):
     return prefix + xref + trailer.encode()
 
 
-def font_identity_pdf(case):
-    """Embed complete public Type1 programs with isolated metadata ambiguities."""
-    source = Path(__file__).parent / "fixtures/pdf/arxiv-2305.18290v3.pdf"
-    with pdfplumber.open(source) as document:
-        fonts = resolve1(document.pages[2].page_obj.resources["Font"])
-        font = next(item for item in map(resolve1, fonts.values())
-                    if getattr(item.get("BaseFont"), "name", "").endswith("CMEX10"))
-        font_name = font["BaseFont"].name
-        stream = resolve1(resolve1(font["FontDescriptor"])["FontFile"])
-        program, length1, length2 = stream.get_data(), stream["Length1"], stream["Length2"]
-        cmap = resolve1(font["ToUnicode"]).get_data()
-    header, encrypted = program[:length1], program[length1:]
-    assert b"dup 80 /summationtext put" in header, "the public font must define code 80 as summation text"
-    assert b"/productdisplay" in header, "the alternate glyph must exist in the complete source font"
-    other = header.replace(b"dup 80 /summationtext put", b"dup 80 /productdisplay put")
-    if case == "unrelated-array":
-        header = header.replace(b"currentfile eexec", b"/Other 256 array dup 80 /productdisplay put readonly def\ncurrentfile eexec")
-    if case == "pdf-encoding-override":
-        header = header.replace(b"readonly def\ncurrentdict end",
-                                b"dup 255 /summationtext put\nreadonly def\ncurrentdict end")
-    second_font = "F2" if case == "duplicate-basefont" else "F1"
-    glyph = "\\377" if case == "pdf-encoding-override" else "P"
-    commands = f"BT /F1 10 Tf 1 0 0 1 80 690 Tm ({glyph}) Tj ET\n"
-    commands += f"BT /{second_font} 10 Tf 1 0 0 1 110 690 Tm ({glyph}) Tj ET\n"
+def type1_program(codes, trailing=""):
+    """A Type1 font header: `codes` is its builtin encoding, `trailing` holds later definitions."""
+    return (f"%!PS-AdobeFont-1.0: {FONT_NAME} 001.000\n"
+            f"/FontName /{FONT_NAME} def\n/FontType 1 def\n"
+            "/FontMatrix [0.001 0 0 0.001 0 0] readonly def\n"
+            "/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n"
+            + "".join(f"dup {code} /{glyph} put\n" for code, glyph in codes)
+            + f"readonly def\n{trailing}currentdict end\ncurrentfile eexec\n")
+
+
+SUMMATION_PROGRAM = type1_program(((80, "summationtext"),))
+PRODUCT_PROGRAM = type1_program(((80, "productdisplay"),))
+UNRELATED_ARRAY_PROGRAM = type1_program(((80, "summationtext"),),
+                                        "/Other 256 array dup 80 /productdisplay put readonly def\n")
+OVERRIDDEN_PROGRAM = type1_program(((80, "summationtext"), (255, "summationtext")))
+PDF_DIFFERENCES = "/Encoding << /Differences [255 /productdisplay] >> "
+
+
+def font_identity_pdf(fonts, encoding, code):
+    """Show character `code` once per `(resource name, Type1 program)` entry, each font embedded."""
+    commands = "".join(f"BT /{name} 10 Tf 1 0 0 1 {x} 690 Tm (\\{code:03o}) Tj ET\n"
+                       for x, (name, _) in zip((80, 110), fonts))
     original = selfcheck.synthetic_pdf([commands]).split(b"xref\n", 1)[0]
     objects = {int(number): body for number, body in
                re.findall(rb"(?ms)^(\d+) 0 obj\n(.*?)\nendobj\n", original)}
-    font_records = [(5, 6, header)]
-    if case == "duplicate-basefont":
-        objects[3] = objects[3].replace(b"/F1 5 0 R", b"/F1 5 0 R /F2 8 0 R")
-        font_records.append((8, 9, other))
+    programs = dict(fonts)
+    numbers = {name: 5 + 2 * index for index, name in enumerate(programs)}
+    references = " ".join(f"/{name} {number} 0 R" for name, number in numbers.items())
+    objects[3] = objects[3].replace(b"/F1 5 0 R", references.encode())
     widths = " ".join(["500"] * 256)
-    for font_number, stream_number, prefix in font_records:
-        encoding = "/Encoding << /Differences [255 /productdisplay] >> " if case == "pdf-encoding-override" else ""
-        descriptor = (f"/Type /FontDescriptor /FontName /{font_name} /Flags 4 "
+    for name, program in programs.items():
+        data, stream_number = program.encode("ascii"), numbers[name] + 1
+        descriptor = (f"/Type /FontDescriptor /FontName /{FONT_NAME} /Flags 4 "
                       f"/FontBBox [-1000 -1000 2000 2000] /ItalicAngle 0 /Ascent 1000 "
                       f"/Descent -200 /CapHeight 700 /StemV 80 /FontFile {stream_number} 0 R")
-        objects[font_number] = (f"<< /Type /Font /Subtype /Type1 /BaseFont /{font_name} "
-                                f"/FirstChar 0 /LastChar 255 /Widths [{widths}] "
-                                f"{encoding}/ToUnicode 7 0 R /FontDescriptor << {descriptor} >> >>").encode()
-        data = prefix + encrypted
-        objects[stream_number] = (f"<< /Length {len(data)} /Length1 {len(prefix)} "
-                                  f"/Length2 {length2} /Length3 0 >>\nstream\n").encode() + data + b"\nendstream"
-    objects[7] = f"<< /Length {len(cmap)} >>\nstream\n".encode() + cmap + b"\nendstream"
+        objects[numbers[name]] = (f"<< /Type /Font /Subtype /Type1 /BaseFont /{FONT_NAME} "
+                                  f"/FirstChar 0 /LastChar 255 /Widths [{widths}] "
+                                  f"{encoding}/FontDescriptor << {descriptor} >> >>").encode()
+        objects[stream_number] = (f"<< /Length {len(data)} /Length1 {len(data)} "
+                                  "/Length2 0 /Length3 0 >>\nstream\n").encode() + data + b"\nendstream"
     output, offsets = b"%PDF-1.4\n", []
     for number, body in sorted(objects.items()):
         offsets.append(len(output))
@@ -93,7 +89,7 @@ def font_identity_pdf(case):
     output += f"xref\n0 {size}\n".encode() + b"0000000000 65535 f \n"
     output += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
     output += f"trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
-    return output, font_name
+    return output
 
 
 @pytest.mark.parametrize("horizontal_rules", [(700, 680, 590), (700, 680, 635, 590)],
@@ -296,18 +292,18 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
     assert receipt["tables"] == 3, "exactly the three source tables must be recorded"
 
 
-@pytest.mark.parametrize("case, expected, unresolved, cid", [
-    ("duplicate-basefont", "[font-glyph:EQJBOC+CMEX10:80] [font-glyph:EQJBOC+CMEX10:80]", 2, 80),
-    ("unrelated-array", "[sum] [sum]", 0, 80),
-    ("pdf-encoding-override", "[font-glyph:EQJBOC+CMEX10:255] [font-glyph:EQJBOC+CMEX10:255]", 2, 255),
+@pytest.mark.parametrize("fonts, encoding, code, expected, unresolved", [
+    ((("F1", SUMMATION_PROGRAM), ("F2", PRODUCT_PROGRAM)), "", 80,
+     f"[font-glyph:{FONT_NAME}:80] [font-glyph:{FONT_NAME}:80]", 2),
+    ((("F1", UNRELATED_ARRAY_PROGRAM), ("F1", UNRELATED_ARRAY_PROGRAM)), "", 80, "[sum] [sum]", 0),
+    ((("F1", OVERRIDDEN_PROGRAM), ("F1", OVERRIDDEN_PROGRAM)), PDF_DIFFERENCES, 255,
+     f"[font-glyph:{FONT_NAME}:255] [font-glyph:{FONT_NAME}:255]", 2),
 ], ids=["duplicate-basefont", "unrelated-array", "pdf-encoding-override"])
-def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, case, expected, unresolved, cid):
-    # GIVEN complete Type1 resources and an unmapped Unicode code
+def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, fonts, encoding, code, expected, unresolved):
+    # GIVEN embedded Type1 encodings and one character code without a Unicode mapping
     path = tmp_path / "font-identity.pdf"
-    data, font_name = font_identity_pdf(case)
-    path.write_bytes(data)
-    assert font_name == "EQJBOC+CMEX10", "the synthetic PDF must retain the inspected public font identity"
-    assert source_lines(path) == [f"(cid:{cid}) (cid:{cid})"], "both source characters must remain undecoded before recovery"
+    path.write_bytes(font_identity_pdf(fonts, encoding, code))
+    assert source_lines(path) == [f"(cid:{code}) (cid:{code})"], "both source characters must remain undecoded before recovery"
     # WHEN explicit font encodings are considered for the public PDF conversion
     code, receipt, markdown = service.run(path)
     # THEN conflicting declarations and unrelated arrays cannot determine glyph identity
