@@ -27,17 +27,11 @@ Dependencies: `pdfplumber` and `python-calamine`; everything else is the standar
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime
-import hashlib
 import io
 import json
 import os
-import posixpath
 import re
-import secrets
-import shutil
-import stat
 import statistics
 import sys
 import tempfile
@@ -45,66 +39,33 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 
 import pdfplumber
 from pdfminer.pdftypes import resolve1
 from pdfplumber.utils import extract_text
-from python_calamine import CalamineWorkbook
+
+from brewdoc.common import (CID_RE, MARKDOWN_SCHEMA, BrewdocError, Rendered, _assemble,
+                            _escape_markdown_text, cell_text, head_key, markdown_table, new_tally,
+                            sanitise, sha256)
+from brewdoc.output import _output_targets, _write_outputs
+from brewdoc.sheets import (SHEET_NOT_CARRIED, SHEET_SUFFIXES, _artifact_payloads, _render_book,
+                            _sheet_selection, render_book)
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
 RENDERED_BY = "brewdoc"
-MARKDOWN_SCHEMA = "brewdoc.markdown/2"
-FORMULA_SCHEMA = "brewdoc.formulas/1"
 PDF_SUFFIX = ".pdf"
 DOC_SUFFIX = ".docx"
-SHEET_SUFFIXES = (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx")
-FORMULA_SUFFIXES = (".xlsm", ".xlsx")
-VBA_SUFFIXES = (".xlsb", ".xlsm")
 SUFFIXES = " ".join(sorted((PDF_SUFFIX, DOC_SUFFIX) + SHEET_SUFFIXES))
-
-VBA_PROJECT_KEY = "vba/project/000001"
-VBA_RELATIONSHIP_TYPE = "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
-# The two project fixtures top out at 17,920 bytes; 16 MiB is the passive-read boundary.
-MAX_VBA_PROJECT_BYTES = 16 * 1024 * 1024
 
 PDF_NOT_CARRIED = ("images, figures and the text drawn inside them",
                    "a table that spans a page break",
                    "text rotated out of the horizontal reading order")
-SHEET_NOT_CARRIED = ("cell formulas in Markdown content - only cached values are rendered",
-                     "formatting, colours, comments and data validation",
-                     "charts and embedded images",
-                     "readable VBA source modules")
 DOC_NOT_CARRIED = ("images, charts and the text drawn inside them",
                    "tracked changes, comments, footnotes, headers and footers",
                    "a table's own formatting - only its cells, row by row")
-
-CID_RE = re.compile(r"\(cid:\d+\)")
-FOLD = {
-    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "―": "-",
-    "‘": "'", "’": "'", "‚": "'", "‛": "'",
-    "“": '"', "”": '"', "„": '"', "′": "'", "″": '"',
-    "•": "-", "‣": "-", "▪": "-", "■": "-", "●": "-", "·": "-",
-    "…": "...", "≤": "<=", "≥": ">=", "≠": "!=", "±": "+/-",
-    "×": "x", "÷": "/", "°": " deg", "®": "(R)", "©": "(C)",
-    "™": "(TM)", "€": "EUR", "£": "GBP", "²": "2", "³": "3",
-    "½": "1/2", "¼": "1/4", "¾": "3/4", "→": "->", "←": "<-",
-    # Shade blocks are the only content of a spreadsheet gantt bar; `?` would erase it.
-    "░": "#", "▒": "#", "▓": "#", "█": "#",
-    " ": " ", " ": " ", " ": " ", " ": " ", "﻿": "",
-}
-LIGATURES = {"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl",
-             "ﬅ": "st", "ﬆ": "st"}
-# A broken ToUnicode CMap seen in the wild maps `ff` to U+0161 inside an otherwise ASCII word.
-BROKEN_LIGATURE = "š"
-BROKEN_WORD_RE = re.compile(r"[A-Za-z]+%s[A-Za-z]*|[A-Za-z]*%s[A-Za-z]+"
-                            % (BROKEN_LIGATURE, BROKEN_LIGATURE))
-
-DROP_KEYS = ("control_chars", "soft_hyphens", "nbsp", "pua_glyphs", "cid_survivors",
-             "ligatures", "running_heads", "page_numbers", "non_ascii_replaced")
 
 # Layout thresholds, measured on real documents.
 HIST_BINS = 60           # char x-histogram resolution for the gutter search
@@ -129,7 +90,6 @@ GRID_ROW_SHARE = 3       # and one row in this many must, or the band is prose b
 SUBSCRIPT = 0.75         # a char smaller than this share of its cell's body size sits off-baseline
 TABLE_CAPTION_RE = re.compile(r"^\s*table\s+\d+", re.I)
 PAGE_NUMBER_RE = re.compile(r"^(?:page\s+)?\d+(?:\s*(?:of|/)\s*\d+)?$", re.I)
-DIGITS_RE = re.compile(r"\d+")
 REPEATS_AS_HEAD = 3      # a first/last line this many pages share is furniture, not content
 
 TEXT_TABLE = {"vertical_strategy": "text", "horizontal_strategy": "text"}
@@ -146,145 +106,6 @@ for _glyph_stem, _glyph_token in (("parenleft", "("), ("parenright", ")"),
                                  ("braceleft", "{"), ("braceright", "}")):
     for _glyph_size in ("big", "Big", "bigg", "Bigg"):
         PDF_FONT_GLYPHS[_glyph_stem + _glyph_size] = _glyph_token
-
-
-class BrewdocError(Exception):
-    """A refusal naming what was not found or not parsed, and where."""
-
-
-@dataclass(frozen=True, slots=True)
-class ArtifactRef:
-    """A retrievable workbook artifact described without retaining its payload."""
-
-    key: str
-    kind: str
-    availability: str
-    count: int | None
-    location: str
-    media_type: str
-    byte_size: int | None = None
-    sha256: str | None = None
-
-    def to_dict(self, out=None) -> dict:
-        """Return the stable receipt fields for this artifact."""
-        return {"availability": self.availability, "byte_size": self.byte_size,
-                "count": self.count, "key": self.key, "kind": self.kind,
-                "location": self.location, "media_type": self.media_type,
-                "out": str(out) if out is not None else None, "sha256": self.sha256}
-
-
-@dataclass(frozen=True, slots=True)
-class CellFormula:
-    """A passive OOXML formula attached to one source cell."""
-
-    sheet: str
-    cell: str
-    formula: str
-    attributes: tuple[tuple[str, str], ...]
-
-    def to_dict(self) -> dict:
-        """Return a JSON-ready formula without changing its source text."""
-        return {"attributes": dict(self.attributes), "cell": self.cell,
-                "formula": self.formula, "sheet": self.sheet}
-
-
-@dataclass(frozen=True, slots=True)
-class FormulaArtifact:
-    """All recoverable formulas from one source worksheet."""
-
-    key: str
-    source_name: str
-    source_sha256: str
-    source_ordinal: int
-    sheet: str
-    formulas: tuple[CellFormula, ...]
-
-
-def new_tally() -> dict:
-    """An empty render tally: counts of pages, tables, regions and every dropped class."""
-    return {"pages": 0, "sheets": 0, "chapters": 0, "tables": 0, "text_regions": 0,
-            "columns_split": 0,
-            "broken_ligature_words": 0, "dropped": {key: 0 for key in DROP_KEYS}}
-
-
-def sha256(text: str) -> str:
-    """Hex sha256 of a UTF-8 string."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
-    """ASCII out, every dropped class counted; `keep_layout` preserves fixed-width alignment."""
-    drop = tally["dropped"]
-    tally["broken_ligature_words"] += len(BROKEN_WORD_RE.findall(text))
-    drop["cid_survivors"] += len(CID_RE.findall(text))
-    text = CID_RE.sub("", text)
-    out = []
-    for ch in text:
-        if ch in LIGATURES:
-            drop["ligatures"] += 1
-            out.append(LIGATURES[ch])
-            continue
-        if ch == "­":
-            drop["soft_hyphens"] += 1
-            continue
-        if ch == " ":
-            drop["nbsp"] += 1
-            out.append(" ")
-            continue
-        if ch in FOLD:
-            out.append(FOLD[ch])
-            continue
-        if ch in "\n\t" or " " <= ch <= "~":
-            out.append(ch)
-            continue
-        category = unicodedata.category(ch)
-        if category == "Co":                       # Symbol/Wingdings bullets live in the PUA
-            drop["pua_glyphs"] += 1
-            out.append("-")
-            continue
-        if category in ("Cc", "Cf", "Zl", "Zp"):
-            drop["control_chars"] += 1
-            continue
-        folded = "".join(c for c in unicodedata.normalize("NFKD", ch)
-                         if not unicodedata.combining(c))
-        if folded.isascii() and folded.strip():
-            out.append(folded)
-            continue
-        drop["non_ascii_replaced"] += 1
-        out.append("?")
-    text = "".join(out)
-    if not keep_layout:
-        text = re.sub(r"[ \t]{2,}", " ", text)
-    return "\n".join(line.rstrip() for line in text.split("\n"))
-
-
-def cell_text(value) -> str:
-    """One cell as text; calamine returns '' for an empty cell and a float for every number."""
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (datetime.datetime, datetime.date)):
-        return value.isoformat()[:10]
-    if isinstance(value, (datetime.time, datetime.timedelta)):
-        return str(value)
-    if isinstance(value, float):
-        return repr(value)
-    return str(value).replace("\n", " ").replace("|", "\\|").strip()
-
-
-def markdown_table(rows) -> list[str]:
-    """Rows -> a Markdown table, first row as the header; ragged rows are padded, never cut."""
-    width = max((len(row) for row in rows), default=0)
-    if not width:
-        return []
-    out = []
-    for index, row in enumerate(rows):
-        cells = [cell_text(value) for value in row] + [""] * (width - len(row))
-        out.append("| " + " | ".join(cells) + " |")
-        if index == 0:
-            out.append("| " + " | ".join(["---"] * width) + " |")
-    return out
 
 
 # --- PDF: regions -----------------------------------------------------------------------------
@@ -1298,170 +1119,12 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
     return [block for block in blocks if block[1]], margins
 
 
-def head_key(text: str) -> str:
-    """A running head's identity without its folio (`Page 31 of 232` never repeats verbatim)."""
-    return DIGITS_RE.sub("#", text)
-
-
 def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
     """(running heads as head_key forms, page numbers) from every page's margin candidates."""
     counts = Counter(head_key(text) for page in margins for text in set(page))
     numbers = {text for page in margins for text in page if PAGE_NUMBER_RE.match(text)}
     heads = {key for key, count in counts.items() if count >= REPEATS_AS_HEAD}
     return heads, numbers
-
-
-def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
-                    tally: dict) -> list[str]:
-    kept = []
-    for line in lines:
-        text = line.strip()
-        if text in numbers:
-            tally["dropped"]["page_numbers"] += 1
-        elif head_key(text) in heads:
-            tally["dropped"]["running_heads"] += 1
-        else:
-            kept.append(line)
-    return kept
-
-
-# Punctuation gets a backslash, HTML specials and controls an entity; non-ASCII follows in encode.
-MARKDOWN_ESCAPES = str.maketrans({
-    **{character: "\\" + character for character in "\\`*_{}[]()#+-.!|"},
-    **{chr(code): "&#%d;" % code for code in (*range(32), 127)},
-    "\r": " ", "\n": " ", "\t": " ", "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
-
-
-def _escape_markdown_text(text: str) -> str:
-    """Preserve semantic text as ASCII without exposing Markdown or HTML syntax."""
-    escaped = str(text).translate(MARKDOWN_ESCAPES)
-    return escaped.encode("ascii", "xmlcharrefreplace").decode("ascii")
-
-
-def _unit_key(kind: str, ordinal: int) -> str:
-    return "%s/%06d" % (kind, ordinal)
-
-
-def _unit_anchor(key: str) -> str:
-    return "brewdoc-" + key.replace("/", "-")
-
-
-def _unit_heading(kind: str, ordinal: int, label: str) -> str:
-    if kind == "page":
-        return "Page %d" % ordinal
-    title = _escape_markdown_text(label)
-    return "%s %d: \"%s\"" % (kind.title(), ordinal, title)
-
-
-def _escape_source_html(line: str) -> str:
-    """Keep every source HTML-like fragment visible instead of active."""
-    return line.replace("<", "&lt;").replace(">", "&gt;")
-
-
-def _literal_fence(code: list[str]) -> list[str]:
-    """Fence source code verbatim; the fence outgrows every backtick run so none can close it."""
-    longest = max((len(run) for line in code for run in re.findall("`+", line)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return [fence, *code, fence]
-
-
-def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
-                  heads: set[str], numbers: set[str], tally: dict) -> tuple[str, tuple[str, ...]]:
-    """Render anchored content units before metadata so all loss tallies are final."""
-    out = []
-    keys = []
-    for ordinal, label, blocks in units:
-        key = _unit_key(kind, ordinal)
-        keys.append(key)
-        out += ['<a id="%s"></a>' % _unit_anchor(key),
-                "## " + _unit_heading(kind, ordinal, label), ""]
-        for block_kind, payload in blocks:
-            if block_kind == "table":
-                rendered = markdown_table(payload)
-            elif block_kind == "math":
-                rendered = payload
-            else:
-                rendered = _drop_furniture(payload, heads, numbers, tally)
-                if block_kind == "block" and len(rendered) <= 2:
-                    rendered = [line for line in rendered if line != "```"]
-            if rendered and block_kind in ("block", "math"):
-                out += _literal_fence(rendered[1:-1]) + [""]
-            elif rendered:
-                out += [_escape_source_html(line) for line in rendered] + [""]
-    body = "\n".join(out).rstrip("\n") + "\n"
-    return body, tuple(keys)
-
-
-# Every private renderer returns (Markdown, tally, unit keys, artifact references).
-Rendered = tuple[str, dict, tuple[str, ...], tuple[ArtifactRef, ...]]
-CAPABILITY_FIELDS = ("Formula capability", "Selected formula count", "VBA project capability",
-                     "VBA project count", "VBA source module capability", "VBA source module count")
-NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
-
-
-def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
-                   unit_keys: tuple[str, ...], body: str, tally: dict) -> list[tuple[str, str]]:
-    source, suffix = path.read_bytes(), path.suffix.lower()
-    body_bytes = body.encode("ascii")
-    rows = [
-        ("Markdown schema", MARKDOWN_SCHEMA),
-        ("Source name", '"%s"' % _escape_markdown_text(path.name)),
-        ("Source suffix", suffix[:1] + _escape_markdown_text(suffix[1:])),
-        ("Source bytes", str(len(source))),
-        ("Source SHA-256", hashlib.sha256(source).hexdigest()),
-        ("Route", route),
-        ("Unit kind", unit_kind),
-        ("Source unit count", str(source_units)),
-        ("Rendered unit count", str(len(unit_keys))),
-        ("Ordered selection keys", ", ".join(unit_keys) or "none"),
-        ("Rendered body bytes", str(len(body_bytes))),
-        ("Rendered body SHA-256", hashlib.sha256(body_bytes).hexdigest()),
-        ("Pages", str(tally["pages"])),
-        ("Sheets", str(tally["sheets"])),
-        ("Chapters", str(tally["chapters"])),
-        ("Tables", str(tally["tables"])),
-        ("Text regions", str(tally["text_regions"])),
-        ("Column splits", str(tally["columns_split"])),
-        ("Broken ligature words", str(tally["broken_ligature_words"])),
-    ]
-    return rows + [("Dropped " + key.replace("_", " "), str(tally["dropped"][key]))
-                   for key in DROP_KEYS]
-
-
-def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
-    if not artifacts:
-        return ["None."]
-    rows = [["Key", "Kind", "Availability", "Count", "Location", "Media type", "Bytes",
-             "SHA-256"]]
-    for artifact in artifacts:
-        label = "metadata" if artifact.kind == "vba-project" else artifact.key.split("/", 1)[1]
-        location = "[%s](%s)" % (label, artifact.location)
-        rows.append([artifact.key, artifact.kind, artifact.availability,
-                     str(artifact.count) if artifact.count is not None else "unknown",
-                     location, artifact.media_type,
-                     str(artifact.byte_size) if artifact.byte_size is not None else "not applicable",
-                     artifact.sha256 or "not applicable"])
-    return markdown_table(rows)
-
-
-def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
-              units: list[tuple[int, str, list[tuple]]], tally: dict, *,
-              not_carried: tuple[str, ...], heads=frozenset(), numbers=frozenset(),
-              capabilities: tuple = NOT_APPLICABLE,
-              artifacts: tuple[ArtifactRef, ...] = ()) -> Rendered:
-    """Build schema 2 once content and loss counters are final; every route returns this shape."""
-    body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally)
-    metadata = _metadata_rows(path, route, unit_kind, source_units, unit_keys, body, tally)
-    out = ['# "%s"' % _escape_markdown_text(path.name), "",
-           '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
-    out += markdown_table([["Field", "Value"], *metadata, *capabilities])
-    out += ["", "## Artifacts", ""] + _artifacts_markdown(artifacts) + ["", "## Known omissions", ""]
-    out += ["- " + _escape_markdown_text(item) for item in not_carried]
-    out += ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
-    out += ["- [%s](#%s)" % (_unit_heading(unit_kind, ordinal, label), _unit_anchor(
-        _unit_key(unit_kind, ordinal))) for ordinal, label, _blocks in units]
-    out += ["", body.rstrip("\n")]
-    return "\n".join(out).rstrip("\n") + "\n", tally, unit_keys, artifacts
 
 
 def _render_pdf(path: Path, _sheets=None) -> Rendered:
@@ -1490,345 +1153,6 @@ def _render_pdf(path: Path, _sheets=None) -> Rendered:
 def render_pdf(path) -> tuple[str, dict]:
     """(Markdown, tally) for a PDF; refuses a document with no text layer, by name."""
     return _render_pdf(Path(path))[:2]
-
-
-def _sheet_grid(rows, tally: dict) -> list[list[str]]:
-    # calamine trims trailing empty rows but not trailing empty columns; interior empty rows stay.
-    grid = [[sanitise(cell_text(cell), tally) for cell in row] for row in rows]
-    width = max((index + 1 for row in grid for index, cell in enumerate(row) if cell), default=0)
-    return [row[:width] for row in grid] if width else []
-
-
-def _sheet_selection(sheets) -> tuple | None:
-    """Freeze a public sheet selection once; None keeps every sheet."""
-    if sheets is None:
-        return None
-    if isinstance(sheets, (str, bytes)) or not isinstance(sheets, Iterable):
-        raise BrewdocError("sheet selection must be a sequence of names")
-    return tuple(sheets)
-
-
-def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
-    """Validate a selection and retain each sheet's one-based source ordinal."""
-    available = tuple(available)
-    if sheets is None:
-        requested = available
-    else:
-        requested = sheets
-        if not requested:
-            raise BrewdocError("sheet selection is empty")
-        if any(not isinstance(name, str) for name in requested):
-            raise BrewdocError("sheet selection names must be strings")
-        seen = set()
-        for name in requested:
-            if name in seen:
-                raise BrewdocError("duplicate sheet selection: %s" % name)
-            seen.add(name)
-        unknown = [name for name in requested if name not in available]
-        if unknown:
-            raise BrewdocError("unknown sheet selection: %s; available sheets: %s"
-                               % (", ".join(unknown), ", ".join(available)))
-    ordinals = {name: index for index, name in enumerate(available, 1)}
-    return tuple((ordinals[name], name) for name in requested)
-
-
-@contextlib.contextmanager
-def _workbook(path: Path):
-    """Open a workbook with calamine; its own error types become one BrewdocError."""
-    try:
-        with CalamineWorkbook.from_path(str(path)) as book:
-            yield book
-    except BrewdocError:
-        raise
-    except Exception as exc:                      # calamine raises its own error types
-        raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
-
-
-def _render_book(path: Path, sheets) -> Rendered:
-    """Render selected cached values; the same frozen selection scopes the artifact inventory."""
-    tally = new_tally()
-    with _workbook(path) as book:
-        selected = _select_sheets(book.sheet_names, sheets)
-        source_units = len(book.sheet_names)
-        units = []
-        for ordinal, name in selected:
-            raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
-            rows = _sheet_grid(raw, tally)
-            tally["sheets"] += 1
-            if rows:
-                tally["tables"] += 1
-            units.append((ordinal, name, [("table", rows)] if rows else []))
-    artifacts = _book_artifacts(path, sheets)
-    return _assemble(path, "sheet", "sheet", source_units, units, tally,
-                     not_carried=SHEET_NOT_CARRIED, artifacts=artifacts,
-                     capabilities=_book_capabilities(path.suffix.lower(), artifacts))
-
-
-def render_book(path, *, sheets=None) -> tuple[str, dict]:
-    """Render cached values for selected sheets with full-source ordinal navigation."""
-    return _render_book(Path(path), _sheet_selection(sheets))[:2]
-
-
-def _book_capabilities(suffix: str, artifacts: tuple[ArtifactRef, ...]) -> tuple:
-    """Workbook formula and VBA rows; a reader the format lacks reports an unknown count."""
-    unknown = ("unavailable", "unknown")
-    formulas = sum(item.count for item in artifacts if item.kind == "formula")
-    projects = sum(item.kind == "vba-project" for item in artifacts)
-    values = ("available", str(formulas)) if suffix in FORMULA_SUFFIXES else unknown
-    values += ("available", str(projects)) if suffix in VBA_SUFFIXES else unknown
-    return tuple(zip(CAPABILITY_FIELDS, values + unknown))
-
-
-def _local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def _xml_part(package: zipfile.ZipFile, part: str) -> ET.Element:
-    """Read one required OOXML part and name missing or malformed XML."""
-    try:
-        data = package.read(part)
-    except KeyError as exc:
-        raise BrewdocError("OOXML part is missing: %s" % part) from exc
-    try:
-        return ET.fromstring(data)
-    except ET.ParseError as exc:
-        raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
-
-
-def _resolve_ooxml_part(base: str, target: str) -> str:
-    """Resolve one internal relationship target without leaving the package root."""
-    if not target:
-        raise BrewdocError("OOXML relationship target is missing")
-    # join keeps an absolute target whole; OPC absolute part names start at the package root.
-    joined = posixpath.join(posixpath.dirname(base), target).removeprefix("/")
-    resolved = posixpath.normpath(joined)
-    if resolved in (".", "..") or resolved.startswith("../"):
-        raise BrewdocError("OOXML relationship target leaves the package: %s" % target)
-    return resolved
-
-
-def _relationship_elements(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
-    """Read relationship elements without hiding duplicate identifiers or types."""
-    root = _xml_part(package, part)
-    return tuple(element for element in root.iter()
-                 if _local_name(element.tag) == "Relationship")
-
-
-def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]:
-    return {element.attrib["Id"]: element for element in _relationship_elements(package, part)
-            if "Id" in element.attrib}
-
-
-def _workbook_part(package: zipfile.ZipFile) -> str:
-    """Find the workbook through its package-level office relationship."""
-    relationships = _relationships(package, "_rels/.rels")
-    for relationship in relationships.values():
-        if (relationship.attrib.get("Type", "").endswith("/officeDocument")
-                and relationship.attrib.get("TargetMode") != "External"):
-            return _resolve_ooxml_part("", relationship.attrib.get("Target", ""))
-    raise BrewdocError("OOXML office document relationship is missing")
-
-
-def _relationship_part(part: str) -> str:
-    directory, name = posixpath.split(part)
-    return posixpath.join(directory, "_rels", name + ".rels")
-
-
-def _sheet_relation_id(element: ET.Element, name: str) -> str:
-    for key, value in element.attrib.items():
-        if _local_name(key) == "id":
-            return value
-    raise BrewdocError("worksheet relationship is missing for sheet %s" % name)
-
-
-def _formula_elements(root: ET.Element, sheet: str):
-    """Yield addressed formula elements in worksheet XML order."""
-    for cell in (element for element in root.iter() if _local_name(element.tag) == "c"):
-        formula = next((child for child in cell if _local_name(child.tag) == "f"), None)
-        if formula is None:
-            continue
-        address = cell.attrib.get("r")
-        if not address:
-            raise BrewdocError("formula cell address is missing in sheet %s" % sheet)
-        yield address, formula
-
-
-def _formula_cells(root: ET.Element, sheet: str) -> tuple[CellFormula, ...]:
-    """Read formula elements, including empty shared followers."""
-    return tuple(CellFormula(sheet, address, "".join(formula.itertext()),
-                             tuple(sorted(formula.attrib.items())))
-                 for address, formula in _formula_elements(root, sheet))
-
-
-def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
-    """Read full artifacts or count-only `ArtifactRef`s with stable source ordinals."""
-    suffix = path.suffix.lower()
-    if suffix not in FORMULA_SUFFIXES:
-        raise BrewdocError("formula artifacts unavailable for '%s'; supported suffixes: %s"
-                           % (suffix, " ".join(FORMULA_SUFFIXES)))
-    try:
-        digest = None if references else hashlib.sha256(path.read_bytes()).hexdigest()
-        with zipfile.ZipFile(path) as package:
-            workbook_part = _workbook_part(package)
-            workbook = _xml_part(package, workbook_part)
-            entries = []
-            for ordinal, element in enumerate(
-                    (node for node in workbook.iter() if _local_name(node.tag) == "sheet"), 1):
-                name = element.attrib.get("name")
-                if name is None:
-                    raise BrewdocError("OOXML worksheet name is missing")
-                entries.append((ordinal, name, _sheet_relation_id(element, name)))
-            selected = _select_sheets((name for _ordinal, name, _relation in entries), sheets)
-            by_name = {name: (ordinal, relation) for ordinal, name, relation in entries}
-            relationships = _relationships(package, _relationship_part(workbook_part))
-            artifacts = []
-            for _selected_ordinal, name in selected:
-                ordinal, relation_id = by_name[name]
-                relationship = relationships.get(relation_id)
-                if relationship is None:
-                    raise BrewdocError("worksheet relationship %s is missing for sheet %s"
-                                       % (relation_id, name))
-                if not relationship.attrib.get("Type", "").endswith("/worksheet"):
-                    continue
-                if relationship.attrib.get("TargetMode") == "External":
-                    raise BrewdocError("worksheet relationship is external for sheet %s" % name)
-                target = _resolve_ooxml_part(
-                    workbook_part, relationship.attrib.get("Target", ""))
-                root = _xml_part(package, target)
-                key = "formula/sheet/%06d" % ordinal
-                if references:
-                    count = sum(1 for _address, _formula in _formula_elements(root, name))
-                    if count:
-                        artifacts.append(ArtifactRef(
-                            key, "formula", "available", count,
-                            "#" + _unit_anchor(_unit_key("sheet", ordinal)), "application/json"))
-                else:
-                    formulas = _formula_cells(root, name)
-                    if formulas:
-                        artifacts.append(FormulaArtifact(
-                            key, path.name, digest, ordinal, name, formulas))
-            return tuple(artifacts)
-    except BrewdocError:
-        raise
-    except (OSError, zipfile.BadZipFile) as exc:
-        raise BrewdocError("formula artifact unreadable: %s: %s" % (path, exc)) from exc
-
-
-def read_formulas(path, *, sheets=None) -> tuple[FormulaArtifact, ...]:
-    """Read formula-bearing OOXML sheets as immutable keyed artifacts."""
-    return _read_formula_artifacts(Path(path), _sheet_selection(sheets))
-
-
-def _vba_relationship(package: zipfile.ZipFile, workbook_part: str) -> str | None:
-    """Return the package part of the single internal VBA relationship, or None."""
-    relationships = tuple(
-        relationship for relationship in _relationship_elements(
-            package, _relationship_part(workbook_part))
-        if relationship.attrib.get("Type") == VBA_RELATIONSHIP_TYPE
-    )
-    if len(relationships) > 1:
-        raise BrewdocError("multiple VBA project relationships")
-    if not relationships:
-        return None
-    relationship = relationships[0]
-    if relationship.attrib.get("TargetMode") == "External":
-        raise BrewdocError("VBA project relationship is external")
-    return _resolve_ooxml_part(workbook_part, relationship.attrib.get("Target", ""))
-
-
-def _vba_member(package: zipfile.ZipFile, package_part: str) -> bytes:
-    """Read one bounded project member; zipfile never yields more than its declared size."""
-    matches = tuple(info for info in package.infolist() if info.filename == package_part)
-    if not matches:
-        raise BrewdocError("OOXML part is missing: %s" % package_part)
-    if len(matches) > 1:
-        raise BrewdocError("OOXML part occurs more than once: %s" % package_part)
-    info = matches[0]
-    if info.flag_bits & 1:
-        raise BrewdocError("VBA project part is encrypted: %s" % package_part)
-    if info.file_size > MAX_VBA_PROJECT_BYTES:
-        raise BrewdocError("VBA project part exceeds %d bytes: %s"
-                           % (MAX_VBA_PROJECT_BYTES, package_part))
-    return package.read(info)
-
-
-def _vba_project(path: Path) -> bytes | None:
-    """Read the related opaque VBA project as exact bytes without parsing its streams."""
-    try:
-        with zipfile.ZipFile(path) as package:
-            package_part = _vba_relationship(package, _workbook_part(package))
-            return None if package_part is None else _vba_member(package, package_part)
-    except BrewdocError:
-        raise
-    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise BrewdocError("VBA artifact unreadable: %s: %s" % (path, exc)) from exc
-
-
-def _workbook_suffix(path: Path) -> str:
-    """Return a workbook suffix or refuse the artifact capability before any read."""
-    suffix = path.suffix.lower()
-    if suffix not in SHEET_SUFFIXES:
-        raise BrewdocError("workbook artifacts unavailable for '%s'" % suffix)
-    return suffix
-
-
-def _book_artifacts(path: Path, sheets) -> tuple[ArtifactRef, ...]:
-    """Inventory selected formula sheets and the workbook-level VBA project; None selects all."""
-    suffix = _workbook_suffix(path)
-    artifacts = (_read_formula_artifacts(path, sheets, references=True)
-                 if suffix in FORMULA_SUFFIXES else ())
-    project = _vba_project(path) if suffix in VBA_SUFFIXES else None
-    if project is None:
-        return artifacts
-    return artifacts + (ArtifactRef(
-        VBA_PROJECT_KEY, "vba-project", "available", 1, "#brewdoc-metadata",
-        "application/vnd.ms-office.vbaProject", len(project), hashlib.sha256(project).hexdigest()),)
-
-
-def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
-    """List selected formula sheets and the workbook-level opaque VBA project."""
-    path = Path(path)
-    _workbook_suffix(path)
-    sheets = _sheet_selection(sheets)
-    with _workbook(path) as book:
-        _select_sheets(book.sheet_names, sheets)      # the value reader validates every format
-    return _book_artifacts(path, sheets)
-
-
-def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
-    """Serialize one formula-bearing sheet as versioned deterministic ASCII JSON."""
-    payload = {
-        "formulas": [formula.to_dict() for formula in artifact.formulas],
-        "schema": FORMULA_SCHEMA,
-        "sheet": {"key": _unit_key("sheet", artifact.source_ordinal),
-                  "name": artifact.sheet, "ordinal": artifact.source_ordinal},
-        "source": {"bytes": path.stat().st_size, "name": path.name,
-                   "sha256": artifact.source_sha256, "suffix": path.suffix.lower()},
-    }
-    return (json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
-
-
-def _artifact_payloads(path: Path, sheets, references: tuple[ArtifactRef, ...],
-                       keys: tuple[str, ...]) -> tuple[bytes, ...]:
-    """Serialize listed artifacts by key: formula JSON or exact VBA project bytes."""
-    kinds = [next((item.kind for item in references if item.key == key), None) for key in keys]
-    formulas = ({item.key: item for item in _read_formula_artifacts(path, sheets)}
-                if "formula" in kinds else {})
-    payloads = []
-    for key, kind in zip(keys, kinds):
-        payload = (_formula_json(path, formulas[key]) if kind == "formula" and key in formulas
-                   else _vba_project(path) if kind == "vba-project" else None)
-        if payload is None:
-            raise BrewdocError("workbook artifact not found: %s" % key)
-        payloads.append(payload)
-    return tuple(payloads)
-
-
-def read_book_artifact(path, key: str, *, sheets=None) -> bytes:
-    """Return deterministic formula JSON or exact opaque VBA project bytes by key."""
-    path = Path(path)
-    sheets = _sheet_selection(sheets)
-    return _artifact_payloads(path, sheets, list_book_artifacts(path, sheets=sheets), (key,))[0]
 
 
 # --- .docx: `word/document.xml`, `w:p` paragraphs and `w:tbl` tables in reading order ---------
@@ -1994,87 +1318,6 @@ def _artifact_assignments(assignments) -> dict[str, str] | None:
             raise BrewdocError("duplicate artifact key: %s" % key)
         mapping[key] = path
     return mapping
-
-
-def _output_targets(source: Path, out,
-                    pairs: tuple[tuple[str, Path, str], ...]) -> tuple[Path, ...]:
-    """Resolve Markdown then artifact targets; refuse source aliases, collisions, bad targets."""
-    named = (((None, Path(out), str(out)),) if out is not None else ()) + pairs
-    seen = []
-    for key, path, shown in named:
-        target = path.parent.resolve() / path.name
-        if _same_file(source, target):
-            raise BrewdocError("Markdown output aliases the source: %s" % shown if key is None
-                               else "artifact output aliases the source: %s=%s" % (key, shown))
-        # Casefold + NFC on every filesystem: one plan must not depend on where it runs.
-        folded = unicodedata.normalize("NFC", str(target)).casefold()
-        for earlier_key, earlier, earlier_folded in seen:
-            if earlier_folded == folded or _same_file(earlier, target):
-                raise BrewdocError("Markdown and artifact outputs collide: %s" % shown
-                                   if earlier_key is None else
-                                   "artifact outputs collide: %s and %s" % (earlier_key, key))
-        if os.path.lexists(target) and not stat.S_ISREG(target.lstat().st_mode):
-            raise BrewdocError("output target is not a regular file: %s" % path)
-        parent = next((folder for folder in target.parents if folder.exists()),
-                      target.parents[-1])
-        if not parent.is_dir():
-            raise BrewdocError("output parent is not a directory: %s" % parent)
-        seen.append((key, target, folded))
-    return tuple(target for _key, target, _folded in seen)
-
-
-def _same_file(first: Path, second: Path) -> bool:
-    return first.exists() and second.exists() and os.path.samefile(first, second)
-
-
-def _stage(target: Path, payload: bytes, stages: list[Path]) -> Path:
-    """Write and fsync payload to a new stage beside target with its mode; record it in stages."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    stage = target.with_name(".brewdoc-stage-" + secrets.token_hex(8))
-    stream = open(stage, "xb")
-    stages.append(stage)
-    with stream:
-        stream.write(payload)
-        stream.flush()
-        os.fsync(stream.fileno())
-    if target.exists():
-        shutil.copymode(target, stage)
-    return stage
-
-
-def _restore(targets: list[Path], originals: list[bytes | None], stages: list[Path]) -> list[str]:
-    """Put original bytes back or delete new targets; return the ones that failed."""
-    failures = []
-    for target, original in zip(targets, originals):
-        try:
-            if original is None:
-                target.unlink()
-            else:
-                os.replace(_stage(target, original, stages), target)
-        except OSError as exc:
-            failures.append("%s (%s)" % (target, exc))
-    return failures
-
-
-def _write_outputs(outputs: tuple[tuple[Path, bytes], ...]) -> None:
-    """Stage every payload, then replace targets in order; a failed replace restores earlier ones."""
-    targets = [target for target, _payload in outputs]
-    stages: list[Path] = []
-    try:
-        originals = [target.read_bytes() if target.exists() else None for target in targets]
-        staged = [_stage(target, payload, stages) for target, payload in outputs]
-        for index, (target, stage) in enumerate(zip(targets, staged)):
-            try:
-                os.replace(stage, target)
-            except OSError as exc:
-                reason = "could not replace %s: %s" % (target, exc)
-                failures = _restore(targets[:index], originals, stages)
-                if failures:
-                    reason += "; could not restore %s" % ", ".join(failures)
-                raise BrewdocError(reason) from exc
-    finally:
-        for leftover in stages:
-            leftover.unlink(missing_ok=True)
 
 
 def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
