@@ -27,6 +27,7 @@ Dependencies: `pdfplumber` and `python-calamine`; everything else is the standar
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import hashlib
 import io
@@ -197,33 +198,6 @@ class FormulaArtifact:
     source_ordinal: int
     sheet: str
     formulas: tuple[CellFormula, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class OpaqueVbaProjectRef:
-    """Identity metadata for one losslessly recoverable opaque VBA project."""
-
-    key: str
-    source_name: str
-    source_sha256: str
-    relationship_type: str
-    package_part: str
-    byte_size: int
-    project_sha256: str
-
-
-@dataclass(frozen=True, slots=True)
-class OpaqueVbaProject:
-    """A complete related VBA project preserved as passive bytes."""
-
-    key: str
-    source_name: str
-    source_sha256: str
-    relationship_type: str
-    package_part: str
-    byte_size: int
-    project_sha256: str
-    data: bytes
 
 
 def new_tally() -> dict:
@@ -1007,42 +981,11 @@ def _table_cells(source, table, xs: list[float] | None = None) -> list[list[str]
     return grid
 
 
-def _place(source, row, raw: list, xs: list[float], width: int) -> list[str]:
-    cells = [""] * width
-    for box, text in zip(row.cells, _row_cells(source, row, raw)):
-        if not box or not text.strip():
-            continue
-        index = min(range(width), key=lambda column: abs(xs[column] - box[0]))
-        cells[index] = (cells[index] + " " + text).strip()
-    return cells
-
-
-def _prefer_drawn(source, table, repaired: list[list[str]], bands, xs) -> list[list[str]]:
-    # A drawn row is placed once, including headers spanning multiple rows.
-    raw = table.extract()
-    out, used = [], set()
-    for cells, (top, bottom) in zip(repaired, bands):
-        middle = (top + bottom) / 2
-        match = [index for index, row in enumerate(table.rows)
-                 if index not in used and row.bbox[1] <= middle <= row.bbox[3]]
-        drawn = _place(source, table.rows[match[0]], raw[match[0]], xs, len(cells)) if match else []
-        if drawn and _weight([drawn]) >= _weight([cells]):
-            used.add(match[0])
-            out.append(drawn)
-        else:
-            out.append(cells)
-    return out
-
-
 def _trim(grid: list[list[str]]) -> list[list[str]]:
     width = max((len(row) for row in grid), default=0)
     rows = [row + [""] * (width - len(row)) for row in grid]
     keep = [index for index in range(width) if any(row[index].strip() for row in rows)]
     return [[row[index] for index in keep] for row in rows if any(cell.strip() for cell in row)]
-
-
-def _weight(grid: list[list[str]]) -> int:
-    return sum(len(re.sub(r"\s", "", cell)) for row in grid for cell in row)
 
 
 def _repair_table(page, table):
@@ -1382,30 +1325,17 @@ def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
     return kept
 
 
+# Punctuation gets a backslash, HTML specials and controls an entity; non-ASCII follows in encode.
+MARKDOWN_ESCAPES = str.maketrans({
+    **{character: "\\" + character for character in "\\`*_{}[]()#+-.!|"},
+    **{chr(code): "&#%d;" % code for code in (*range(32), 127)},
+    "\r": " ", "\n": " ", "\t": " ", "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
+
+
 def _escape_markdown_text(text: str) -> str:
     """Preserve semantic text as ASCII without exposing Markdown or HTML syntax."""
-    escaped = []
-    markdown_punctuation = "\\`*_{}[]()#+-.!|"
-    for character in str(text):
-        if character == "&":
-            escaped.append("&amp;")
-        elif character == "<":
-            escaped.append("&lt;")
-        elif character == ">":
-            escaped.append("&gt;")
-        elif character == '"':
-            escaped.append("&quot;")
-        elif not character.isascii():
-            escaped.append("&#%d;" % ord(character))
-        elif character in markdown_punctuation:
-            escaped.append("\\" + character)
-        elif character in "\r\n\t":
-            escaped.append(" ")
-        elif ord(character) < 32 or ord(character) == 127:
-            escaped.append("&#%d;" % ord(character))
-        else:
-            escaped.append(character)
-    return "".join(escaped)
+    escaped = str(text).translate(MARKDOWN_ESCAPES)
+    return escaped.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
 
 def _unit_key(kind: str, ordinal: int) -> str:
@@ -1462,28 +1392,21 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
     return body, tuple(keys)
 
 
+# Every private renderer returns (Markdown, tally, unit keys, artifact references).
+Rendered = tuple[str, dict, tuple[str, ...], tuple[ArtifactRef, ...]]
+CAPABILITY_FIELDS = ("Formula capability", "Selected formula count", "VBA project capability",
+                     "VBA project count", "VBA source module capability", "VBA source module count")
+NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
+
+
 def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
-                   unit_keys: tuple[str, ...], body: str, tally: dict,
-                   artifacts: tuple[ArtifactRef, ...]) -> list[tuple[str, str]]:
-    source = path.read_bytes()
-    suffix = path.suffix.lower()
-    if route == "sheet":
-        formula_refs = tuple(item for item in artifacts if item.kind == "formula")
-        vba_refs = tuple(item for item in artifacts if item.kind == "vba-project")
-        formula_capability = "available" if suffix in FORMULA_SUFFIXES else "unavailable"
-        formula_count = str(sum(item.count or 0 for item in formula_refs)) \
-            if formula_capability == "available" else "unknown"
-        vba_capability = "available" if suffix in VBA_SUFFIXES else "unavailable"
-        vba_count = str(len(vba_refs)) if vba_capability == "available" else "unknown"
-        module_capability, module_count = "unavailable", "unknown"
-    else:
-        formula_capability = formula_count = "not applicable"
-        vba_capability = vba_count = "not applicable"
-        module_capability = module_count = "not applicable"
+                   unit_keys: tuple[str, ...], body: str, tally: dict) -> list[tuple[str, str]]:
+    source, suffix = path.read_bytes(), path.suffix.lower()
+    body_bytes = body.encode("ascii")
     rows = [
         ("Markdown schema", MARKDOWN_SCHEMA),
         ("Source name", '"%s"' % _escape_markdown_text(path.name)),
-        ("Source suffix", suffix),
+        ("Source suffix", suffix[:1] + _escape_markdown_text(suffix[1:])),
         ("Source bytes", str(len(source))),
         ("Source SHA-256", hashlib.sha256(source).hexdigest()),
         ("Route", route),
@@ -1491,8 +1414,8 @@ def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
         ("Source unit count", str(source_units)),
         ("Rendered unit count", str(len(unit_keys))),
         ("Ordered selection keys", ", ".join(unit_keys) or "none"),
-        ("Rendered body bytes", str(len(body.encode("ascii")))),
-        ("Rendered body SHA-256", hashlib.sha256(body.encode("ascii")).hexdigest()),
+        ("Rendered body bytes", str(len(body_bytes))),
+        ("Rendered body SHA-256", hashlib.sha256(body_bytes).hexdigest()),
         ("Pages", str(tally["pages"])),
         ("Sheets", str(tally["sheets"])),
         ("Chapters", str(tally["chapters"])),
@@ -1501,17 +1424,8 @@ def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
         ("Column splits", str(tally["columns_split"])),
         ("Broken ligature words", str(tally["broken_ligature_words"])),
     ]
-    rows += [("Dropped " + key.replace("_", " "), str(tally["dropped"][key]))
-             for key in DROP_KEYS]
-    rows += [
-        ("Formula capability", formula_capability),
-        ("Selected formula count", formula_count),
-        ("VBA project capability", vba_capability),
-        ("VBA project count", vba_count),
-        ("VBA source module capability", module_capability),
-        ("VBA source module count", module_count),
-    ]
-    return rows
+    return rows + [("Dropped " + key.replace("_", " "), str(tally["dropped"][key]))
+                   for key in DROP_KEYS]
 
 
 def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
@@ -1531,31 +1445,26 @@ def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
 
 
 def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
-              units: list[tuple[int, str, list[tuple]]], heads: set[str], numbers: set[str],
-              tally: dict, artifacts: tuple[ArtifactRef, ...] = ()) -> str:
-    """Build schema 2 after a first pass has finalized content and loss counters."""
+              units: list[tuple[int, str, list[tuple]]], tally: dict, *,
+              not_carried: tuple[str, ...], heads=frozenset(), numbers=frozenset(),
+              capabilities: tuple = NOT_APPLICABLE,
+              artifacts: tuple[ArtifactRef, ...] = ()) -> Rendered:
+    """Build schema 2 once content and loss counters are final; every route returns this shape."""
     body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally)
-    metadata = _metadata_rows(
-        path, route, unit_kind, source_units, unit_keys, body, tally, artifacts)
+    metadata = _metadata_rows(path, route, unit_kind, source_units, unit_keys, body, tally)
     out = ['# "%s"' % _escape_markdown_text(path.name), "",
            '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
-    out += markdown_table([["Field", "Value"], *metadata]) + ["", "## Artifacts", ""]
-    out += _artifacts_markdown(artifacts) + ["", "## Known omissions", ""]
-    omissions = (PDF_NOT_CARRIED if route == "pdf" else DOC_NOT_CARRIED
-                 if route == "doc" else SHEET_NOT_CARRIED)
-    out += ["- " + _escape_markdown_text(item) for item in omissions]
+    out += markdown_table([["Field", "Value"], *metadata, *capabilities])
+    out += ["", "## Artifacts", ""] + _artifacts_markdown(artifacts) + ["", "## Known omissions", ""]
+    out += ["- " + _escape_markdown_text(item) for item in not_carried]
     out += ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
     out += ["- [%s](#%s)" % (_unit_heading(unit_kind, ordinal, label), _unit_anchor(
         _unit_key(unit_kind, ordinal))) for ordinal, label, _blocks in units]
     out += ["", body.rstrip("\n")]
-    markdown = "\n".join(out).rstrip("\n") + "\n"
-    markdown.encode("ascii")
-    return markdown
+    return "\n".join(out).rstrip("\n") + "\n", tally, unit_keys, artifacts
 
 
-def render_pdf(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a PDF; refuses a document with no text layer, by name."""
-    path = Path(path)
+def _render_pdf(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     pages, margins, empty = [], [], 0
     with pdfplumber.open(path) as pdf:
@@ -1574,7 +1483,13 @@ def render_pdf(path) -> tuple[str, dict]:
     heads, numbers = furniture(margins)
     units = [(number, "Page %d" % number, blocks)
              for number, blocks in enumerate(pages, 1)]
-    return _assemble(path, "pdf", "page", len(pages), units, heads, numbers, tally), tally
+    return _assemble(path, "pdf", "page", len(pages), units, tally, not_carried=PDF_NOT_CARRIED,
+                     heads=heads, numbers=numbers)
+
+
+def render_pdf(path) -> tuple[str, dict]:
+    """(Markdown, tally) for a PDF; refuses a document with no text layer, by name."""
+    return _render_pdf(Path(path))[:2]
 
 
 def _sheet_grid(rows, tally: dict) -> list[list[str]]:
@@ -1617,37 +1532,51 @@ def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
     return tuple((ordinals[name], name) for name in requested)
 
 
-def _render_book(path, sheets=None) -> tuple[str, dict, tuple[ArtifactRef, ...], tuple[str, ...]]:
-    """Render a workbook and retain its artifact inventory for receipt reuse."""
-    path = Path(path)
-    tally = new_tally()
+@contextlib.contextmanager
+def _workbook(path: Path):
+    """Open a workbook with calamine; its own error types become one BrewdocError."""
     try:
         with CalamineWorkbook.from_path(str(path)) as book:
-            selected = _select_sheets(book.sheet_names, sheets)
-            source_units = len(book.sheet_names)
-            units = []
-            for ordinal, name in selected:
-                raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
-                rows = _sheet_grid(raw, tally)
-                tally["sheets"] += 1
-                if rows:
-                    tally["tables"] += 1
-                units.append((ordinal, name, [("table", rows)] if rows else []))
+            yield book
     except BrewdocError:
         raise
     except Exception as exc:                      # calamine raises its own error types
         raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
-    artifacts = list_book_artifacts(path, sheets=sheets)
-    markdown = _assemble(path, "sheet", "sheet", source_units, units, set(), set(), tally,
-                         artifacts)
-    unit_keys = tuple(_unit_key("sheet", ordinal) for ordinal, _name, _blocks in units)
-    return markdown, tally, artifacts, unit_keys
+
+
+def _render_book(path: Path, sheets) -> Rendered:
+    """Render selected cached values; the same frozen selection scopes the artifact inventory."""
+    tally = new_tally()
+    with _workbook(path) as book:
+        selected = _select_sheets(book.sheet_names, sheets)
+        source_units = len(book.sheet_names)
+        units = []
+        for ordinal, name in selected:
+            raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
+            rows = _sheet_grid(raw, tally)
+            tally["sheets"] += 1
+            if rows:
+                tally["tables"] += 1
+            units.append((ordinal, name, [("table", rows)] if rows else []))
+    artifacts = _book_artifacts(path, sheets)
+    return _assemble(path, "sheet", "sheet", source_units, units, tally,
+                     not_carried=SHEET_NOT_CARRIED, artifacts=artifacts,
+                     capabilities=_book_capabilities(path.suffix.lower(), artifacts))
 
 
 def render_book(path, *, sheets=None) -> tuple[str, dict]:
     """Render cached values for selected sheets with full-source ordinal navigation."""
-    markdown, tally, _artifacts, _unit_keys = _render_book(path, _sheet_selection(sheets))
-    return markdown, tally
+    return _render_book(Path(path), _sheet_selection(sheets))[:2]
+
+
+def _book_capabilities(suffix: str, artifacts: tuple[ArtifactRef, ...]) -> tuple:
+    """Workbook formula and VBA rows; a reader the format lacks reports an unknown count."""
+    unknown = ("unavailable", "unknown")
+    formulas = sum(item.count for item in artifacts if item.kind == "formula")
+    projects = sum(item.kind == "vba-project" for item in artifacts)
+    values = ("available", str(formulas)) if suffix in FORMULA_SUFFIXES else unknown
+    values += ("available", str(projects)) if suffix in VBA_SUFFIXES else unknown
+    return tuple(zip(CAPABILITY_FIELDS, values + unknown))
 
 
 def _local_name(tag: str) -> str:
@@ -1738,7 +1667,7 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
         raise BrewdocError("formula artifacts unavailable for '%s'; supported suffixes: %s"
                            % (suffix, " ".join(FORMULA_SUFFIXES)))
     try:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = None if references else hashlib.sha256(path.read_bytes()).hexdigest()
         with zipfile.ZipFile(path) as package:
             workbook_part = _workbook_part(package)
             workbook = _xml_part(package, workbook_part)
@@ -1790,8 +1719,8 @@ def read_formulas(path, *, sheets=None) -> tuple[FormulaArtifact, ...]:
     return _read_formula_artifacts(Path(path), _sheet_selection(sheets))
 
 
-def _vba_relationship(package: zipfile.ZipFile, workbook_part: str):
-    """Return the single internal VBA relationship or a known absent result."""
+def _vba_relationship(package: zipfile.ZipFile, workbook_part: str) -> str | None:
+    """Return the package part of the single internal VBA relationship, or None."""
     relationships = tuple(
         relationship for relationship in _relationship_elements(
             package, _relationship_part(workbook_part))
@@ -1804,13 +1733,11 @@ def _vba_relationship(package: zipfile.ZipFile, workbook_part: str):
     relationship = relationships[0]
     if relationship.attrib.get("TargetMode") == "External":
         raise BrewdocError("VBA project relationship is external")
-    package_part = _resolve_ooxml_part(
-        workbook_part, relationship.attrib.get("Target", ""))
-    return relationship.attrib["Type"], package_part
+    return _resolve_ooxml_part(workbook_part, relationship.attrib.get("Target", ""))
 
 
-def _vba_member(package: zipfile.ZipFile, package_part: str, retain_data: bool):
-    """Hash one bounded project member and optionally retain its exact bytes."""
+def _vba_member(package: zipfile.ZipFile, package_part: str) -> bytes:
+    """Read one bounded project member; zipfile never yields more than its declared size."""
     matches = tuple(info for info in package.infolist() if info.filename == package_part)
     if not matches:
         raise BrewdocError("OOXML part is missing: %s" % package_part)
@@ -1822,122 +1749,86 @@ def _vba_member(package: zipfile.ZipFile, package_part: str, retain_data: bool):
     if info.file_size > MAX_VBA_PROJECT_BYTES:
         raise BrewdocError("VBA project part exceeds %d bytes: %s"
                            % (MAX_VBA_PROJECT_BYTES, package_part))
-    digest = hashlib.sha256()
-    chunks = []
-    size = 0
-    with package.open(info) as source:
-        while True:
-            chunk = source.read(min(64 * 1024, MAX_VBA_PROJECT_BYTES - size + 1))
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_VBA_PROJECT_BYTES:
-                raise BrewdocError("VBA project part exceeds %d bytes: %s"
-                                   % (MAX_VBA_PROJECT_BYTES, package_part))
-            digest.update(chunk)
-            if retain_data:
-                chunks.append(chunk)
-    return size, digest.hexdigest(), b"".join(chunks) if retain_data else None
+    return package.read(info)
 
 
-def _read_vba_artifacts(path: Path, retain_data=False) -> tuple:
-    """Discover or read the one allowed opaque project without parsing its streams."""
-    suffix = path.suffix.lower()
-    if suffix not in VBA_SUFFIXES:
-        raise BrewdocError("VBA artifacts unavailable for '%s'; supported suffixes: %s"
-                           % (suffix, " ".join(VBA_SUFFIXES)))
+def _vba_project(path: Path) -> bytes | None:
+    """Read the related opaque VBA project as exact bytes without parsing its streams."""
     try:
-        source_digest = hashlib.sha256(path.read_bytes()).hexdigest()
         with zipfile.ZipFile(path) as package:
-            relationship = _vba_relationship(package, _workbook_part(package))
-            if relationship is None:
-                return ()
-            relationship_type, package_part = relationship
-            size, project_digest, data = _vba_member(package, package_part, retain_data)
-            fields = (VBA_PROJECT_KEY, path.name, source_digest, relationship_type,
-                      package_part, size, project_digest)
-            if retain_data:
-                return (OpaqueVbaProject(*fields, data),)
-            return (OpaqueVbaProjectRef(*fields),)
+            package_part = _vba_relationship(package, _workbook_part(package))
+            return None if package_part is None else _vba_member(package, package_part)
     except BrewdocError:
         raise
     except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
         raise BrewdocError("VBA artifact unreadable: %s: %s" % (path, exc)) from exc
 
 
-def discover_vba_artifacts(path) -> tuple[OpaqueVbaProjectRef, ...]:
-    """List the related workbook-level VBA project without retaining its bytes."""
-    return _read_vba_artifacts(Path(path))
+def _workbook_suffix(path: Path) -> str:
+    """Return a workbook suffix or refuse the artifact capability before any read."""
+    suffix = path.suffix.lower()
+    if suffix not in SHEET_SUFFIXES:
+        raise BrewdocError("workbook artifacts unavailable for '%s'" % suffix)
+    return suffix
 
 
-def read_vba_artifact(path, key: str) -> OpaqueVbaProject:
-    """Read one opaque VBA project by its stable workbook-level key."""
-    for artifact in _read_vba_artifacts(Path(path), retain_data=True):
-        if artifact.key == key:
-            return artifact
-    raise BrewdocError("VBA artifact not found: %s" % key)
-
-
-def _validated_sheet_names(path: Path, sheets) -> tuple[str, ...]:
-    """Validate generic artifact selection through the value reader for every format."""
-    try:
-        with CalamineWorkbook.from_path(str(path)) as book:
-            return tuple(name for _ordinal, name in _select_sheets(book.sheet_names, sheets))
-    except BrewdocError:
-        raise
-    except Exception as exc:
-        raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
+def _book_artifacts(path: Path, sheets) -> tuple[ArtifactRef, ...]:
+    """Inventory selected formula sheets and the workbook-level VBA project; None selects all."""
+    suffix = _workbook_suffix(path)
+    artifacts = (_read_formula_artifacts(path, sheets, references=True)
+                 if suffix in FORMULA_SUFFIXES else ())
+    project = _vba_project(path) if suffix in VBA_SUFFIXES else None
+    if project is None:
+        return artifacts
+    return artifacts + (ArtifactRef(
+        VBA_PROJECT_KEY, "vba-project", "available", 1, "#brewdoc-metadata",
+        "application/vnd.ms-office.vbaProject", len(project), hashlib.sha256(project).hexdigest()),)
 
 
 def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
     """List selected formula sheets and the workbook-level opaque VBA project."""
     path = Path(path)
-    if path.suffix.lower() not in SHEET_SUFFIXES:
-        raise BrewdocError("workbook artifacts unavailable for '%s'" % path.suffix.lower())
-    selected = _validated_sheet_names(path, _sheet_selection(sheets))
-    artifacts = []
-    if path.suffix.lower() in FORMULA_SUFFIXES:
-        artifacts += _read_formula_artifacts(path, selected, references=True)
-    if path.suffix.lower() in VBA_SUFFIXES:
-        for reference in discover_vba_artifacts(path):
-            artifacts.append(ArtifactRef(
-                reference.key, "vba-project", "available", 1, "#brewdoc-metadata",
-                "application/vnd.ms-office.vbaProject", reference.byte_size,
-                reference.project_sha256))
-    return tuple(artifacts)
+    _workbook_suffix(path)
+    sheets = _sheet_selection(sheets)
+    with _workbook(path) as book:
+        _select_sheets(book.sheet_names, sheets)      # the value reader validates every format
+    return _book_artifacts(path, sheets)
 
 
 def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
     """Serialize one formula-bearing sheet as versioned deterministic ASCII JSON."""
-    source = path.read_bytes()
     payload = {
         "formulas": [formula.to_dict() for formula in artifact.formulas],
         "schema": FORMULA_SCHEMA,
         "sheet": {"key": _unit_key("sheet", artifact.source_ordinal),
                   "name": artifact.sheet, "ordinal": artifact.source_ordinal},
-        "source": {"bytes": len(source), "name": path.name,
-                   "sha256": hashlib.sha256(source).hexdigest(),
-                   "suffix": path.suffix.lower()},
+        "source": {"bytes": path.stat().st_size, "name": path.name,
+                   "sha256": artifact.source_sha256, "suffix": path.suffix.lower()},
     }
     return (json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
+
+
+def _artifact_payloads(path: Path, sheets, references: tuple[ArtifactRef, ...],
+                       keys: tuple[str, ...]) -> tuple[bytes, ...]:
+    """Serialize listed artifacts by key: formula JSON or exact VBA project bytes."""
+    kinds = [next((item.kind for item in references if item.key == key), None) for key in keys]
+    formulas = ({item.key: item for item in _read_formula_artifacts(path, sheets)}
+                if "formula" in kinds else {})
+    payloads = []
+    for key, kind in zip(keys, kinds):
+        payload = (_formula_json(path, formulas[key]) if kind == "formula" and key in formulas
+                   else _vba_project(path) if kind == "vba-project" else None)
+        if payload is None:
+            raise BrewdocError("workbook artifact not found: %s" % key)
+        payloads.append(payload)
+    return tuple(payloads)
 
 
 def read_book_artifact(path, key: str, *, sheets=None) -> bytes:
     """Return deterministic formula JSON or exact opaque VBA project bytes by key."""
     path = Path(path)
     sheets = _sheet_selection(sheets)
-    references = list_book_artifacts(path, sheets=sheets)
-    reference = next((item for item in references if item.key == key), None)
-    if reference is None:
-        raise BrewdocError("workbook artifact not found: %s" % key)
-    if reference.kind == "formula":
-        selected = _validated_sheet_names(path, sheets)
-        artifact = next((item for item in read_formulas(path, sheets=selected)
-                         if item.key == key), None)
-        if artifact is None:
-            raise BrewdocError("workbook artifact not found: %s" % key)
-        return _formula_json(path, artifact)
-    return read_vba_artifact(path, key).data
+    return _artifact_payloads(path, sheets, list_book_artifacts(path, sheets=sheets), (key,))[0]
 
 
 # --- .docx: `word/document.xml`, `w:p` paragraphs and `w:tbl` tables in reading order ---------
@@ -2003,9 +1894,7 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
     return rows
 
 
-def render_doc(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a .docx: one `## <heading>` chapter per Word heading, else `Body`."""
-    path = Path(path)
+def _render_doc(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     try:
         with zipfile.ZipFile(path) as package:
@@ -2037,23 +1926,38 @@ def render_doc(path) -> tuple[str, dict]:
     tally["chapters"] = len(chapters)
     units = [(ordinal, heading, chapter_blocks)
              for ordinal, (heading, chapter_blocks) in enumerate(chapters, 1)]
-    return _assemble(path, "doc", "chapter", len(units), units, set(), set(), tally), tally
+    return _assemble(path, "doc", "chapter", len(units), units, tally, not_carried=DOC_NOT_CARRIED)
+
+
+def render_doc(path) -> tuple[str, dict]:
+    """(Markdown, tally) for a .docx: one `## <heading>` chapter per Word heading, else `Body`."""
+    return _render_doc(Path(path))[:2]
 
 
 # --- CLI --------------------------------------------------------------------------------------
-def _line(route: str, file_ok: bool, reason: str, path, tally: dict | None = None,
+# Suffix -> (route, private renderer, what the route structurally cannot carry).
+ROUTES = {PDF_SUFFIX: ("pdf", "page", _render_pdf, PDF_NOT_CARRIED),
+          DOC_SUFFIX: ("doc", "chapter", _render_doc, DOC_NOT_CARRIED),
+          **dict.fromkeys(SHEET_SUFFIXES, ("sheet", "sheet", _render_book, SHEET_NOT_CARRIED))}
+NO_ROUTE = ("none", "none", None, ())
+
+
+def _route(path: Path) -> tuple:
+    return ROUTES.get(path.suffix.lower(), NO_ROUTE)
+
+
+def _line(route: tuple, file_ok: bool, reason: str, path, tally: dict | None = None,
           out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
           selected_sheets=None) -> dict:
+    name, _unit_kind, _render, not_carried = route
     tally = tally or new_tally()
-    line = {"file_ok": file_ok, "route": route, "reason": reason,
+    line = {"file_ok": file_ok, "route": name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
             "pages": tally["pages"], "sheets": tally["sheets"], "tables": tally["tables"],
             "text_regions": tally["text_regions"], "columns_split": tally["columns_split"],
             "dropped": dict(tally["dropped"]),
             "broken_ligature_words": tally["broken_ligature_words"],
-            "not_carried": list(PDF_NOT_CARRIED if route == "pdf" else
-                                DOC_NOT_CARRIED if route == "doc" else
-                                SHEET_NOT_CARRIED if route == "sheet" else ())}
+            "not_carried": list(not_carried)}
     if file_ok:
         line.update({"artifacts": list(artifacts), "markdown_schema": MARKDOWN_SCHEMA,
                      "unit_keys": list(unit_keys)})
@@ -2090,12 +1994,6 @@ def _artifact_assignments(assignments) -> dict[str, str] | None:
             raise BrewdocError("duplicate artifact key: %s" % key)
         mapping[key] = path
     return mapping
-
-
-def _route(path: Path) -> str:
-    suffix = path.suffix.lower()
-    return ("pdf" if suffix == PDF_SUFFIX else "doc" if suffix == DOC_SUFFIX
-            else "sheet" if suffix in SHEET_SUFFIXES else "none")
 
 
 def _output_targets(source: Path, out,
@@ -2183,7 +2081,8 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
     route = _route(path)
-    if route == "none":
+    name, unit_kind, render, _not_carried = route
+    if render is None:
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
                                 % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
@@ -2191,44 +2090,31 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
     try:
         sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
-        if route != "sheet" and (sheets is not None or pairs):
+        if name != "sheet" and (sheets is not None or pairs):
             raise BrewdocError("--sheet and --artifact are workbook-only options")
         targets = _output_targets(path, out, pairs)
-        if route == "pdf":
-            markdown, tally = render_pdf(path)
-            references = ()
-            unit_keys = tuple(_unit_key("page", ordinal)
-                              for ordinal in range(1, tally["pages"] + 1))
-        elif route == "doc":
-            markdown, tally = render_doc(path)
-            references = ()
-            unit_keys = tuple(_unit_key("chapter", ordinal)
-                              for ordinal in range(1, tally["chapters"] + 1))
-        else:
-            markdown, tally, references, unit_keys = _render_book(path, sheets)
-        by_key = {reference.key: reference for reference in references}
-        unknown = [key for key, _target, _shown in pairs if key not in by_key]
+        markdown, tally, unit_keys, references = render(path, sheets)
+        keys = tuple(key for key, _target, _shown in pairs)
+        listed = {item.key for item in references}
+        unknown = [key for key in keys if key not in listed]
         if unknown:
             raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
-        markdown_bytes = markdown.encode("ascii")
-        payloads = ((markdown_bytes,) if out is not None else ()) + tuple(
-            read_book_artifact(path, key, sheets=sheets) for key, _target, _shown in pairs)
+        payloads = ((markdown.encode("ascii"),) if out is not None else ()) + _artifact_payloads(
+            path, sheets, references, keys)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
-    except Exception as exc:
+    except Exception as exc:                      # a third-party parser raises its own types
         return EXIT_FAIL, _line(route, False, "%s unreadable: %s: %s: %s"
-                                % (route, path, type(exc).__name__, exc), path), ""
+                                % (name, path, type(exc).__name__, exc), path), ""
     try:
         _write_outputs(tuple(zip(targets, payloads)))
     except (BrewdocError, OSError) as exc:
         return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
-    reason = "%s rendered: %d chapters, %d tables, %d text regions, %d column splits" % (
-        route, tally["pages"] or tally["sheets"] or tally["chapters"], tally["tables"],
-        tally["text_regions"],
+    reason = "%s rendered: %d %ss, %d tables, %d text regions, %d column splits" % (
+        name, len(unit_keys), unit_kind, tally["tables"], tally["text_regions"],
         tally["columns_split"])
-    output_by_key = {key: shown for key, _target, shown in pairs}
-    receipt_artifacts = tuple(reference.to_dict(output_by_key.get(reference.key))
-                              for reference in references)
+    shown = {key: text for key, _target, text in pairs}
+    receipt_artifacts = tuple(item.to_dict(shown.get(item.key)) for item in references)
     return EXIT_OK, _line(route, True, reason, path, tally, out, unit_keys,
                           receipt_artifacts, sheets), markdown
 
@@ -2397,9 +2283,10 @@ def synthetic_docx() -> bytes:
 
 def self_check() -> int:
     """Render synthetic fixtures and compare against pinned expectations; 0 when green."""
-    failures = []
+    failures, checks = [], []
 
     def want(label, got, expected):
+        checks.append(label)
         if got != expected:
             failures.append("%s: got %r want %r" % (label, got, expected))
 
@@ -2496,21 +2383,17 @@ def self_check() -> int:
 
     for failure in failures:
         print("FAIL %s" % failure)
-    print("self-check: %s (%d checks)" % ("FAIL" if failures else "ok", 27))
+    print("self-check: %s (%d checks)" % ("FAIL" if failures else "ok", len(checks)))
     return EXIT_FAIL if failures else EXIT_OK
 
 
 def chapter_lines(markdown: str, heading: str) -> list[str]:
-    """Return content under an old label or a schema 2 unit display label."""
+    """Return content under a `## <heading>` line or a sheet or chapter display label."""
     lines = markdown.splitlines()
-    escaped = _escape_markdown_text(heading)
-    candidates = ("## " + heading, '## Page ' + heading.removeprefix("Page "),
-                  ': "%s"' % escaped)
-    matched = next((index for index, line in enumerate(lines)
-                    if line == candidates[0]
-                    or (heading.startswith("Page ") and line == candidates[1])
-                    or (line.startswith(("## Sheet ", "## Chapter "))
-                        and line.endswith(candidates[2]))), None)
+    label = ': "%s"' % _escape_markdown_text(heading)
+    matched = next((index for index, line in enumerate(lines) if line == "## " + heading
+                    or (line.startswith(("## Sheet ", "## Chapter ")) and line.endswith(label))),
+                   None)
     if matched is None:
         raise ValueError("chapter heading not found: %s" % heading)
     start = matched + 1

@@ -11,10 +11,56 @@ from pathlib import Path
 import pytest
 
 import brewdoc
-from brewdoc import reader
+from brewdoc.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
 VBA_RELATIONSHIP = "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
+VBA_KEY = "vba/project/000001"
+FORMULA_KEYS = ("formula/sheet/000001", "formula/sheet/000002")
+DROPPED = dict.fromkeys(("control_chars", "soft_hyphens", "nbsp", "pua_glyphs", "cid_survivors",
+                         "ligatures", "running_heads", "page_numbers", "non_ascii_replaced"), 0)
+SHEET_RECEIPT = {
+    "broken_ligature_words": 0, "columns_split": 0, "dropped": DROPPED, "pages": 0,
+    "not_carried": ["cell formulas in Markdown content - only cached values are rendered",
+                    "formatting, colours, comments and data validation",
+                    "charts and embedded images", "readable VBA source modules"],
+    "route": "sheet", "source": "book.xlsx", "text_regions": 0,
+}
+INPUTS = '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Inputs"\n\n| 1.0 |\n| --- |\n| 2.0 |\n| 3.0 |\n'
+CALC_TABLE = "| 3.0 | 2.0 |  |\n| --- | --- | --- |\n|  | 4.0 |  |\n|  |  | 1.0 |\n"
+CALC = '<a id="brewdoc-sheet-000002"></a>\n## Sheet 2: "Calc"\n\n' + CALC_TABLE
+EMPTY = '<a id="brewdoc-sheet-000003"></a>\n## Sheet 3: "Empty"\n'
+
+
+def exact(message: str) -> str:
+    """Return a pytest.raises pattern matching exactly `message`."""
+    return "^%s$" % re.escape(message)
+
+
+def tally(sheets: int, tables: int) -> dict:
+    """Return the full render tally of a workbook with these sheet and table counts."""
+    return {"pages": 0, "sheets": sheets, "chapters": 0, "tables": tables, "text_regions": 0,
+            "columns_split": 0, "broken_ligature_words": 0, "dropped": DROPPED}
+
+
+def refused(reason: str) -> dict:
+    """Return the full receipt of a workbook run refused for `reason`."""
+    return {**SHEET_RECEIPT, "file_ok": False, "out": None, "reason": reason, "sheets": 0,
+            "tables": 0}
+
+
+def formula_row(ordinal: int, count: int, out: Path | None) -> dict:
+    """Return one receipt artifact row for a formula sheet."""
+    return {"availability": "available", "byte_size": None, "count": count,
+            "key": "formula/sheet/%06d" % ordinal, "kind": "formula",
+            "location": "#brewdoc-sheet-%06d" % ordinal, "media_type": "application/json",
+            "out": None if out is None else str(out), "sha256": None}
+
+
+def formula_ref(ordinal: int, count: int) -> brewdoc.ArtifactRef:
+    """Return the inventory row of one formula-bearing sheet."""
+    return brewdoc.ArtifactRef("formula/sheet/%06d" % ordinal, "formula", "available", count,
+                               "#brewdoc-sheet-%06d" % ordinal, "application/json")
 
 
 def formula_book(path: Path, *, missing_relationship=False, malformed_sheet=False) -> Path:
@@ -89,7 +135,7 @@ def formula_book(path: Path, *, missing_relationship=False, malformed_sheet=Fals
 
 
 def vba_book(path: Path, relationships: str, *, parts=()) -> Path:
-    """Write the package boundary needed for VBA relationship tests."""
+    """Write a one-sheet macro workbook whose workbook relationships end with `relationships`."""
     with zipfile.ZipFile(path, "w") as package:
         package.writestr(
             "_rels/.rels",
@@ -98,11 +144,41 @@ def vba_book(path: Path, relationships: str, *, parts=()) -> Path:
             'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
             "</Relationships>",
         )
-        package.writestr("xl/workbook.xml", "<workbook/>")
-        package.writestr("xl/_rels/workbook.xml.rels", relationships)
+        package.writestr(
+            "xl/workbook.xml",
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="Data" sheetId="1" r:id="rIdSheet"/></sheets></workbook>',
+        )
+        package.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rIdSheet" Type="http://schemas.openxmlformats.org/officeDocument/'
+            '2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>%s</Relationships>'
+            % relationships,
+        )
+        package.writestr(
+            "xl/worksheets/sheet1.xml",
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>',
+        )
         for name, data in parts:
             package.writestr(name, data)
     return path
+
+
+def vba_relationship(target: str, attributes: str = "") -> str:
+    """Return one workbook-level VBA project relationship element."""
+    return '<Relationship Id="rIdVba" Type="%s" Target="%s"%s/>' % (
+        VBA_RELATIONSHIP, target, attributes)
+
+
+def vba_ref(data: bytes) -> brewdoc.ArtifactRef:
+    """Return the inventory row expected for one opaque VBA project payload."""
+    return brewdoc.ArtifactRef(
+        VBA_KEY, "vba-project", "available", 1, "#brewdoc-metadata",
+        "application/vnd.ms-office.vbaProject", len(data), hashlib.sha256(data).hexdigest(),
+    )
 
 
 def rewrite_member(path: Path, member: str, old: bytes, new: bytes) -> None:
@@ -114,39 +190,46 @@ def rewrite_member(path: Path, member: str, old: bytes, new: bytes) -> None:
             target.writestr(name, data.replace(old, new) if name == member else data)
 
 
-def mark_member_encrypted(path: Path, member: str) -> None:
-    """Set the encrypted flag in one synthetic ZIP member's two headers."""
+
+def rewrite_member_headers(path: Path, member: str, local: int, central: int, value: bytes) -> None:
+    """Overwrite one field in a synthetic ZIP member's local and central headers."""
     data = bytearray(path.read_bytes())
     encoded = member.encode("ascii")
-    local = data.index(encoded, data.index(b"PK\x03\x04")) - 30
-    central = data.index(encoded, data.index(b"PK\x01\x02")) - 46
-    for offset in (local + 6, central + 8):
-        flags = int.from_bytes(data[offset:offset + 2], "little") | 1
-        data[offset:offset + 2] = flags.to_bytes(2, "little")
+    for signature, size, offset in ((b"PK\x03\x04", 30, local), (b"PK\x01\x02", 46, central)):
+        start = data.index(encoded, data.index(signature)) - size + offset
+        data[start:start + len(value)] = value
     path.write_bytes(data)
 
 
-def test_sheet_selection_preserves_default_and_renders_caller_order(tmp_path):
+def test_explicit_none_selection_is_the_default(tmp_path):
     # GIVEN a three-sheet workbook with formulas and cached values
     path = formula_book(tmp_path / "book.xlsx")
-    # WHEN it is rendered by default, explicitly by default, and in caller order
-    implicit = reader.render_book(path)
-    explicit = reader.render_book(path, sheets=None)
-    selected, tally = reader.render_book(path, sheets=("Calc", "Inputs"))
-    # THEN the default is unchanged and selection only changes chapter order and count
-    assert implicit == explicit, "explicit None must be byte-compatible with the existing default"
-    assert [line for line in implicit[0].splitlines() if line.startswith("## Sheet ")] == [
-        '## Sheet 1: "Inputs"', '## Sheet 2: "Calc"', '## Sheet 3: "Empty"'
-    ], "default rendering must keep workbook order"
-    assert [line for line in selected.splitlines() if line.startswith("## Sheet ")] == [
-        '## Sheet 2: "Calc"', '## Sheet 1: "Inputs"'
-    ], "explicit sheets must render in caller order"
-    assert (tally["sheets"], tally["tables"]) == (2, 2), "selection must count rendered sheets"
-    assert reader.chapter_lines(selected, "Calc") == [
-        "| 3.0 | 2.0 |  |", "| --- | --- | --- |", "|  | 4.0 |  |", "|  |  | 1.0 |"
-    ], "Markdown must keep cached values rather than formula text"
+    # WHEN it is rendered by default and with an explicit None selection
+    implicit, explicit = brewdoc.render_book(path), brewdoc.render_book(path, sheets=None)
+    # THEN both renders are identical
+    assert explicit == implicit, "explicit None must be byte-compatible with the default"
 
 
+@pytest.mark.parametrize(
+    ("selection", "body", "expected_tally"),
+    [
+        pytest.param(None, INPUTS + "\n" + CALC + "\n" + EMPTY, tally(3, 2), id="default"),
+        pytest.param(("Calc", "Inputs"), CALC + "\n" + INPUTS, tally(2, 2), id="caller-order"),
+    ],
+)
+def test_sheet_selection_renders_cached_values_in_caller_order(
+        tmp_path, selection, body, expected_tally):
+    # GIVEN a three-sheet workbook with formulas and cached values
+    path = formula_book(tmp_path / "book.xlsx")
+    # WHEN it is rendered with the default or an explicit selection
+    markdown, actual_tally = brewdoc.render_book(path, sheets=selection)
+    # THEN only the selected sheets render, in order, with cached values instead of formulas
+    assert (markdown[markdown.index('<a id="brewdoc-sheet-'):], actual_tally) == (
+        body, expected_tally,
+    ), "selection must change only chapter order and count"
+
+
+@pytest.mark.corpus
 @pytest.mark.parametrize(
     ("relative", "selection"),
     [
@@ -160,31 +243,35 @@ def test_sheet_selection_preserves_default_and_renders_caller_order(tmp_path):
 def test_sheet_selection_works_for_every_workbook_format(relative, selection):
     # GIVEN a supported multi-sheet workbook
     # WHEN two sheets are selected in reverse source order
-    markdown, tally = reader.render_book(FIXTURES / relative, sheets=selection)
+    markdown, actual_tally = brewdoc.render_book(FIXTURES / relative, sheets=selection)
+    headings = [line.split(': "', 1)[1][:-1] for line in markdown.splitlines()
+                if line.startswith("## Sheet ")]
     # THEN only those sheets render in caller order through the existing value path
-    headings = [line for line in markdown.splitlines() if line.startswith("## Sheet ")]
-    assert [line.split(': "', 1)[1][:-1] for line in headings] == list(selection), (
+    assert (headings, actual_tally["sheets"]) == (list(selection), 2), (
         "sheet selection must share one contract across every workbook format"
     )
-    assert tally["sheets"] == 2, "the sheet tally must count selections for every workbook format"
 
 
 @pytest.mark.parametrize(
     ("selection", "reason"),
     [
         ((), "sheet selection is empty"),
-        (("Inputs", "Inputs"), "duplicate sheet selection: Inputs"),
-        (("Missing",), "unknown sheet selection: Missing; available sheets: Inputs, Calc, Empty"),
+        (("Calc", "Calc"), "duplicate sheet selection: Calc"),
+        (("Calc", "Missing"),
+         "unknown sheet selection: Missing; available sheets: Inputs, Calc, Empty"),
         (("calc",), "unknown sheet selection: calc; available sheets: Inputs, Calc, Empty"),
     ],
 )
-def test_invalid_sheet_selection_fails_before_rendering(tmp_path, selection, reason):
-    # GIVEN a workbook and an invalid explicit selection
-    path = formula_book(tmp_path / "book.xlsx")
-    # WHEN the caller requests it
-    # THEN the exact selection error is raised
-    with pytest.raises(reader.BrewdocError, match="^%s$" % reason):
-        reader.render_book(path, sheets=selection)
+def test_invalid_sheet_selection_fails_before_any_sheet_read(tmp_path, selection, reason):
+    # GIVEN a workbook whose Calc sheet cannot be read
+    path = formula_book(tmp_path / "book.xlsx", malformed_sheet=True)
+    with pytest.raises(brewdoc.BrewdocError,
+                       match=exact("spreadsheet unreadable: %s: sheetData" % path)):
+        brewdoc.render_book(path, sheets=("Calc",))
+    # WHEN the caller requests an invalid selection
+    # THEN the selection error wins over the broken sheet read
+    with pytest.raises(brewdoc.BrewdocError, match=exact(reason)):
+        brewdoc.render_book(path, sheets=selection)
 
 
 @pytest.mark.parametrize("selection", [5, "Calc", b"Calc"], ids=["int", "str", "bytes"])
@@ -205,7 +292,8 @@ def test_non_iterable_or_bare_string_selection_is_refused_as_a_selection_error(
     path = formula_book(tmp_path / "book.xlsx")
     # WHEN a public entry point receives it
     # THEN it raises the one selection error, not a raw TypeError or unreadable-file error
-    with pytest.raises(reader.BrewdocError, match="^sheet selection must be a sequence of names$"):
+    with pytest.raises(brewdoc.BrewdocError,
+                       match=exact("sheet selection must be a sequence of names")):
         call(path, selection)
 
 
@@ -215,11 +303,70 @@ def test_run_reports_a_non_iterable_or_bare_string_selection_as_a_selection_erro
     # GIVEN a readable workbook and a selection that is not a sequence of names
     path = formula_book(tmp_path / "book.xlsx")
     # WHEN run receives it
-    code, receipt, markdown = reader.run(path, sheets=selection)
+    actual = brewdoc.run(path, sheets=selection)
     # THEN the receipt carries the same selection error as the raising entry points
-    assert (code, receipt["file_ok"], receipt["reason"], markdown) == (
-        1, False, "sheet selection must be a sequence of names", "",
-    ), "run must report the shared selection error, not an unreadable-file error"
+    assert actual == (1, refused("sheet selection must be a sequence of names"), ""), (
+        "run must report the shared selection error, not an unreadable-file error"
+    )
+
+
+ZERO_SHEET_PROJECT = b"zero-sheet project"
+
+
+def zero_sheet_book(path: Path) -> Path:
+    """Write a valid XLSM whose workbook lists no sheet but relates one VBA project."""
+    vba_book(path, vba_relationship("vbaProject.bin"),
+             parts=(("xl/vbaProject.bin", ZERO_SHEET_PROJECT),))
+    rewrite_member(path, "xl/workbook.xml",
+                   b'<sheet name="Data" sheetId="1" r:id="rIdSheet"/>', b"")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("call", "expected"),
+    [
+        pytest.param(lambda path: brewdoc.list_book_artifacts(path),
+                     (vba_ref(ZERO_SHEET_PROJECT),), id="list_book_artifacts"),
+        pytest.param(lambda path: brewdoc.read_book_artifact(path, VBA_KEY),
+                     ZERO_SHEET_PROJECT, id="read_book_artifact"),
+        pytest.param(lambda path: [
+            line for line in brewdoc.render_book(path)[0].splitlines()
+            if line.startswith(("| Rendered unit count ", "| VBA project count "))
+        ], ["| Rendered unit count | 0 |", "| VBA project count | 1 |"], id="render_book"),
+        pytest.param(lambda path: (lambda code, receipt, markdown: (code, receipt["reason"]))(
+            *brewdoc.run(path)),
+            (0, "sheet rendered: 0 sheets, 0 tables, 0 text regions, 0 column splits"),
+            id="run"),
+    ],
+)
+def test_default_selection_of_a_zero_sheet_workbook_keeps_workbook_level_results(
+        tmp_path, call, expected):
+    # GIVEN a valid XLSM with no worksheet and one related VBA project
+    path = zero_sheet_book(tmp_path / "book.xlsm")
+    with zipfile.ZipFile(path) as package:
+        assert package.read("xl/workbook.xml").count(b"<sheet ") == 0, "precondition: no sheet"
+    # WHEN a public entry point uses the default selection
+    actual = call(path)
+    # THEN None selects every sheet, here none, and workbook-level results remain
+    assert actual == expected, "only an explicit empty selection may be refused as empty"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda path, sheets: brewdoc.render_book(path, sheets=sheets),
+        lambda path, sheets: brewdoc.list_book_artifacts(path, sheets=sheets),
+        lambda path, sheets: brewdoc.read_book_artifact(path, VBA_KEY, sheets=sheets),
+    ],
+    ids=["render_book", "list_book_artifacts", "read_book_artifact"],
+)
+def test_explicit_empty_selection_is_refused_even_for_a_zero_sheet_workbook(tmp_path, call):
+    # GIVEN a valid XLSM with no worksheet
+    path = zero_sheet_book(tmp_path / "book.xlsm")
+    # WHEN a caller explicitly selects no sheet
+    # THEN the explicit empty sequence is refused
+    with pytest.raises(brewdoc.BrewdocError, match=exact("sheet selection is empty")):
+        call(path, ())
 
 
 @pytest.mark.parametrize(
@@ -258,84 +405,62 @@ def test_run_accepts_a_one_shot_sheet_iterator_like_the_equivalent_tuple(tmp_pat
     assert actual == expected, "run must consume any iterable of sheet names exactly once"
 
 
-def test_unknown_selection_is_validated_before_any_sheet_read(monkeypatch):
-    # GIVEN a workbook double that records sheet reads
-    reads = []
-
-    class Book:
-        sheet_names = ["Inputs", "Calc"]
-
-        @classmethod
-        def from_path(cls, path):
-            return cls()
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            return None
-
-        def get_sheet_by_name(self, name):
-            reads.append(name)
-            raise AssertionError("selection validation must precede reads")
-
-    monkeypatch.setattr(reader, "CalamineWorkbook", Book)
-    # WHEN an unknown name is selected
-    # THEN no sheet is opened
-    with pytest.raises(reader.BrewdocError, match="unknown sheet selection: Missing"):
-        reader.render_book("book.xlsx", sheets=("Missing",))
-    assert reads == [], "invalid selection must fail before the first sheet read"
-
-
 @pytest.mark.parametrize("suffix", [".xlsx", ".xlsm"])
 def test_ooxml_formula_models_preserve_source_text_attributes_and_ordinals(tmp_path, suffix):
     # GIVEN an OOXML workbook with normal, shared, and empty shared formulas
     path = formula_book(tmp_path / ("book" + suffix))
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     # WHEN its formula artifacts are read in caller sheet order
-    artifacts = reader.read_formulas(path, sheets=("Calc", "Inputs"))
+    artifacts = brewdoc.read_formulas(path, sheets=("Calc", "Inputs"))
     # THEN keys retain full-source ordinals and every formula field is exact
     assert artifacts == (
-        reader.FormulaArtifact(
+        brewdoc.FormulaArtifact(
             key="formula/sheet/000002", source_name=path.name, source_sha256=digest,
             source_ordinal=2, sheet="Calc", formulas=(
-                reader.CellFormula("Calc", "A1", "SUM(Inputs!A1:A2)", ()),
-                reader.CellFormula(
+                brewdoc.CellFormula("Calc", "A1", "SUM(Inputs!A1:A2)", ()),
+                brewdoc.CellFormula(
                     "Calc", "B1", "Inputs!A1*2", (("ref", "B1:B2"), ("si", "7"), ("t", "shared"))
                 ),
-                reader.CellFormula("Calc", "B2", "", (("si", "7"), ("t", "shared"))),
-                reader.CellFormula("Calc", "C3", 'IF(A1<4,"café","")', (("aca", "1"), ("bx", "0"))),
+                brewdoc.CellFormula("Calc", "B2", "", (("si", "7"), ("t", "shared"))),
+                brewdoc.CellFormula("Calc", "C3", 'IF(A1<4,"café","")', (("aca", "1"), ("bx", "0"))),
             ),
         ),
-        reader.FormulaArtifact(
+        brewdoc.FormulaArtifact(
             key="formula/sheet/000001", source_name=path.name, source_sha256=digest,
             source_ordinal=1, sheet="Inputs", formulas=(
-                reader.CellFormula("Inputs", "A3", "SUM(A1:A2)", ()),
+                brewdoc.CellFormula("Inputs", "A3", "SUM(A1:A2)", ()),
             ),
         ),
     ), "formula models must preserve XML content and full workbook identity"
-    with pytest.raises(FrozenInstanceError):
-        artifacts[0].sheet = "Changed"
 
 
-def test_formula_discovery_returns_one_reference_per_formula_sheet(tmp_path):
-    # GIVEN two formula-bearing sheets, one with four formula cells
+def test_formula_models_are_immutable(tmp_path):
+    # GIVEN one formula artifact read from a workbook
+    artifact = brewdoc.read_formulas(formula_book(tmp_path / "book.xlsx"), sheets=("Calc",))[0]
+    # WHEN a caller assigns to one of its fields
+    # THEN the frozen dataclass refuses the change
+    with pytest.raises(FrozenInstanceError, match=exact("cannot assign to field 'sheet'")):
+        artifact.sheet = "Changed"
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected"),
+    [
+        pytest.param(None, (formula_ref(1, 1), formula_ref(2, 4)), id="default"),
+        pytest.param(("Calc", "Inputs"), (formula_ref(2, 4), formula_ref(1, 1)),
+                     id="caller-order"),
+        pytest.param(("Calc",), (formula_ref(2, 4),), id="one-sheet"),
+        pytest.param(("Empty",), (), id="formula-free-sheet"),
+    ],
+)
+def test_formula_inventory_has_one_row_per_formula_sheet_in_selection_order(
+        tmp_path, selection, expected):
+    # GIVEN two formula-bearing sheets, one with four formula cells, and an empty sheet
     path = formula_book(tmp_path / "book.xlsx")
-    # WHEN artifacts are discovered and one key is read
-    references = reader.list_book_artifacts(path)
-    artifact = json.loads(reader.read_book_artifact(path, "formula/sheet/000002"))
-    # THEN discovery is per sheet, not per formula, and reading returns that sheet only
-    assert [(item.key, item.location, item.count) for item in references] == [
-        ("formula/sheet/000001", "#brewdoc-sheet-000001", 1),
-        ("formula/sheet/000002", "#brewdoc-sheet-000002", 4),
-    ], "each formula-bearing source sheet must own exactly one stable key"
-    assert (artifact["sheet"], artifact["formulas"]) == (
-        {"key": "sheet/000002", "name": "Calc", "ordinal": 2},
-        [item.to_dict() for item in reader.read_formulas(path, sheets=("Calc",))[0].formulas],
-    ), "keyed reads and selected reads must return the same formula payload"
-    assert reader.list_book_artifacts(path, sheets=("Empty",)) == (), (
-        "a supported formula-free sheet has a known zero inventory"
-    )
+    # WHEN the artifact inventory is listed for a selection
+    references = brewdoc.list_book_artifacts(path, sheets=selection)
+    # THEN each selected formula sheet owns one full-source key and an empty sheet a known zero
+    assert references == expected, "formula inventory must be per sheet, never per cell"
 
 
 @pytest.mark.parametrize("suffix", [".xls", ".xlsb", ".ods", ".pdf"])
@@ -345,18 +470,17 @@ def test_formula_status_is_unavailable_for_unsupported_formats(tmp_path, suffix)
     path.write_bytes(b"not inspected")
     # WHEN formula discovery is requested
     # THEN it reports unavailable rather than zero
-    with pytest.raises(
-        reader.BrewdocError,
-        match=r"^formula artifacts unavailable for '%s'; supported suffixes: .xlsm .xlsx$" % suffix,
-    ):
-        reader.read_formulas(path)
+    with pytest.raises(brewdoc.BrewdocError, match=exact(
+            "formula artifacts unavailable for '%s'; supported suffixes: .xlsm .xlsx" % suffix)):
+        brewdoc.read_formulas(path)
 
 
 @pytest.mark.parametrize(
     ("options", "reason"),
     [
         ({"missing_relationship": True}, "worksheet relationship rId9 is missing for sheet Calc"),
-        ({"malformed_sheet": True}, "cannot parse OOXML part xl/worksheets/sheet2.xml"),
+        ({"malformed_sheet": True},
+         "cannot parse OOXML part xl/worksheets/sheet2.xml: no element found: line 1, column 22"),
     ],
 )
 def test_malformed_ooxml_formula_parts_fail_clearly(tmp_path, options, reason):
@@ -364,8 +488,8 @@ def test_malformed_ooxml_formula_parts_fail_clearly(tmp_path, options, reason):
     path = formula_book(tmp_path / "broken.xlsx", **options)
     # WHEN formulas are read
     # THEN the failing source part is named
-    with pytest.raises(reader.BrewdocError, match=reason):
-        reader.read_formulas(path)
+    with pytest.raises(brewdoc.BrewdocError, match=exact(reason)):
+        brewdoc.read_formulas(path)
 
 
 def source_identity_rows(path: Path) -> str:
@@ -403,15 +527,9 @@ def test_absolute_opc_relationship_targets_render_like_relative_ones(
     ), "absolute OPC part names are legal relationship targets and must resolve from the root"
 
 
-def test_formula_api_is_public():
-    # GIVEN the package root
-    expected = (reader.CellFormula, reader.FormulaArtifact, reader.read_formulas)
-    # WHEN formula APIs are inspected
-    actual = (brewdoc.CellFormula, brewdoc.FormulaArtifact, brewdoc.read_formulas)
-    # THEN the immutable layer is exported
-    assert actual == expected, "formula models and keyed readers must be publicly available"
 
 
+@pytest.mark.corpus
 @pytest.mark.parametrize(
     ("relative", "size", "project_sha256"),
     [
@@ -427,227 +545,203 @@ def test_formula_api_is_public():
         ),
     ],
 )
-def test_vba_models_preserve_exact_related_project_bytes(relative, size, project_sha256):
+def test_vba_inventory_and_read_preserve_exact_fixture_project_bytes(
+        relative, size, project_sha256):
     # GIVEN a licensed workbook fixture with one related VBA project
     path = FIXTURES / relative
-    source_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
     with zipfile.ZipFile(path) as package:
         expected_data = package.read("xl/vbaProject.bin")
-    # WHEN its VBA artifact is discovered and read by key
-    references = reader.discover_vba_artifacts(path)
-    artifact = reader.read_vba_artifact(path, "vba/project/000001")
-    # THEN discovery is count-only and the read preserves the exact opaque bytes
-    assert references == (
-        reader.OpaqueVbaProjectRef(
-            key="vba/project/000001", source_name=path.name,
-            source_sha256=source_sha256, relationship_type=VBA_RELATIONSHIP,
-            package_part="xl/vbaProject.bin", byte_size=size,
-            project_sha256=project_sha256,
+    # WHEN its inventory is listed and the project is read by key
+    references = brewdoc.list_book_artifacts(path)
+    data = brewdoc.read_book_artifact(path, VBA_KEY)
+    # THEN the inventory has one workbook-level project and the read keeps every byte
+    assert (references, data) == ((
+        brewdoc.ArtifactRef(
+            VBA_KEY, "vba-project", "available", 1, "#brewdoc-metadata",
+            "application/vnd.ms-office.vbaProject", size, project_sha256,
         ),
-    ), "VBA discovery must expose one stable workbook-level project reference"
-    assert artifact == reader.OpaqueVbaProject(
-        key="vba/project/000001", source_name=path.name,
-        source_sha256=source_sha256, relationship_type=VBA_RELATIONSHIP,
-        package_part="xl/vbaProject.bin", byte_size=size,
-        project_sha256=project_sha256, data=expected_data,
-    ), "the keyed VBA read must preserve every related project byte"
-    with pytest.raises(FrozenInstanceError):
-        artifact.data = b"changed"
+    ), expected_data), "VBA inventory and keyed read must preserve the opaque project exactly"
 
 
+@pytest.mark.corpus
 def test_vba_project_is_independent_of_sheet_selection():
-    # GIVEN a macro workbook whose second sheet alone is rendered
+    # GIVEN a macro workbook whose second sheet alone is selected
     path = FIXTURES / "xlsm/calamine-vba.xlsm"
-    before = reader.read_vba_artifact(path, "vba/project/000001")
-    # WHEN a caller selects one sheet through the separate rendering layer
-    _markdown, tally = reader.render_book(path, sheets=("Sheet2",))
-    after = reader.read_vba_artifact(path, "vba/project/000001")
-    # THEN the workbook-scoped project remains complete and unchanged
+    _markdown, tally = brewdoc.render_book(path, sheets=("Sheet2",))
     assert tally["sheets"] == 1, "the precondition must render only the requested sheet"
-    assert after == before, "sheet selection must not filter or rewrite the VBA project"
+    # WHEN the inventory is listed and the project read with and without that selection
+    selected = (brewdoc.list_book_artifacts(path, sheets=("Sheet2",)),
+                brewdoc.read_book_artifact(path, VBA_KEY, sheets=("Sheet2",)))
+    full = (brewdoc.list_book_artifacts(path), brewdoc.read_book_artifact(path, VBA_KEY))
+    # THEN the workbook-scoped project is neither filtered nor rewritten
+    assert selected == full, "sheet selection must not filter or rewrite the VBA project"
 
 
-def test_vba_discovery_reports_known_zero_for_valid_xlsm_without_project():
-    # GIVEN a valid macro-enabled workbook with no VBA relationship
-    path = FIXTURES / "xlsm/calamine-issue221.xlsm"
-    # WHEN it is discovered
-    # THEN zero is known and keyed reads fail clearly
-    assert reader.discover_vba_artifacts(path) == (), "a supported no-project XLSM has known zero"
-    with pytest.raises(reader.BrewdocError, match="^VBA artifact not found: vba/project/000001$"):
-        reader.read_vba_artifact(path, "vba/project/000001")
+@pytest.mark.parametrize(
+    ("build", "capability", "count"),
+    [
+        pytest.param(lambda tmp_path: vba_book(tmp_path / "book.xlsm", ""),
+                     "available", "0", id="xlsm-without-project"),
+        pytest.param(lambda tmp_path: vba_book(
+            tmp_path / "book.xlsm", vba_relationship("vbaProject.bin"),
+            parts=(("xl/vbaProject.bin", b"project"),)),
+            "available", "1", id="xlsm-with-project"),
+        pytest.param(lambda tmp_path: formula_book(tmp_path / "book.xlsx"),
+                     "unavailable", "unknown", id="xlsx"),
+        pytest.param(lambda _tmp_path: FIXTURES / "xls/calamine-xls_formula.xls",
+                     "unavailable", "unknown", id="xls", marks=pytest.mark.corpus),
+        pytest.param(lambda _tmp_path: FIXTURES / "ods/calamine-issues.ods",
+                     "unavailable", "unknown", id="ods", marks=pytest.mark.corpus),
+    ],
+)
+def test_vba_metadata_distinguishes_known_zero_from_unavailable(
+        tmp_path, build, capability, count):
+    # GIVEN a workbook whose format may or may not carry a related VBA project
+    path = build(tmp_path)
+    # WHEN it is rendered
+    markdown, _tally = brewdoc.render_book(path)
+    # THEN a supported format reports a known count and others report unknown
+    assert [line for line in markdown.splitlines() if line.startswith("| VBA project ")] == [
+        "| VBA project capability | %s |" % capability, "| VBA project count | %s |" % count,
+    ], "VBA metadata must separate a known zero from an unavailable capability"
 
 
-@pytest.mark.parametrize("suffix", [".xls", ".xlsx", ".ods", ".pdf"])
-def test_vba_status_is_unavailable_outside_xlsm_and_xlsb(tmp_path, suffix):
-    # GIVEN a format without the accepted related opaque-project capability
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda tmp_path: vba_book(tmp_path / "book.xlsm", ""),
+        lambda tmp_path: formula_book(tmp_path / "book.xlsx"),
+    ],
+    ids=["xlsm-without-project", "xlsx"],
+)
+def test_absent_vba_project_read_is_refused(tmp_path, build):
+    # GIVEN a workbook without a related VBA project
+    path = build(tmp_path)
+    # WHEN the project key is read
+    # THEN the generic artifact reader names the missing key
+    with pytest.raises(brewdoc.BrewdocError,
+                       match=exact("workbook artifact not found: vba/project/000001")):
+        brewdoc.read_book_artifact(path, VBA_KEY)
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".docx"])
+def test_workbook_artifacts_are_refused_outside_workbook_suffixes(tmp_path, suffix):
+    # GIVEN a non-workbook path whose bytes must not be inspected
     path = tmp_path / ("book" + suffix)
     path.write_bytes(b"not inspected")
-    # WHEN discovery is requested
-    # THEN capability is unavailable rather than false zero
-    with pytest.raises(
-        reader.BrewdocError,
-        match=r"^VBA artifacts unavailable for '%s'; supported suffixes: .xlsb .xlsm$" % suffix,
-    ):
-        reader.discover_vba_artifacts(path)
+    # WHEN its artifact inventory is requested
+    # THEN the capability is refused by suffix
+    with pytest.raises(brewdoc.BrewdocError,
+                       match=exact("workbook artifacts unavailable for '%s'" % suffix)):
+        brewdoc.list_book_artifacts(path)
 
 
 @pytest.mark.parametrize(
     ("relationships", "parts", "reason"),
     [
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" Target="vbaProject.bin"/>'
-            '<Relationship Id="rId2" Type="%s" Target="other.bin"/></Relationships>'
-            % (VBA_RELATIONSHIP, VBA_RELATIONSHIP),
+        pytest.param(
+            vba_relationship("vbaProject.bin") + vba_relationship("other.bin"),
             (("xl/vbaProject.bin", b"one"), ("xl/other.bin", b"two")),
-            "multiple VBA project relationships",
+            "multiple VBA project relationships", id="multiple",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" Target="vbaProject.bin" '
-            'TargetMode="External"/></Relationships>' % VBA_RELATIONSHIP,
+        pytest.param(
+            vba_relationship("vbaProject.bin", ' TargetMode="External"'),
             (("xl/vbaProject.bin", b"project"),),
-            "VBA project relationship is external",
+            "VBA project relationship is external", id="external",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s"/></Relationships>'
-            % VBA_RELATIONSHIP,
-            (),
-            "OOXML relationship target is missing",
+        pytest.param(
+            '<Relationship Id="rIdVba" Type="%s"/>' % VBA_RELATIONSHIP, (),
+            "OOXML relationship target is missing", id="no-target",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" Target=""/></Relationships>'
-            % VBA_RELATIONSHIP,
-            (),
-            "OOXML relationship target is missing",
+        pytest.param(
+            vba_relationship(""), (), "OOXML relationship target is missing", id="empty-target",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" '
-            'Target="../../vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
-            (("vbaProject.bin", b"project"),),
-            r"^OOXML relationship target leaves the package: \.\./\.\./vbaProject\.bin$",
+        pytest.param(
+            vba_relationship("../../vbaProject.bin"), (("vbaProject.bin", b"project"),),
+            "OOXML relationship target leaves the package: ../../vbaProject.bin",
+            id="parent-escape",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" '
-            'Target="/../vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
-            (("vbaProject.bin", b"project"),),
-            r"^OOXML relationship target leaves the package: /\.\./vbaProject\.bin$",
+        pytest.param(
+            vba_relationship("/../vbaProject.bin"), (("vbaProject.bin", b"project"),),
+            "OOXML relationship target leaves the package: /../vbaProject.bin",
+            id="root-escape",
         ),
-        (
-            '<Relationships><Relationship Id="rId1" Type="%s" '
-            'Target="vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP,
-            (),
-            "OOXML part is missing: xl/vbaProject.bin",
+        pytest.param(
+            vba_relationship("vbaProject.bin"), (),
+            "OOXML part is missing: xl/vbaProject.bin", id="missing-part",
         ),
-        (
-            "<Relationships><Relationship",
-            (),
-            "cannot parse OOXML part xl/_rels/workbook.xml.rels",
+        pytest.param(
+            "<Relationship", (), "spreadsheet unreadable: {path}: Relationships",
+            id="unparseable",
         ),
     ],
 )
 def test_malformed_vba_relationships_fail_at_the_archive_boundary(
         tmp_path, relationships, parts, reason):
-    # GIVEN an XLSM with one malformed relationship boundary
+    # GIVEN a one-sheet XLSM with one malformed VBA relationship boundary
     path = vba_book(tmp_path / "broken.xlsm", relationships, parts=parts)
-    # WHEN discovery runs
+    # WHEN its artifact inventory is listed
     # THEN the exact package boundary is refused
-    with pytest.raises(reader.BrewdocError, match=reason):
-        reader.discover_vba_artifacts(path)
+    with pytest.raises(brewdoc.BrewdocError, match=exact(reason.format(path=path))):
+        brewdoc.list_book_artifacts(path)
 
 
 @pytest.mark.parametrize(
     "target", ["vbaProject.bin", "/xl/vbaProject.bin", "../xl/vbaProject.bin"],
     ids=["relative", "absolute", "parent-relative"],
 )
-def test_vba_relationship_target_resolves_to_its_opc_part_name(tmp_path, target):
+def test_vba_relationship_target_spellings_return_the_same_project(tmp_path, target):
     # GIVEN an XLSM whose one VBA relationship names xl/vbaProject.bin in a legal OPC spelling
     data = b"opaque project"
-    path = vba_book(
-        tmp_path / "book.xlsm",
-        '<Relationships><Relationship Id="rId1" Type="%s" Target="%s"/></Relationships>'
-        % (VBA_RELATIONSHIP, target),
-        parts=(("xl/vbaProject.bin", data),),
+    path = vba_book(tmp_path / "book.xlsm", vba_relationship(target),
+                    parts=(("xl/vbaProject.bin", data),))
+    # WHEN the inventory is listed and the keyed project is read
+    actual = (brewdoc.list_book_artifacts(path), brewdoc.read_book_artifact(path, VBA_KEY))
+    # THEN every spelling yields the same inventory row and exact bytes
+    assert actual == ((vba_ref(data),), data), (
+        "absolute and in-package relative OPC targets must resolve like the plain relative one"
     )
-    # WHEN the keyed project is read
-    project = brewdoc.read_vba_artifact(path, "vba/project/000001")
-    # THEN every spelling yields the same normalized part and exact bytes
-    assert project == brewdoc.OpaqueVbaProject(
-        "vba/project/000001", "book.xlsm", hashlib.sha256(path.read_bytes()).hexdigest(),
-        VBA_RELATIONSHIP, "xl/vbaProject.bin", len(data), hashlib.sha256(data).hexdigest(), data,
-    ), "absolute and in-package relative OPC targets must resolve like the plain relative one"
 
 
-def test_encrypted_vba_member_is_refused_before_read(tmp_path):
-    # GIVEN an XLSM whose related project member is marked encrypted
-    relationships = (
-        '<Relationships><Relationship Id="rId1" Type="%s" '
-        'Target="vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP
-    )
-    path = vba_book(
-        tmp_path / "encrypted.xlsm", relationships,
-        parts=(("xl/vbaProject.bin", b"opaque project"),),
-    )
-    mark_member_encrypted(path, "xl/vbaProject.bin")
-    # WHEN discovery runs
-    # THEN no password or decryption attempt is made
-    with pytest.raises(reader.BrewdocError, match="^VBA project part is encrypted"):
-        reader.discover_vba_artifacts(path)
+@pytest.mark.parametrize(
+    ("local", "central", "value", "header", "reason"),
+    [
+        pytest.param(6, 8, (1).to_bytes(2, "little"), (1, 14),
+                     "VBA project part is encrypted: xl/vbaProject.bin", id="encrypted"),
+        pytest.param(22, 24, (16 * 1024 * 1024 + 1).to_bytes(4, "little"), (0, 16777217),
+                     "VBA project part exceeds 16777216 bytes: xl/vbaProject.bin",
+                     id="declared-oversize"),
+    ],
+)
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda path: brewdoc.list_book_artifacts(path),
+        lambda path: brewdoc.read_book_artifact(path, VBA_KEY),
+    ],
+    ids=["list_book_artifacts", "read_book_artifact"],
+)
+def test_unsafe_vba_member_headers_are_refused_before_read(
+        tmp_path, call, local, central, value, header, reason):
+    # GIVEN an XLSM whose project member headers declare encryption or a size over 16 MiB
+    path = vba_book(tmp_path / "book.xlsm", vba_relationship("vbaProject.bin"),
+                    parts=(("xl/vbaProject.bin", b"opaque project"),))
+    rewrite_member_headers(path, "xl/vbaProject.bin", local, central, value)
+    with zipfile.ZipFile(path) as package:
+        info = package.getinfo("xl/vbaProject.bin")
+    assert (info.flag_bits, info.file_size) == header, "precondition: forged member header"
+    # WHEN its inventory is listed or the project is read by key
+    # THEN no password, decryption or unbounded read is attempted
+    with pytest.raises(brewdoc.BrewdocError, match=exact(reason)):
+        call(path)
 
 
-def test_vba_member_size_limit_is_enforced_while_reading(tmp_path, monkeypatch):
-    # GIVEN a related project larger than the configured passive-read limit
-    relationships = (
-        '<Relationships><Relationship Id="rId1" Type="%s" '
-        'Target="vbaProject.bin"/></Relationships>' % VBA_RELATIONSHIP
-    )
-    path = vba_book(
-        tmp_path / "large.xlsm", relationships,
-        parts=(("xl/vbaProject.bin", b"12345"),),
-    )
-    monkeypatch.setattr(reader, "MAX_VBA_PROJECT_BYTES", 4)
-    # WHEN discovery runs
-    # THEN the declared and actual expansion boundary is enforced
-    with pytest.raises(reader.BrewdocError, match="^VBA project part exceeds 4 bytes"):
-        reader.discover_vba_artifacts(path)
-
-
-def test_vba_api_is_public():
-    # GIVEN the package root
-    expected = (
-        reader.OpaqueVbaProject, reader.OpaqueVbaProjectRef,
-        reader.discover_vba_artifacts, reader.read_vba_artifact,
-    )
-    # WHEN VBA APIs are inspected
-    actual = (
-        brewdoc.OpaqueVbaProject, brewdoc.OpaqueVbaProjectRef,
-        brewdoc.discover_vba_artifacts, brewdoc.read_vba_artifact,
-    )
-    # THEN the immutable opaque-project layer is exported
-    assert actual == expected, "VBA models and keyed readers must be publicly available"
-
-
-def test_generic_artifact_api_is_public_and_returns_deterministic_formula_json(tmp_path):
-    # GIVEN a workbook with two formula-bearing sheets
+def test_formula_artifact_json_is_deterministic_ascii_with_every_field(tmp_path):
+    # GIVEN a workbook with two formula-bearing sheets and the exact expected JSON bytes
     path = formula_book(tmp_path / "book.xlsx")
-    # WHEN its generic inventory and one selected artifact are read
-    references = brewdoc.list_book_artifacts(path, sheets=("Calc",))
-    payload = brewdoc.read_book_artifact(
-        path, "formula/sheet/000002", sheets=("Calc",)
-    )
-    repeated = brewdoc.read_book_artifact(
-        path, "formula/sheet/000002", sheets=("Calc",)
-    )
-    # THEN one sheet-level reference and ASCII schema JSON preserve source formulas
-    assert references == (
-        brewdoc.ArtifactRef(
-            key="formula/sheet/000002", kind="formula", availability="available", count=4,
-            location="#brewdoc-sheet-000002", media_type="application/json",
-        ),
-    ), "generic discovery must retain the selected sheet's full-source ordinal"
-    decoded = json.loads(payload)
-    assert decoded == {
+    expected = (json.dumps({
         "formulas": [
-            {"attributes": {}, "cell": "A1", "formula": "SUM(Inputs!A1:A2)",
-             "sheet": "Calc"},
+            {"attributes": {}, "cell": "A1", "formula": "SUM(Inputs!A1:A2)", "sheet": "Calc"},
             {"attributes": {"ref": "B1:B2", "si": "7", "t": "shared"},
              "cell": "B1", "formula": "Inputs!A1*2", "sheet": "Calc"},
             {"attributes": {"si": "7", "t": "shared"}, "cell": "B2", "formula": "",
@@ -657,17 +751,14 @@ def test_generic_artifact_api_is_public_and_returns_deterministic_formula_json(t
         ],
         "schema": "brewdoc.formulas/1",
         "sheet": {"key": "sheet/000002", "name": "Calc", "ordinal": 2},
-        "source": {
-            "bytes": path.stat().st_size,
-            "name": "book.xlsx",
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "suffix": ".xlsx",
-        },
-    }, "formula JSON must preserve every formula and source identity field exactly"
-    assert payload == repeated, "two keyed reads must return byte-identical JSON"
-    assert payload.endswith(b"\n") and payload.isascii(), (
-        "formula JSON must be deterministic ASCII with one final newline"
-    )
+        "source": {"bytes": path.stat().st_size, "name": "book.xlsx",
+                   "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "suffix": ".xlsx"},
+    }, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
+    # WHEN one selected artifact is read twice by key
+    payloads = [brewdoc.read_book_artifact(path, FORMULA_KEYS[1], sheets=("Calc",))
+                for _read in range(2)]
+    # THEN both reads are the same sorted ASCII JSON with one final newline
+    assert payloads == [expected, expected], "formula JSON must keep every field, byte for byte"
 
 
 def test_artifact_request_does_not_change_markdown_and_receipt_names_output(tmp_path):
@@ -675,34 +766,22 @@ def test_artifact_request_does_not_change_markdown_and_receipt_names_output(tmp_
     path = formula_book(tmp_path / "book.xlsx")
     markdown_out = tmp_path / "book.md"
     artifact_out = tmp_path / "calc.json"
+    receipt = {**SHEET_RECEIPT, "file_ok": True, "markdown_schema": "brewdoc.markdown/2",
+               "reason": "sheet rendered: 1 sheets, 1 tables, 0 text regions, 0 column splits",
+               "selected_sheets": ["Calc"], "sheets": 1, "tables": 1,
+               "unit_keys": ["sheet/000002"]}
     # WHEN the same selection is rendered without and with an artifact request
-    plain = reader.run(path, sheets=("Calc",))
-    requested = reader.run(
-        path, markdown_out, sheets=("Calc",),
-        artifact_outputs={"formula/sheet/000002": artifact_out},
-    )
+    plain = brewdoc.run(path, sheets=("Calc",))
+    requested = brewdoc.run(path, markdown_out, sheets=("Calc",),
+                            artifact_outputs={FORMULA_KEYS[1]: artifact_out})
     # THEN Markdown is invariant and the receipt identifies the exact written artifact
-    assert (plain[0], requested[0], plain[2], requested[2]) == (
-        0, 0, plain[2], plain[2]
-    ), "artifact retrieval must not alter Markdown bytes"
-    assert markdown_out.read_bytes() == plain[2].encode("ascii"), (
-        "the Markdown output must equal the returned schema 2 bytes"
-    )
-    assert artifact_out.read_bytes() == reader.read_book_artifact(
-        path, "formula/sheet/000002", sheets=("Calc",)
-    ), "the keyed output must equal the public artifact API bytes"
-    assert requested[1]["markdown_schema"] == "brewdoc.markdown/2", (
-        "successful receipts must name the Markdown schema"
-    )
-    assert requested[1]["unit_keys"] == ["sheet/000002"], (
-        "receipt unit keys must preserve the selected full-source ordinal"
-    )
-    assert requested[1]["artifacts"][0]["out"] == str(artifact_out), (
-        "the requested artifact row must name its output path"
-    )
-
-
-FORMULA_KEYS = ("formula/sheet/000001", "formula/sheet/000002")
+    assert (plain, requested, markdown_out.read_bytes(), artifact_out.read_bytes()) == (
+        (0, {**receipt, "artifacts": [formula_row(2, 4, None)], "out": None}, plain[2]),
+        (0, {**receipt, "artifacts": [formula_row(2, 4, artifact_out)],
+             "out": str(markdown_out)}, plain[2]),
+        plain[2].encode("ascii"),
+        brewdoc.read_book_artifact(path, FORMULA_KEYS[1], sheets=("Calc",)),
+    ), "artifact retrieval must not alter Markdown and must name every written output"
 
 
 def tree_state(root: Path) -> dict:
@@ -718,9 +797,7 @@ def new_file_mode(directory: Path) -> int:
     """Measure the mode a fresh 0666 file receives under the current umask."""
     control = directory / "mode-control"
     control.touch(mode=0o666)
-    mode = stat.S_IMODE(control.stat().st_mode)
-    control.unlink()
-    return mode
+    return stat.S_IMODE(control.stat().st_mode)
 
 
 @pytest.mark.parametrize(
@@ -739,13 +816,11 @@ def test_invalid_artifact_requests_fail_before_any_write(
     path = formula_book(tmp_path / "book.xlsx")
     before = tree_state(tmp_path)
     # WHEN the request is validated
-    code = reader.main([str(path), "--out", str(tmp_path / "book.md"), "--sheet", "Calc",
-                        *(f"--artifact={item}" for item in artifact_outputs)])
-    line, _newline, markdown = capsys.readouterr().out.partition("\n")
-    receipt = json.loads(line)
-    # THEN it fails with the exact receipt reason and writes nothing
-    assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
-        1, False, reason, "", before,
+    code = main([str(path), "--out", str(tmp_path / "book.md"), "--sheet", "Calc",
+                 *(f"--artifact={item}" for item in artifact_outputs)])
+    # THEN stdout is the one exact refusal receipt line and nothing is written
+    assert (code, capsys.readouterr().out, tree_state(tmp_path)) == (
+        1, json.dumps(refused(reason), ensure_ascii=True, sort_keys=True) + "\n", before,
     ), "invalid artifact requests must be refused before any write"
 
 
@@ -779,6 +854,14 @@ def test_invalid_artifact_requests_fail_before_any_write(
         pytest.param((), (), (), "same.out", ((FORMULA_KEYS[0], "same.out"),),
                      "Markdown and artifact outputs collide: {artifacts[0]}",
                      id="markdown-artifact-same-path"),
+        pytest.param(("book.md",), (), (("hardlink_to", "alias.json", "book.md"),), "book.md",
+                     ((FORMULA_KEYS[0], "alias.json"),),
+                     "Markdown and artifact outputs collide: {artifacts[0]}",
+                     id="markdown-artifact-hardlink"),
+        pytest.param(("book.md",), (), (("symlink_to", "alias.json", "book.md"),), "book.md",
+                     ((FORMULA_KEYS[0], "alias.json"),),
+                     "Markdown and artifact outputs collide: {artifacts[0]}",
+                     id="markdown-artifact-symlink"),
         pytest.param((), (), (), "book.md",
                      ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "calc.json")),
                      "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
@@ -787,6 +870,14 @@ def test_invalid_artifact_requests_fail_before_any_write(
                      ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "sub/../calc.json")),
                      "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
                      id="artifact-artifact-spelling"),
+        pytest.param(("calc.json",), (), (("hardlink_to", "alias.json", "calc.json"),),
+                     "book.md", ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "alias.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="artifact-artifact-hardlink"),
+        pytest.param(("calc.json",), (), (("symlink_to", "alias.json", "calc.json"),),
+                     "book.md", ((FORMULA_KEYS[0], "calc.json"), (FORMULA_KEYS[1], "alias.json")),
+                     "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
+                     id="artifact-artifact-symlink"),
         pytest.param((), (), (), "book.md", ((FORMULA_KEYS[0], "BOOK.md"),),
                      "Markdown and artifact outputs collide: {artifacts[0]}",
                      id="casefold-markdown-artifact"),
@@ -795,11 +886,11 @@ def test_invalid_artifact_requests_fail_before_any_write(
                      "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
                      id="casefold-artifact-artifact"),
         pytest.param((), (), (), "book.md",
-                     ((FORMULA_KEYS[0], "café.json"), (FORMULA_KEYS[1], "café.json")),
+                     ((FORMULA_KEYS[0], "café.json"), (FORMULA_KEYS[1], "café.json")),
                      "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
                      id="nfc-artifact-artifact"),
         pytest.param((), (), (), "book.md",
-                     ((FORMULA_KEYS[0], "CAFÉ.json"), (FORMULA_KEYS[1], "café.json")),
+                     ((FORMULA_KEYS[0], "CAFÉ.json"), (FORMULA_KEYS[1], "café.json")),
                      "artifact outputs collide: formula/sheet/000001 and formula/sheet/000002",
                      id="nfc-casefold-artifact-artifact"),
         pytest.param((), ("book.md",), (), "book.md", ((FORMULA_KEYS[0], "calc.json"),),
@@ -817,8 +908,8 @@ def test_invalid_artifact_requests_fail_before_any_write(
 )
 def test_invalid_output_plans_are_refused_before_any_write(
         tmp_path, files, dirs, links, out, artifacts, reason):
-    # GIVEN a workbook, prepared filesystem state, and an output plan that aliases,
-    # collides after NFC casefolding, or names a non-regular target
+    # GIVEN a workbook, prepared filesystem state, and an output plan that aliases, collides
+    # by spelling, NFC casefold, hardlink or symlink, or names a non-regular target
     path = formula_book(tmp_path / "book.xlsx")
     for name in files:
         (tmp_path / name).write_bytes(b"old " + name.encode("ascii"))
@@ -830,25 +921,29 @@ def test_invalid_output_plans_are_refused_before_any_write(
     outputs = [(key, tmp_path / name) for key, name in artifacts]
     before = tree_state(tmp_path)
     # WHEN the plan is requested through the public run path
-    code, receipt, markdown = reader.run(path, markdown_out, artifact_outputs=dict(outputs))
+    actual = brewdoc.run(path, markdown_out, artifact_outputs=dict(outputs))
     # THEN it is refused with the exact reason and no file or stage changes
-    assert (code, receipt["file_ok"], receipt["reason"], markdown, tree_state(tmp_path)) == (
-        1, False, reason.format(out=markdown_out, artifacts=[item for _key, item in outputs]),
-        "", before,
+    assert (actual, tree_state(tmp_path)) == (
+        (1, refused(reason.format(out=markdown_out, artifacts=[item for _key, item in outputs])),
+         ""), before,
     ), "invalid output plans must be refused before any byte is written"
+
+
+def existing_targets(tmp_path: Path) -> list[Path]:
+    """Return Markdown and artifact targets: two existing with their own modes, one new."""
+    targets = [tmp_path / "book.md", tmp_path / "first.json", tmp_path / "later.json"]
+    for target, data, mode in zip(targets, (b"old markdown", b"old artifact"), (0o640, 0o600)):
+        target.write_bytes(data)
+        target.chmod(mode)
+    return targets
 
 
 @pytest.mark.parametrize("failing_call", [1, 2, 3])
 def test_failed_replace_restores_earlier_targets_and_removes_new_ones(
         tmp_path, monkeypatch, failing_call):
-    # GIVEN existing Markdown and artifact targets with their own modes, one new target,
-    # and os.replace failing on the Nth call
+    # GIVEN existing and new targets and os.replace failing only on the Nth call
     path = formula_book(tmp_path / "book.xlsx")
-    targets = [tmp_path / "book.md", tmp_path / "first.json", tmp_path / "later.json"]
-    targets[0].write_bytes(b"old markdown")
-    targets[0].chmod(0o640)
-    targets[1].write_bytes(b"old artifact")
-    targets[1].chmod(0o600)
+    targets = existing_targets(tmp_path)
     before = tree_state(tmp_path)
 
     def fail(_source, _target):
@@ -857,16 +952,37 @@ def test_failed_replace_restores_earlier_targets_and_removes_new_ones(
     steps = itertools.chain(itertools.repeat(os.replace, failing_call - 1), [fail],
                             itertools.repeat(os.replace))
     monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
-    pattern = r"output write failed: (?=.*%s)(?=.*injected replace failure).*" % re.escape(
-        str(targets[failing_call - 1]))
     # WHEN publishing fails part way through
-    code, receipt, markdown = reader.run(
-        path, targets[0], artifact_outputs=dict(zip(FORMULA_KEYS, targets[1:])))
+    actual = brewdoc.run(path, targets[0], artifact_outputs=dict(zip(FORMULA_KEYS, targets[1:])))
     # THEN originals keep bytes and modes, the new target is absent, and no stage remains
-    named = re.fullmatch(pattern, receipt["reason"]) is not None
-    assert (code, receipt["file_ok"], markdown, named, tree_state(tmp_path)) == (
-        1, False, "", True, before,
-    ), "a failed replace must restore every target and name it: %s" % receipt["reason"]
+    assert (actual, tree_state(tmp_path)) == ((1, refused(
+        "output write failed: could not replace %s: injected replace failure"
+        % targets[failing_call - 1]), ""), before,
+    ), "a failed replace must restore every target and name the failed one"
+
+
+def test_failed_restore_after_failed_replace_names_every_unrestored_target(
+        tmp_path, monkeypatch):
+    # GIVEN existing and new targets and os.replace failing from the third target onwards
+    path = formula_book(tmp_path / "book.xlsx")
+    markdown_out, first, later = existing_targets(tmp_path)
+    markdown = brewdoc.run(path)[2]
+    before = tree_state(tmp_path)
+
+    def fail(_source, _target):
+        raise OSError("injected failure")
+
+    steps = itertools.chain(itertools.repeat(os.replace, 2), itertools.repeat(fail))
+    monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
+    # WHEN the third replace and both restores fail
+    actual = brewdoc.run(path, markdown_out, artifact_outputs=dict(zip(FORMULA_KEYS, (first, later))))
+    # THEN run fails, names every unrestored target, and leaves new bytes but no stage
+    assert (actual, tree_state(tmp_path)) == ((1, refused(
+        "output write failed: could not replace %s: injected failure; could not restore "
+        "%s (injected failure), %s (injected failure)" % (later, markdown_out, first)), ""), {
+        **before, "book.md": (markdown.encode("ascii"), 0o640),
+        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), 0o600),
+    }), "an unrestored target must be reported, never silently left replaced"
 
 
 def test_staging_failure_fails_with_a_receipt_and_leaves_no_file(tmp_path, monkeypatch):
@@ -880,15 +996,12 @@ def test_staging_failure_fails_with_a_receipt_and_leaves_no_file(tmp_path, monke
     steps = itertools.chain([os.fsync], [fail], itertools.repeat(os.fsync))
     monkeypatch.setattr(os, "fsync", lambda descriptor: next(steps)(descriptor))
     # WHEN staging fails after one payload was prepared
-    code, receipt, markdown = reader.run(
-        path, tmp_path / "book.md",
-        artifact_outputs=dict(zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
+    actual = brewdoc.run(path, tmp_path / "book.md", artifact_outputs=dict(
+        zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
     # THEN the receipt reports the failure and neither outputs nor stages exist
-    reason = re.fullmatch(r"output write failed: (?=.*injected staging failure).*",
-                          receipt["reason"])
-    assert (code, receipt["file_ok"], reason is not None, markdown, tree_state(tmp_path)) == (
-        1, False, True, "", before,
-    ), "a staging failure must leave the directory exactly as it was: %s" % receipt["reason"]
+    assert (actual, tree_state(tmp_path)) == (
+        (1, refused("output write failed: injected staging failure"), ""), before,
+    ), "a staging failure must leave the directory exactly as it was"
 
 
 def test_keyboard_interrupt_during_staging_leaves_no_file(tmp_path, monkeypatch):
@@ -903,9 +1016,8 @@ def test_keyboard_interrupt_during_staging_leaves_no_file(tmp_path, monkeypatch)
     monkeypatch.setattr(os, "fsync", lambda descriptor: next(steps)(descriptor))
     # WHEN the interrupt propagates out of run
     with pytest.raises(KeyboardInterrupt):
-        reader.run(path, tmp_path / "book.md",
-                   artifact_outputs=dict(zip(FORMULA_KEYS, (tmp_path / "a.json",
-                                                            tmp_path / "b.json"))))
+        brewdoc.run(path, tmp_path / "book.md", artifact_outputs=dict(
+            zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
     # THEN no output or .brewdoc-* stage file remains
     assert tree_state(tmp_path) == before, "an interrupt must not leak stages or partial outputs"
 
@@ -913,22 +1025,18 @@ def test_keyboard_interrupt_during_staging_leaves_no_file(tmp_path, monkeypatch)
 def test_successful_run_writes_exact_bytes_keeps_modes_and_leaves_no_stage(tmp_path):
     # GIVEN existing Markdown and artifact targets with their own modes and one new target
     path = formula_book(tmp_path / "book.xlsx")
-    markdown_out, first, later = (tmp_path / name for name in ("book.md", "a.json", "b.json"))
-    markdown_out.write_bytes(b"old markdown")
-    markdown_out.chmod(0o640)
-    first.write_bytes(b"old artifact")
-    first.chmod(0o604)
+    markdown_out, first, later = existing_targets(tmp_path)
     created_mode = new_file_mode(tmp_path)
     before = tree_state(tmp_path)
     # WHEN all three are published
-    code, receipt, markdown = reader.run(
+    code, receipt, markdown = brewdoc.run(
         path, markdown_out, artifact_outputs=dict(zip(FORMULA_KEYS, (first, later))))
     # THEN bytes are exact, existing modes survive, the new file follows 0666 & ~umask
     assert (code, receipt["file_ok"], tree_state(tmp_path)) == (0, True, {
         **before,
-        "book.md": (markdown.encode("ascii"), before["book.md"][1]),
-        "a.json": (reader.read_book_artifact(path, FORMULA_KEYS[0]), before["a.json"][1]),
-        "b.json": (reader.read_book_artifact(path, FORMULA_KEYS[1]), created_mode),
+        "book.md": (markdown.encode("ascii"), 0o640),
+        "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), 0o600),
+        "later.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[1]), created_mode),
     }), "success must publish exact bytes with preserved or umask modes and no stage files"
 
 
@@ -938,7 +1046,7 @@ def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path,
     first_parent, second_parent = tmp_path / "dir-a", tmp_path / "dir-b"
     first_parent.mkdir()
     second_parent.mkdir()
-    created_mode = new_file_mode(first_parent)
+    created_mode = new_file_mode(tmp_path)
     link = tmp_path / "out"
     link.symlink_to(first_parent, target_is_directory=True)
 
@@ -951,7 +1059,7 @@ def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path,
     steps = itertools.chain([retarget_then_replace], itertools.repeat(real_replace))
     monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
     # WHEN the Markdown is published through the lexical symlink path
-    code, _receipt, markdown = reader.run(path, link / "book.md")
+    code, _receipt, markdown = brewdoc.run(path, link / "book.md")
     # THEN the parent captured before staging receives it and neither directory keeps a stage
     assert (code, tree_state(first_parent), tree_state(second_parent)) == (
         0, {"book.md": (markdown.encode("ascii"), created_mode)}, {},
@@ -962,33 +1070,16 @@ def test_formula_inventory_has_one_linked_row_per_sheet_not_per_cell(tmp_path):
     # GIVEN one selected sheet carrying four formulas
     path = formula_book(tmp_path / "book.xlsx")
     # WHEN its metadata-first Markdown is rendered
-    markdown, _tally = reader.render_book(path, sheets=("Calc",))
-    rows = [line for line in markdown.splitlines() if line.startswith("| formula/sheet/")]
-    # THEN one artifact row links the sheet and reports the exact cell count
+    markdown, _tally = brewdoc.render_book(path, sheets=("Calc",))
+    rows = [line for line in markdown.splitlines()
+            if line.startswith(("| Selected formula count ", "| formula/sheet/"))]
+    # THEN metadata has the exact count and one artifact row links the sheet
     assert rows == [
+        "| Selected formula count | 4 |",
         "| formula/sheet/000002 | formula | available | 4 | "
         "[sheet/000002](#brewdoc-sheet-000002) | application/json | not applicable | "
-        "not applicable |"
+        "not applicable |",
     ], "formula-heavy sheets must not emit one Markdown row per formula cell"
-    assert "| Selected formula count | 4 |" in markdown, (
-        "metadata must report the exact selected formula count"
-    )
-
-
-def test_generic_vba_artifact_returns_exact_opaque_project_bytes():
-    # GIVEN a workbook fixture with one related opaque VBA project
-    path = FIXTURES / "xlsm/calamine-vba.xlsm"
-    # WHEN generic discovery and keyed reading run
-    references = reader.list_book_artifacts(path, sheets=("Sheet2",))
-    reference = next(item for item in references if item.kind == "vba-project")
-    payload = reader.read_book_artifact(path, reference.key, sheets=("Sheet2",))
-    # THEN the generic layer reports one project and returns exact container bytes
-    assert (reference.key, reference.count, reference.location, reference.byte_size) == (
-        "vba/project/000001", 1, "#brewdoc-metadata", 15360,
-    ), "VBA inventory must not invent source modules or script counts"
-    assert payload == reader.read_vba_artifact(path, reference.key).data, (
-        "generic VBA retrieval must preserve the opaque project byte for byte"
-    )
 
 
 def test_cli_repeats_sheet_and_artifact_options_in_caller_order(tmp_path, capsys):
@@ -997,39 +1088,35 @@ def test_cli_repeats_sheet_and_artifact_options_in_caller_order(tmp_path, capsys
     markdown_out = tmp_path / "book.md"
     artifact_out = tmp_path / "calc.json"
     # WHEN repeatable CLI options are supplied
-    code = reader.main([
-        str(path), "--out", str(markdown_out), "--sheet", "Calc", "--sheet", "Inputs",
-        "--artifact", "formula/sheet/000002=%s" % artifact_out,
-    ])
-    receipt = json.loads(capsys.readouterr().out)
-    # THEN selection order, full-source keys, and artifact output are exact
-    assert (code, receipt["selected_sheets"], receipt["unit_keys"]) == (
-        0, ["Calc", "Inputs"], ["sheet/000002", "sheet/000001"],
-    ), "repeatable CLI sheet options must retain caller order"
-    assert receipt["artifacts"][0]["out"] == str(artifact_out), (
-        "repeatable CLI artifact options must reach the generic writer"
+    code = main([str(path), "--out", str(markdown_out), "--sheet", "Calc", "--sheet", "Inputs",
+                 "--artifact", "formula/sheet/000002=%s" % artifact_out])
+    # THEN selection order, full-source keys, and the written artifact are exact
+    assert (code, json.loads(capsys.readouterr().out), artifact_out.read_bytes()) == (0, {
+        **SHEET_RECEIPT, "artifacts": [formula_row(2, 4, artifact_out), formula_row(1, 1, None)],
+        "file_ok": True, "markdown_schema": "brewdoc.markdown/2", "out": str(markdown_out),
+        "reason": "sheet rendered: 2 sheets, 2 tables, 0 text regions, 0 column splits",
+        "selected_sheets": ["Calc", "Inputs"], "sheets": 2, "tables": 2,
+        "unit_keys": ["sheet/000002", "sheet/000001"],
+    }, brewdoc.read_book_artifact(path, FORMULA_KEYS[1])), (
+        "repeatable CLI options must keep caller order and reach the artifact writer"
     )
-    assert artifact_out.is_file(), "the requested CLI artifact must be written"
 
 
 def test_special_sheet_labels_and_selected_empty_sheet_remain_navigable(tmp_path):
     # GIVEN a formula sheet with Unicode, Markdown and HTML punctuation plus an empty sheet
     path = formula_book(tmp_path / "book.xlsx")
-    label = "R&D <Plan> café #1"
     rewrite_member(path, "xl/workbook.xml", b'name="Calc"',
                    'name="R&amp;D &lt;Plan&gt; café #1"'.encode("utf-8"))
     # WHEN both sheets are selected in caller order
-    markdown, tally = reader.render_book(path, sheets=(label, "Empty"))
-    # THEN semantic labels are safely ASCII encoded and the empty sheet keeps its own anchor
-    assert [line for line in markdown.splitlines() if line.startswith("## Sheet ")] == [
-        '## Sheet 2: "R&amp;D &lt;Plan&gt; caf&#233; \\#1"',
-        '## Sheet 3: "Empty"',
-    ], "untrusted labels must not become Markdown or HTML syntax"
-    assert ("- [Sheet 2: \"R&amp;D &lt;Plan&gt; caf&#233; \\#1\"]"
-            "(#brewdoc-sheet-000002)") in markdown, (
-        "the contents label must link to the full-source sheet ordinal"
-    )
-    assert '<a id="brewdoc-sheet-000003"></a>\n## Sheet 3: "Empty"\n' in markdown, (
-        "a selected empty sheet must remain navigable"
-    )
-    assert tally["sheets"] == 2, "empty selected sheets still count as rendered units"
+    markdown, actual_tally = brewdoc.render_book(path, sheets=("R&D <Plan> café #1", "Empty"))
+    # THEN labels are safely ASCII encoded, link full-source ordinals, and the empty sheet keeps
+    # its own anchor and count
+    label = '"R&amp;D &lt;Plan&gt; caf&#233; \\#1"'
+    assert (markdown[markdown.index('<a id="brewdoc-contents"></a>'):], actual_tally) == (
+        '<a id="brewdoc-contents"></a>\n## Contents\n\n'
+        "- [Sheet 2: %s](#brewdoc-sheet-000002)\n"
+        '- [Sheet 3: "Empty"](#brewdoc-sheet-000003)\n\n'
+        '<a id="brewdoc-sheet-000002"></a>\n## Sheet 2: %s\n\n%s\n%s' % (
+            label, label, CALC_TABLE, EMPTY),
+        tally(2, 1),
+    ), "untrusted labels must not become Markdown or HTML syntax"
