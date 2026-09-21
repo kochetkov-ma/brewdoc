@@ -10,6 +10,16 @@ import pytest
 from brewdoc import reader
 
 
+def text_op(x, y, text):
+    """Return one 10 pt text-showing operator at (x, y)."""
+    return "BT /F1 10 Tf 1 0 0 1 %s %s Tm (%s) Tj ET\n" % (x, y, text)
+
+
+def rule(x, y, width, height=0.5):
+    """Return one filled rectangle, drawn as a table rule."""
+    return "%s %s %s %s re f\n" % (x, y, width, height)
+
+
 def source_lines(path):
     """Read source text independently of brewdoc's region and table routing."""
     with pdfplumber.open(path) as document:
@@ -94,9 +104,9 @@ def test_data_rows_remain_separate_without_individual_horizontal_rules(tmp_path,
     rows = [(686, ("Region", "Q1", "Q2")), (665, ("Alpha", "11", "12")),
             (645, ("Beta", "21", "22")), (625, ("Gamma", "31", "32")),
             (605, ("Delta", "41", "42"))]
-    drawing = "".join(reader._rule(80, y, 330) for y in horizontal_rules)
-    drawing += "".join(reader._rule(x, 590, 0.5, 110) for x in (80, 190, 300, 410))
-    drawing += "".join(reader._text_op(x, y, value) for y, row in rows
+    drawing = "".join(rule(80, y, 330) for y in horizontal_rules)
+    drawing += "".join(rule(x, 590, 0.5, 110) for x in (80, 190, 300, 410))
+    drawing += "".join(text_op(x, y, value) for y, row in rows
                        for x, value in zip((85, 195, 305), row))
     path.write_bytes(reader.synthetic_pdf([drawing]))
     assert source_lines(path) == ["Region Q1 Q2", "Alpha 11 12", "Beta 21 22",
@@ -114,13 +124,13 @@ def test_data_rows_remain_separate_without_individual_horizontal_rules(tmp_path,
 def test_shaded_header_padding_does_not_add_columns_or_repeat_headers(tmp_path):
     # GIVEN a four-column table with centered labels and inset header shading
     path = tmp_path / "shaded-header.pdf"
-    drawing = "".join(reader._rule(80, y, 400) for y in (700, 675, 650))
-    drawing += "".join(reader._rule(x, 650, 0.5, 50) for x in (80, 180, 280, 380, 480))
-    drawing += "".join("q .9 g " + reader._rule(x, 679, 80, 17) + "Q\n"
+    drawing = "".join(rule(80, y, 400) for y in (700, 675, 650))
+    drawing += "".join(rule(x, 650, 0.5, 50) for x in (80, 180, 280, 380, 480))
+    drawing += "".join("q .9 g " + rule(x, 679, 80, 17) + "Q\n"
                        for x in (90, 190, 290, 390))
-    drawing += "".join(reader._text_op(x, 686, value)
+    drawing += "".join(text_op(x, 686, value)
                        for x, value in zip((115, 213, 309, 404), ("DATE", "TYPE", "CHANGE", "PAGE")))
-    drawing += "".join(reader._text_op(x, 660, value)
+    drawing += "".join(text_op(x, 660, value)
                        for x, value in zip((85, 185, 285, 385), ("04/27", "Edit", "New label", "1")))
     path.write_bytes(reader.synthetic_pdf([drawing]))
     assert source_lines(path) == ["DATE TYPE CHANGE PAGE", "04/27 Edit New label 1"], "the source must have one header and one data row"
@@ -139,9 +149,9 @@ def test_boxed_prose_remains_three_sentences_without_a_false_table(tmp_path):
     path = tmp_path / "boxed-prose.pdf"
     prose = ["Alpha statement is the first line.", "Beta statement is the second line.",
              "Gamma statement is the final line."]
-    drawing = "".join(reader._rule(80, y, 330) for y in (700, 675, 640))
-    drawing += "".join(reader._rule(x, 640, 0.5, 60) for x in (80, 410))
-    drawing += "".join(reader._text_op(88, y, text) for y, text in zip((686, 670, 654), prose))
+    drawing = "".join(rule(80, y, 330) for y in (700, 675, 640))
+    drawing += "".join(rule(x, 640, 0.5, 60) for x in (80, 410))
+    drawing += "".join(text_op(88, y, text) for y, text in zip((686, 670, 654), prose))
     path.write_bytes(reader.synthetic_pdf([drawing]))
     assert source_lines(path) == prose, "the boxed source must contain each sentence exactly once"
     # WHEN the boxed paragraph is classified
@@ -157,10 +167,10 @@ def test_right_hand_chart_grid_does_not_suppress_left_hand_prose(tmp_path):
     path = tmp_path / "chart-beside-prose.pdf"
     prose = ["A full sentence begins here.", "Its continuation must survive.",
              "Architecture", "A new section remains readable."]
-    drawing = "".join(reader._rule(320, y, 200) for y in (700, 675, 650, 625, 600))
-    drawing += "".join(reader._rule(x, 600, 0.5, 100) for x in (320, 360, 400, 440, 480, 520))
-    drawing += "".join(reader._text_op(60, y, text) for y, text in zip((690, 674, 650, 626), prose))
-    drawing += reader._text_op(420, 655, "Series A")
+    drawing = "".join(rule(320, y, 200) for y in (700, 675, 650, 625, 600))
+    drawing += "".join(rule(x, 600, 0.5, 100) for x in (320, 360, 400, 440, 480, 520))
+    drawing += "".join(text_op(60, y, text) for y, text in zip((690, 674, 650, 626), prose))
+    drawing += text_op(420, 655, "Series A")
     path.write_bytes(reader.synthetic_pdf([drawing]))
     assert source_lines(path) == [prose[0], prose[1], "Series A", prose[2], prose[3]], "the source must keep the plot and all left-column text"
     # WHEN a right-hand plot produces closed rectangular candidates
@@ -174,9 +184,9 @@ def test_right_hand_chart_grid_does_not_suppress_left_hand_prose(tmp_path):
 def test_scientific_notation_keeps_the_decoded_mathematical_minus(tmp_path):
     # GIVEN a real minus glyph between the exponent marker and its digit
     path = tmp_path / "scientific-minus.pdf"
-    commands = reader._text_op(80, 690, "3.0e")
+    commands = text_op(80, 690, "3.0e")
     commands += "BT /F2 10 Tf 1 0 0 1 99.46 690 Tm (-) Tj ET\n"
-    commands += reader._text_op(104.95, 690, "4")
+    commands += text_op(104.95, 690, "4")
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["3.0e−4"], "the source font must decode a mathematical minus rather than an ASCII hyphen"
     # WHEN scientific notation is converted to the PDF route's ASCII representation
@@ -215,9 +225,9 @@ def test_displayed_fraction_keeps_its_bar_between_numerator_and_denominator(tmp_
     # GIVEN a displayed fraction with a vector bar and a separate equation label
     path = tmp_path / "displayed-fraction.pdf"
     commands = "BT /F2 10 Tf 1 0 0 1 100 690 Tm (b+\\345) Tj ET\n"
-    commands += reader._rule(90, 678, 65, 0.5)
+    commands += rule(90, 678, 65, 0.5)
     commands += "BT /F2 10 Tf 1 0 0 1 100 660 Tm (p) Tj ET\n"
-    commands += reader._text_op(200, 676, "(1)")
+    commands += text_op(200, 676, "(1)")
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["β+∑", "(1)", "π"], "the source must place distinct numerator and denominator glyphs around the bar"
     # WHEN the PDF contains two-dimensional mathematical notation
@@ -243,9 +253,9 @@ def test_displayed_fraction_keeps_its_bar_between_numerator_and_denominator(tmp_
 def test_unknown_font_glyph_keeps_its_font_and_code_instead_of_disappearing(tmp_path):
     # GIVEN an undecoded Symbol glyph between two ordinary words
     path = tmp_path / "unknown-glyph.pdf"
-    commands = reader._text_op(80, 690, "left")
+    commands = text_op(80, 690, "left")
     commands += "BT /F2 10 Tf 1 0 0 1 100 690 Tm (\\346) Tj ET\n"
-    commands += reader._text_op(110, 690, "right")
+    commands += text_op(110, 690, "right")
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["left (cid:230) right"], "the undecoded source glyph must have an observable code"
     # WHEN the PDF route cannot establish the glyph's semantic identity
@@ -264,10 +274,10 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
               (320, (692, 542, 392), (670, 420), (("E", "F"), ("5", "6")))]
     commands = ""
     for left, rules, baselines, rows in tables:
-        commands += "".join(reader._rule(left, y, 180) for y in rules)
-        commands += "".join(reader._rule(x, rules[-1], 0.5, rules[0] - rules[-1])
+        commands += "".join(rule(left, y, 180) for y in rules)
+        commands += "".join(rule(x, rules[-1], 0.5, rules[0] - rules[-1])
                             for x in (left, left + 90, left + 180))
-        commands += "".join(reader._text_op(x, y, value) for y, row in zip(baselines, rows)
+        commands += "".join(text_op(x, y, value) for y, row in zip(baselines, rows)
                             for x, value in zip((left + 5, left + 95), row))
     path.write_bytes(reader.synthetic_pdf([commands]))
     with pdfplumber.open(path) as document:
@@ -309,16 +319,16 @@ def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, case, e
 def test_sparse_numeric_ruling_keeps_six_columns_and_grouped_headers(tmp_path):
     # GIVEN two text stubs beside a ruled four-column numeric core
     path = tmp_path / "six-column-table.pdf"
-    commands = "".join(reader._rule(180, y, 320) for y in (714, 695, 678, 632))
-    commands += "".join(reader._rule(x, 678, 0.5, 36) for x in (180, 340, 500))
-    commands += "".join(reader._rule(x, 678, 0.5, 17) for x in (260, 420))
-    commands += "".join(reader._text_op(x, 702, value)
+    commands = "".join(rule(180, y, 320) for y in (714, 695, 678, 632))
+    commands += "".join(rule(x, 678, 0.5, 36) for x in (180, 340, 500))
+    commands += "".join(rule(x, 678, 0.5, 17) for x in (260, 420))
+    commands += "".join(text_op(x, 702, value)
                          for x, value in ((60, "Model"), (120, "Unit"), (202, "Score"), (365, "Rate")))
-    commands += "".join(reader._text_op(x, 686, value)
+    commands += "".join(text_op(x, 686, value)
                          for x, value in zip((195, 275, 355, 435), ("A", "B", "C", "D")))
     for y, values in ((666, ("Alpha", "kg", "11", "12", "13", "14")),
                       (646, ("Beta", "kg", "21", "22", "23", "24"))):
-        commands += "".join(reader._text_op(x, y, value)
+        commands += "".join(text_op(x, y, value)
                              for x, value in zip((60, 120, 195, 275, 355, 435), values))
     path.write_bytes(reader.synthetic_pdf([commands]))
     assert source_lines(path) == ["Model Unit Score Rate", "A B C D",
@@ -327,7 +337,8 @@ def test_sparse_numeric_ruling_keeps_six_columns_and_grouped_headers(tmp_path):
     code, receipt, markdown = reader.run(path)
     # THEN stubs and units stay associated with all four values under the grouped header
     assert (code, receipt["file_ok"]) == (0, True), "the sparse six-column source must render successfully"
-    assert re.findall(r"^\|.*\|$", markdown, re.MULTILINE) == [
+    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | Unit | Score |  | Rate |  |", "| --- | --- | --- | --- | --- | --- |",
         "|  |  | A | B | C | D |", "| Alpha | kg | 11 | 12 | 13 | 14 |",
         "| Beta | kg | 21 | 22 | 23 | 24 |",
@@ -339,13 +350,13 @@ def test_narrow_table_keeps_its_caption_separate_from_neighboring_prose(tmp_path
     path = tmp_path / "narrow-table.pdf"
     prose = ["Left paragraph begins here.", "Its second line stays together.",
              "Its third line adds context.", "Its fourth line concludes."]
-    commands = "".join(reader._text_op(60, y, value)
+    commands = "".join(text_op(60, y, value)
                          for y, value in zip((700, 686, 672, 658), prose))
-    commands += "".join(reader._rule(360, y, 140) for y in (704, 685, 650))
+    commands += "".join(rule(360, y, 140) for y in (704, 685, 650))
     for y, row in ((692, ("Item", "Qty", "Cost")), (677, ("A", "2", "5")), (662, ("B", "3", "7"))):
-        commands += "".join(reader._text_op(x, y, value) for x, value in zip((365, 410, 465), row))
-    commands += reader._text_op(360, 635, "Table 9: Small inventory.")
-    commands += reader._text_op(360, 623, "Values are synthetic.")
+        commands += "".join(text_op(x, y, value) for x, value in zip((365, 410, 465), row))
+    commands += text_op(360, 635, "Table 9: Small inventory.")
+    commands += text_op(360, 623, "Values are synthetic.")
     path.write_bytes(reader.synthetic_pdf([commands]))
     with pdfplumber.open(path) as document:
         right = document.pages[0].crop((355, 85, 510, 180)).extract_text().splitlines()
@@ -366,11 +377,11 @@ def test_spanning_table_header_outside_rule_end_keeps_every_character_once(tmp_p
     # GIVEN a grouped heading that extends beyond the numeric table's horizontal rule
     path = tmp_path / "spanning-heading.pdf"
     heading = "Win rate vs. ground truth"
-    commands = "".join(reader._rule(360, y, 140) for y in (712, 680, 635))
-    commands += reader._text_op(400, 696, heading)
+    commands = "".join(rule(360, y, 140) for y in (712, 680, 635))
+    commands += text_op(400, 696, heading)
     for y, row in ((685, ("Method", "Warm", "Cold")),
                    (666, ("DPO", "0.36", "0.31")), (646, ("PPO", "0.26", "0.23"))):
-        commands += "".join(reader._text_op(x, y, value) for x, value in zip((365, 425, 475), row))
+        commands += "".join(text_op(x, y, value) for x, value in zip((365, 425, 475), row))
     path.write_bytes(reader.synthetic_pdf([commands]))
     assert source_lines(path) == [heading, "Method Warm Cold", "DPO 0.36 0.31", "PPO 0.26 0.23"], "the complete source heading must be independently readable"
     with pdfplumber.open(path) as document:
@@ -392,13 +403,13 @@ def test_spanning_table_header_outside_rule_end_keeps_every_character_once(tmp_p
 def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
     # GIVEN three four-column records with one long model name close to its GPU cell
     path = tmp_path / "close-text-columns.pdf"
-    commands = "".join(reader._rule(60, y, 340) for y in (712, 689, 625))
+    commands = "".join(rule(60, y, 340) for y in (712, 689, 625))
     rows = [(698, ("Model", "GPU", "Power", "Carbon")),
             (678, ("Alpha", "V100", "10", "20")),
             (658, ("Beta", "V100", "30", "40")),
             (638, ("BLOOM-176B", "A100-80GB", "50", "60"))]
     for y, row in rows:
-        commands += "".join(reader._text_op(x, y, value) for x, value in zip((65, 134, 245, 330), row))
+        commands += "".join(text_op(x, y, value) for x, value in zip((65, 134, 245, 330), row))
     path.write_bytes(reader.synthetic_pdf([commands]))
     assert source_lines(path) == ["Model GPU Power Carbon", "Alpha V100 10 20",
                                   "Beta V100 30 40", "BLOOM-176B A100-80GB 50 60"], "the source must expose four distinct fields on every record baseline"
@@ -406,7 +417,8 @@ def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
     code, receipt, markdown = reader.run(path)
     # THEN the long model and adjacent hardware retain their own cells
     assert (code, receipt["file_ok"]) == (0, True), "the valid four-column source must render successfully"
-    assert re.findall(r"^\|.*\|$", markdown, re.MULTILINE) == [
+    page = "\n".join(reader.chapter_lines(markdown, "Page 1"))
+    assert re.findall(r"^\|.*\|$", page, re.MULTILINE) == [
         "| Model | GPU | Power | Carbon |", "| --- | --- | --- | --- |",
         "| Alpha | V100 | 10 | 20 |", "| Beta | V100 | 30 | 40 |",
         "| BLOOM-176B | A100-80GB | 50 | 60 |",

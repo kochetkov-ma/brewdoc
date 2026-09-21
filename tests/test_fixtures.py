@@ -14,6 +14,10 @@ RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
 SUPPORTED = (".docx", ".ods", ".pdf", ".xls", ".xlsb", ".xlsm", ".xlsx")
 PLANNED = (".csv", ".eml", ".epub", ".html", ".md", ".odp", ".odt", ".pptx", ".tsv", ".txt")
 RECEIPT_KEYS = ("route", "pages", "tables", "text_regions", "sheets")
+SNAPSHOT_KEYS = {
+    False: RECEIPT_KEYS,
+    True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
+}
 SCAN = "pdf/us-patent-223898-scan.pdf"
 PROVENANCE = ("SOURCES.md", "receipts.json")
 ROW = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<url>\S+) \| \[(?P<license>[^\]]+)\]\((?P<link>[^)]+)\)"
@@ -35,7 +39,8 @@ RENDERABLE = [rel for rel in fixture_files(SUPPORTED) if rel != SCAN]
 
 
 def snapshot(rc: int, line: dict) -> dict:
-    return {"rc": rc, "file_ok": line["file_ok"], **{key: line[key] for key in RECEIPT_KEYS}}
+    keys = SNAPSHOT_KEYS[line["file_ok"]]
+    return {"rc": rc, "file_ok": line["file_ok"], **{key: line[key] for key in keys}}
 
 
 @pytest.mark.parametrize("rel", RENDERABLE)

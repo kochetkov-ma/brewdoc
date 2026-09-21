@@ -28,9 +28,9 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import io
 import json
+import os
 import re
 import statistics
 import sys
@@ -39,54 +39,33 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
 import pdfplumber
 from pdfminer.pdftypes import resolve1
 from pdfplumber.utils import extract_text
-from python_calamine import CalamineWorkbook
+
+from brewdoc.common import (CID_RE, MARKDOWN_SCHEMA, BrewdocError, Rendered, _assemble,
+                            _escape_markdown_text, cell_text, head_key, markdown_table, new_tally,
+                            sanitise, sha256)
+from brewdoc.output import _output_targets, _write_outputs
+from brewdoc.sheets import (SHEET_NOT_CARRIED, SHEET_SUFFIXES, _artifact_payloads, _render_book,
+                            _sheet_selection, render_book)
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
 RENDERED_BY = "brewdoc"
 PDF_SUFFIX = ".pdf"
 DOC_SUFFIX = ".docx"
-SHEET_SUFFIXES = (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx")
 SUFFIXES = " ".join(sorted((PDF_SUFFIX, DOC_SUFFIX) + SHEET_SUFFIXES))
 
 PDF_NOT_CARRIED = ("images, figures and the text drawn inside them",
                    "a table that spans a page break",
                    "text rotated out of the horizontal reading order")
-SHEET_NOT_CARRIED = ("cell formulas - only the value the writer cached",
-                     "formatting, colours, comments and data validation",
-                     "charts and embedded images")
 DOC_NOT_CARRIED = ("images, charts and the text drawn inside them",
                    "tracked changes, comments, footnotes, headers and footers",
                    "a table's own formatting - only its cells, row by row")
-
-CID_RE = re.compile(r"\(cid:\d+\)")
-FOLD = {
-    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "―": "-",
-    "‘": "'", "’": "'", "‚": "'", "‛": "'",
-    "“": '"', "”": '"', "„": '"', "′": "'", "″": '"',
-    "•": "-", "‣": "-", "▪": "-", "■": "-", "●": "-", "·": "-",
-    "…": "...", "≤": "<=", "≥": ">=", "≠": "!=", "±": "+/-",
-    "×": "x", "÷": "/", "°": " deg", "®": "(R)", "©": "(C)",
-    "™": "(TM)", "€": "EUR", "£": "GBP", "²": "2", "³": "3",
-    "½": "1/2", "¼": "1/4", "¾": "3/4", "→": "->", "←": "<-",
-    # Shade blocks are the only content of a spreadsheet gantt bar; `?` would erase it.
-    "░": "#", "▒": "#", "▓": "#", "█": "#",
-    " ": " ", " ": " ", " ": " ", " ": " ", "﻿": "",
-}
-LIGATURES = {"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl",
-             "ﬅ": "st", "ﬆ": "st"}
-# A broken ToUnicode CMap seen in the wild maps `ff` to U+0161 inside an otherwise ASCII word.
-BROKEN_LIGATURE = "š"
-BROKEN_WORD_RE = re.compile(r"[A-Za-z]+%s[A-Za-z]*|[A-Za-z]*%s[A-Za-z]+"
-                            % (BROKEN_LIGATURE, BROKEN_LIGATURE))
-
-DROP_KEYS = ("control_chars", "soft_hyphens", "nbsp", "pua_glyphs", "cid_survivors",
-             "ligatures", "running_heads", "page_numbers", "non_ascii_replaced")
 
 # Layout thresholds, measured on real documents.
 HIST_BINS = 60           # char x-histogram resolution for the gutter search
@@ -111,7 +90,6 @@ GRID_ROW_SHARE = 3       # and one row in this many must, or the band is prose b
 SUBSCRIPT = 0.75         # a char smaller than this share of its cell's body size sits off-baseline
 TABLE_CAPTION_RE = re.compile(r"^\s*table\s+\d+", re.I)
 PAGE_NUMBER_RE = re.compile(r"^(?:page\s+)?\d+(?:\s*(?:of|/)\s*\d+)?$", re.I)
-DIGITS_RE = re.compile(r"\d+")
 REPEATS_AS_HEAD = 3      # a first/last line this many pages share is furniture, not content
 
 TEXT_TABLE = {"vertical_strategy": "text", "horizontal_strategy": "text"}
@@ -128,97 +106,6 @@ for _glyph_stem, _glyph_token in (("parenleft", "("), ("parenright", ")"),
                                  ("braceleft", "{"), ("braceright", "}")):
     for _glyph_size in ("big", "Big", "bigg", "Bigg"):
         PDF_FONT_GLYPHS[_glyph_stem + _glyph_size] = _glyph_token
-
-
-class BrewdocError(Exception):
-    """A refusal naming what was not found or not parsed, and where."""
-
-
-def new_tally() -> dict:
-    """An empty render tally: counts of pages, tables, regions and every dropped class."""
-    return {"pages": 0, "sheets": 0, "chapters": 0, "tables": 0, "text_regions": 0,
-            "columns_split": 0,
-            "broken_ligature_words": 0, "dropped": {key: 0 for key in DROP_KEYS}}
-
-
-def sha256(text: str) -> str:
-    """Hex sha256 of a UTF-8 string."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
-    """ASCII out, every dropped class counted; `keep_layout` preserves fixed-width alignment."""
-    drop = tally["dropped"]
-    tally["broken_ligature_words"] += len(BROKEN_WORD_RE.findall(text))
-    drop["cid_survivors"] += len(CID_RE.findall(text))
-    text = CID_RE.sub("", text)
-    out = []
-    for ch in text:
-        if ch in LIGATURES:
-            drop["ligatures"] += 1
-            out.append(LIGATURES[ch])
-            continue
-        if ch == "­":
-            drop["soft_hyphens"] += 1
-            continue
-        if ch == " ":
-            drop["nbsp"] += 1
-            out.append(" ")
-            continue
-        if ch in FOLD:
-            out.append(FOLD[ch])
-            continue
-        if ch in "\n\t" or " " <= ch <= "~":
-            out.append(ch)
-            continue
-        category = unicodedata.category(ch)
-        if category == "Co":                       # Symbol/Wingdings bullets live in the PUA
-            drop["pua_glyphs"] += 1
-            out.append("-")
-            continue
-        if category in ("Cc", "Cf", "Zl", "Zp"):
-            drop["control_chars"] += 1
-            continue
-        folded = "".join(c for c in unicodedata.normalize("NFKD", ch)
-                         if not unicodedata.combining(c))
-        if folded.isascii() and folded.strip():
-            out.append(folded)
-            continue
-        drop["non_ascii_replaced"] += 1
-        out.append("?")
-    text = "".join(out)
-    if not keep_layout:
-        text = re.sub(r"[ \t]{2,}", " ", text)
-    return "\n".join(line.rstrip() for line in text.split("\n"))
-
-
-def cell_text(value) -> str:
-    """One cell as text; calamine returns '' for an empty cell and a float for every number."""
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (datetime.datetime, datetime.date)):
-        return value.isoformat()[:10]
-    if isinstance(value, (datetime.time, datetime.timedelta)):
-        return str(value)
-    if isinstance(value, float):
-        return repr(value)
-    return str(value).replace("\n", " ").replace("|", "\\|").strip()
-
-
-def markdown_table(rows) -> list[str]:
-    """Rows -> a Markdown table, first row as the header; ragged rows are padded, never cut."""
-    width = max((len(row) for row in rows), default=0)
-    if not width:
-        return []
-    out = []
-    for index, row in enumerate(rows):
-        cells = [cell_text(value) for value in row] + [""] * (width - len(row))
-        out.append("| " + " | ".join(cells) + " |")
-        if index == 0:
-            out.append("| " + " | ".join(["---"] * width) + " |")
-    return out
 
 
 # --- PDF: regions -----------------------------------------------------------------------------
@@ -915,42 +802,11 @@ def _table_cells(source, table, xs: list[float] | None = None) -> list[list[str]
     return grid
 
 
-def _place(source, row, raw: list, xs: list[float], width: int) -> list[str]:
-    cells = [""] * width
-    for box, text in zip(row.cells, _row_cells(source, row, raw)):
-        if not box or not text.strip():
-            continue
-        index = min(range(width), key=lambda column: abs(xs[column] - box[0]))
-        cells[index] = (cells[index] + " " + text).strip()
-    return cells
-
-
-def _prefer_drawn(source, table, repaired: list[list[str]], bands, xs) -> list[list[str]]:
-    # A drawn row is placed once, including headers spanning multiple rows.
-    raw = table.extract()
-    out, used = [], set()
-    for cells, (top, bottom) in zip(repaired, bands):
-        middle = (top + bottom) / 2
-        match = [index for index, row in enumerate(table.rows)
-                 if index not in used and row.bbox[1] <= middle <= row.bbox[3]]
-        drawn = _place(source, table.rows[match[0]], raw[match[0]], xs, len(cells)) if match else []
-        if drawn and _weight([drawn]) >= _weight([cells]):
-            used.add(match[0])
-            out.append(drawn)
-        else:
-            out.append(cells)
-    return out
-
-
 def _trim(grid: list[list[str]]) -> list[list[str]]:
     width = max((len(row) for row in grid), default=0)
     rows = [row + [""] * (width - len(row)) for row in grid]
     keep = [index for index in range(width) if any(row[index].strip() for row in rows)]
     return [[row[index] for index in keep] for row in rows if any(cell.strip() for cell in row)]
-
-
-def _weight(grid: list[list[str]]) -> int:
-    return sum(len(re.sub(r"\s", "", cell)) for row in grid for cell in row)
 
 
 def _repair_table(page, table):
@@ -1263,11 +1119,6 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
     return [block for block in blocks if block[1]], margins
 
 
-def head_key(text: str) -> str:
-    """A running head's identity without its folio (`Page 31 of 232` never repeats verbatim)."""
-    return DIGITS_RE.sub("#", text)
-
-
 def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
     """(running heads as head_key forms, page numbers) from every page's margin candidates."""
     counts = Counter(head_key(text) for page in margins for text in set(page))
@@ -1276,44 +1127,7 @@ def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
     return heads, numbers
 
 
-def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
-                    tally: dict) -> list[str]:
-    kept = []
-    for line in lines:
-        text = line.strip()
-        if text in numbers:
-            tally["dropped"]["page_numbers"] += 1
-        elif head_key(text) in heads:
-            tally["dropped"]["running_heads"] += 1
-        else:
-            kept.append(line)
-    return kept
-
-
-def _assemble(name: str, digest: str, chapters: list[tuple[str, list[tuple]]],
-              heads: set[str], numbers: set[str], tally: dict) -> str:
-    name = sanitise(name, tally).strip()
-    out = ["# " + name, "",
-           "<!-- rendered by %s from %s sha256 %s -->" % (RENDERED_BY, name, digest), ""]
-    for heading, blocks in chapters:
-        out += ["## " + heading, ""]
-        for kind, payload in blocks:
-            if kind == "table":
-                rendered = markdown_table(payload)
-            elif kind == "math":
-                rendered = payload
-            else:
-                rendered = _drop_furniture(payload, heads, numbers, tally)
-                if kind == "block" and len(rendered) <= 2:
-                    rendered = [line for line in rendered if line != "```"]
-            if rendered:
-                out += rendered + [""]
-    return "\n".join(out).rstrip("\n") + "\n"
-
-
-def render_pdf(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a PDF; refuses a document with no text layer, by name."""
-    path = Path(path)
+def _render_pdf(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     pages, margins, empty = [], [], 0
     with pdfplumber.open(path) as pdf:
@@ -1330,37 +1144,15 @@ def render_pdf(path) -> tuple[str, dict]:
             "no text layer: %d of %d pages carry zero characters in %s - this reader does no OCR"
             % (empty, tally["pages"], path))
     heads, numbers = furniture(margins)
-    chapters = [("Page %d" % number, blocks) for number, blocks in enumerate(pages, 1)]
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, heads, numbers, tally), tally
+    units = [(number, "Page %d" % number, blocks)
+             for number, blocks in enumerate(pages, 1)]
+    return _assemble(path, "pdf", "page", len(pages), units, tally, not_carried=PDF_NOT_CARRIED,
+                     heads=heads, numbers=numbers)
 
 
-def _sheet_grid(rows, tally: dict) -> list[list[str]]:
-    # calamine trims trailing empty rows but not trailing empty columns; interior empty rows stay.
-    grid = [[sanitise(cell_text(cell), tally) for cell in row] for row in rows]
-    width = max((index + 1 for row in grid for index, cell in enumerate(row) if cell), default=0)
-    return [row[:width] for row in grid] if width else []
-
-
-def render_book(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a spreadsheet: one `## <sheet name>` chapter per sheet, in order."""
-    path = Path(path)
-    tally = new_tally()
-    try:
-        book = CalamineWorkbook.from_path(str(path))
-    except Exception as exc:                      # calamine raises its own error types
-        raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
-    chapters = []
-    for name in book.sheet_names:
-        raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
-        rows = _sheet_grid(raw, tally)
-        tally["sheets"] += 1
-        if rows:
-            tally["tables"] += 1
-        chapters.append((sanitise(name, tally).strip() or name,
-                         [("table", rows)] if rows else []))
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, set(), set(), tally), tally
+def render_pdf(path) -> tuple[str, dict]:
+    """(Markdown, tally) for a PDF; refuses a document with no text layer, by name."""
+    return _render_pdf(Path(path))[:2]
 
 
 # --- .docx: `word/document.xml`, `w:p` paragraphs and `w:tbl` tables in reading order ---------
@@ -1384,6 +1176,17 @@ def _doc_lines(node, tally: dict) -> list[str]:
             current = []
     lines.append("".join(current))
     return [text for text in (sanitise(line, tally).strip() for line in lines) if text]
+
+
+def _doc_label(node) -> str:
+    """Read a heading label without folding semantic Unicode before Markdown escaping."""
+    parts = []
+    for element in node.iter():
+        if element.tag == W + "t":
+            parts.append(element.text or "")
+        elif element.tag in (W + "tab", W + "br"):
+            parts.append(" ")
+    return re.sub(r"\s+", " ", "".join(parts)).strip() or "Untitled"
 
 
 def _doc_style(node) -> str:
@@ -1415,9 +1218,7 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
     return rows
 
 
-def render_doc(path) -> tuple[str, dict]:
-    """(Markdown, tally) for a .docx: one `## <heading>` chapter per Word heading, else `Body`."""
-    path = Path(path)
+def _render_doc(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     try:
         with zipfile.ZipFile(path) as package:
@@ -1438,60 +1239,127 @@ def render_doc(path) -> tuple[str, dict]:
             if not lines:
                 continue
             if HEADING_STYLE_RE.match(_doc_style(node)):
-                chapters.append((heading, blocks))
-                heading, blocks = " ".join(lines), []
+                if blocks or heading != DOC_BODY:
+                    chapters.append((heading, blocks))
+                heading, blocks = _doc_label(node), []
             else:
                 tally["text_regions"] += 1
                 blocks.append(("text", lines))
-    chapters.append((heading, blocks))
-    chapters = [pair for pair in chapters if pair[1]]
+    if blocks or heading != DOC_BODY or not chapters:
+        chapters.append((heading, blocks))
     tally["chapters"] = len(chapters)
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    return _assemble(path.name, digest, chapters, set(), set(), tally), tally
+    units = [(ordinal, heading, chapter_blocks)
+             for ordinal, (heading, chapter_blocks) in enumerate(chapters, 1)]
+    return _assemble(path, "doc", "chapter", len(units), units, tally, not_carried=DOC_NOT_CARRIED)
+
+
+def render_doc(path) -> tuple[str, dict]:
+    """(Markdown, tally) for a .docx: one anchored chapter per Word heading, else `Body`."""
+    return _render_doc(Path(path))[:2]
 
 
 # --- CLI --------------------------------------------------------------------------------------
-def _line(route: str, file_ok: bool, reason: str, path, tally: dict | None = None,
-          out=None) -> dict:
+# Suffix -> (route, unit kind, private renderer, what the route structurally cannot carry).
+ROUTES = {PDF_SUFFIX: ("pdf", "page", _render_pdf, PDF_NOT_CARRIED),
+          DOC_SUFFIX: ("doc", "chapter", _render_doc, DOC_NOT_CARRIED),
+          **dict.fromkeys(SHEET_SUFFIXES, ("sheet", "sheet", _render_book, SHEET_NOT_CARRIED))}
+NO_ROUTE = ("none", "none", None, ())
+
+
+def _route(path: Path) -> tuple:
+    return ROUTES.get(path.suffix.lower(), NO_ROUTE)
+
+
+def _line(route: tuple, file_ok: bool, reason: str, path, tally: dict | None = None,
+          out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
+          selected_sheets=None) -> dict:
+    name, _unit_kind, _render, not_carried = route
     tally = tally or new_tally()
-    return {"file_ok": file_ok, "route": route, "reason": reason,
+    line = {"file_ok": file_ok, "route": name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
             "pages": tally["pages"], "sheets": tally["sheets"], "tables": tally["tables"],
             "text_regions": tally["text_regions"], "columns_split": tally["columns_split"],
             "dropped": dict(tally["dropped"]),
             "broken_ligature_words": tally["broken_ligature_words"],
-            "not_carried": list(PDF_NOT_CARRIED if route == "pdf" else
-                                DOC_NOT_CARRIED if route == "doc" else
-                                SHEET_NOT_CARRIED if route == "sheet" else ())}
+            "not_carried": list(not_carried)}
+    if file_ok:
+        line.update({"artifacts": list(artifacts), "markdown_schema": MARKDOWN_SCHEMA,
+                     "unit_keys": list(unit_keys)})
+        if selected_sheets is not None:
+            line["selected_sheets"] = list(selected_sheets)
+    return line
 
 
-def run(path, out=None) -> tuple[int, dict, str]:
+def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...]:
+    """Validate a key -> path mapping; each pair keeps the caller's path text for the receipt."""
+    if artifact_outputs is None:
+        return ()
+    if not isinstance(artifact_outputs, Mapping):
+        raise BrewdocError("artifact outputs must map keys to paths")
+    pairs = []
+    for key, raw_path in artifact_outputs.items():
+        if not (isinstance(key, str) and key and isinstance(raw_path, (str, os.PathLike))
+                and str(raw_path)):
+            raise BrewdocError("malformed artifact assignment: %r" % ((key, raw_path),))
+        pairs.append((key, Path(raw_path), str(raw_path)))
+    return tuple(pairs)
+
+
+def _artifact_assignments(assignments) -> dict[str, str] | None:
+    """Turn repeated CLI KEY=PATH values into the `run` mapping; refuse bad or repeated keys."""
+    if assignments is None:
+        return None
+    mapping = {}
+    for assignment in assignments:
+        key, separator, path = assignment.partition("=")
+        if not (separator and key and path):
+            raise BrewdocError("malformed artifact assignment: %s" % assignment)
+        if key in mapping:
+            raise BrewdocError("duplicate artifact key: %s" % key)
+        mapping[key] = path
+    return mapping
+
+
+def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
-    suffix = path.suffix.lower()
-    route = ("pdf" if suffix == PDF_SUFFIX else "doc" if suffix == DOC_SUFFIX
-             else "sheet" if suffix in SHEET_SUFFIXES else "none")
-    if route == "none":
+    route = _route(path)
+    name, unit_kind, render, _not_carried = route
+    if render is None:
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
-                                % (suffix, path, SUFFIXES), path), ""
+                                % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
-        markdown, tally = (render_pdf(path) if route == "pdf" else
-                           render_doc(path) if route == "doc" else render_book(path))
+        sheets = _sheet_selection(sheets)
+        pairs = _artifact_output_pairs(artifact_outputs)
+        if name != "sheet" and (sheets is not None or pairs):
+            raise BrewdocError("--sheet and --artifact are workbook-only options")
+        targets = _output_targets(path, out, pairs)
+        markdown, tally, unit_keys, references = render(path, sheets)
+        keys = tuple(key for key, _target, _shown in pairs)
+        listed = {item.key for item in references}
+        unknown = [key for key in keys if key not in listed]
+        if unknown:
+            raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
+        payloads = ((markdown.encode("ascii"),) if out is not None else ()) + _artifact_payloads(
+            path, sheets, references, keys)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
-    except Exception as exc:
+    except Exception as exc:                      # a third-party parser raises its own types
         return EXIT_FAIL, _line(route, False, "%s unreadable: %s: %s: %s"
-                                % (route, path, type(exc).__name__, exc), path), ""
-    if out:
-        Path(out).parent.mkdir(parents=True, exist_ok=True)
-        Path(out).write_text(markdown, encoding="ascii")
-    reason = "%s rendered: %d chapters, %d tables, %d text regions, %d column splits" % (
-        route, tally["pages"] or tally["sheets"] or tally["chapters"], tally["tables"],
-        tally["text_regions"],
+                                % (name, path, type(exc).__name__, exc), path), ""
+    try:
+        _write_outputs(tuple(zip(targets, payloads)))
+    except (BrewdocError, OSError) as exc:
+        return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
+    reason = "%s rendered: %d %ss, %d tables, %d text regions, %d column splits" % (
+        name, len(unit_keys), unit_kind, tally["tables"], tally["text_regions"],
         tally["columns_split"])
-    return EXIT_OK, _line(route, True, reason, path, tally, out), markdown
+    shown = {key: text for key, _target, text in pairs}
+    receipt_artifacts = tuple(item.to_dict(shown.get(item.key)) for item in references)
+    return EXIT_OK, _line(route, True, reason, path, tally, out, unit_keys,
+                          receipt_artifacts, sheets), markdown
 
 
 # --- self-check: synthetic documents, no fixture file needed ----------------------------------
@@ -1658,9 +1526,10 @@ def synthetic_docx() -> bytes:
 
 def self_check() -> int:
     """Render synthetic fixtures and compare against pinned expectations; 0 when green."""
-    failures = []
+    failures, checks = [], []
 
     def want(label, got, expected):
+        checks.append(label)
         if got != expected:
             failures.append("%s: got %r want %r" % (label, got, expected))
 
@@ -1684,7 +1553,8 @@ def self_check() -> int:
         doc_path = Path(tmp, "fixture.docx")
         doc_path.write_bytes(synthetic_docx())
         markdown, tally = render_doc(doc_path)
-        want("a Word heading opens its own chapter", markdown.count("## Growth regulators"), 1)
+        want("a Word heading opens its own chapter",
+             markdown.count('## Chapter 1: "Growth regulators"'), 1)
         want("a w:br is a line break, and a deleted run is not carried",
              chapter_lines(markdown, "Growth regulators")[:2], ["first line", "second line"])
         want("a spanning cell is padded, so every column stays under its own head",
@@ -1739,7 +1609,8 @@ def self_check() -> int:
         _synthetic_xlsx(book_path)
         book_md, book_tally = render_book(book_path)
         want("one chapter per sheet",
-             [row for row in book_md.splitlines() if row.startswith("## ")], ["## Zones"])
+             [row for row in book_md.splitlines() if row.startswith("## Sheet ")],
+             ['## Sheet 1: "Zones"'])
         want("the sheet's measured types survive",
              chapter_lines(book_md, "Zones"),
              ["| Zone | Area | Sown |", "| --- | --- | --- |",
@@ -1755,21 +1626,29 @@ def self_check() -> int:
 
     for failure in failures:
         print("FAIL %s" % failure)
-    print("self-check: %s (%d checks)" % ("FAIL" if failures else "ok", 27))
+    print("self-check: %s (%d checks)" % ("FAIL" if failures else "ok", len(checks)))
     return EXIT_FAIL if failures else EXIT_OK
 
 
 def chapter_lines(markdown: str, heading: str) -> list[str]:
-    """The non-blank lines under one `## heading`."""
+    """Return content under a `## <heading>` line or a sheet or chapter display label."""
     lines = markdown.splitlines()
-    start = lines.index("## " + heading) + 1
-    rest = [index for index, line in enumerate(lines[start:], start) if line.startswith("## ")]
+    label = ': "%s"' % _escape_markdown_text(heading)
+    matched = next((index for index, line in enumerate(lines) if line == "## " + heading
+                    or (line.startswith(("## Sheet ", "## Chapter ")) and line.endswith(label))),
+                   None)
+    if matched is None:
+        raise ValueError("chapter heading not found: %s" % heading)
+    start = matched + 1
+    rest = [index for index, line in enumerate(lines[start:], start)
+            if line.startswith("## ")
+            or re.match(r'<a id="brewdoc-(?:page|sheet|chapter)-\d{6}"></a>', line)]
     body = lines[start:rest[0]] if rest else lines[start:]
     return [line for line in body if line.strip()]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The command-line parser: one document, optional `--out`, `--self-check`."""
+    """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
         description="Render a PDF, a Word document or a spreadsheet as deterministic, "
@@ -1777,9 +1656,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
                     "a Markdown table, an unlined captioned table is cropped then read, other "
                     "regions become fixed-width or plain text, and two-column prose is cropped at "
-                    "the gutter. A spreadsheet becomes one '## <sheet>' chapter per sheet, and a "
-                    ".docx one '## <heading>' chapter per Word heading, its tables kept as "
-                    "tables.",
+                    "the gutter. A spreadsheet becomes one anchored '## Sheet N: \"<name>\"' "
+                    "section per sheet, only the --sheet ones when given, and a .docx one "
+                    "anchored '## Chapter N: \"<heading>\"' section per Word heading, its "
+                    "tables kept as tables.",
         epilog="Both paths may be absolute or relative; a relative one is resolved against the "
                "current working directory, never against this script's location, and --out "
                "creates its parent directories. "
@@ -1791,6 +1671,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("document", nargs="?",
                         help="the .pdf, .docx or spreadsheet to render")
     parser.add_argument("--out", help="write the Markdown here (ASCII); default stdout")
+    parser.add_argument("--sheet", action="append",
+                        help="render only this exact workbook sheet; repeat for caller order")
+    parser.add_argument("--artifact", action="append",
+                        help="write one listed workbook artifact as KEY=PATH; repeat as needed")
     parser.add_argument("--self-check", action="store_true", dest="self_check",
                         help="render synthetic fixtures twice and compare; exits 0 when green")
     return parser
@@ -1805,10 +1689,17 @@ def main(argv=None) -> int:
     if not args.document:
         parser.print_usage()
         return EXIT_USAGE
-    rc, line, markdown = run(args.document, args.out)
+    try:
+        artifact_outputs = _artifact_assignments(args.artifact)
+    except BrewdocError as exc:
+        rc, line, markdown = EXIT_FAIL, _line(
+            _route(Path(args.document)), False, str(exc), args.document), ""
+    else:
+        rc, line, markdown = run(
+            args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
-        print(markdown)
+        sys.stdout.write(markdown)
     return rc
 
 
