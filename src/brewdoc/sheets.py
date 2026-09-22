@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import posixpath
 import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Iterable
@@ -16,8 +15,9 @@ from python_calamine import CalamineWorkbook
 
 from brewdoc.common import (CAPABILITY_FIELDS, ArtifactRef, BrewdocError, Rendered, Route,
                             _assemble, _local_name, _opc_main_part, _relationship_elements,
-                            _relationships, _resolve_ooxml_part, _unit_anchor, _unit_key,
-                            _xml_part, cell_text, new_tally, reading, sanitise)
+                            _relationship_part, _relationships, _resolve_ooxml_part,
+                            _unit_anchor, _unit_key, _xml_part, cell_text, new_tally, reading,
+                            sanitise)
 
 FORMULA_SCHEMA = "brewdoc.formulas/1"
 FORMULA_SUFFIXES = (".xlsm", ".xlsx")
@@ -142,11 +142,6 @@ def _book_capabilities(suffix: str, artifacts: tuple[ArtifactRef, ...]) -> tuple
     values = ("available", str(formulas)) if suffix in FORMULA_SUFFIXES else unknown
     values += ("available", str(projects)) if suffix in VBA_SUFFIXES else unknown
     return tuple(zip(CAPABILITY_FIELDS, values + unknown))
-
-
-def _relationship_part(part: str) -> str:
-    directory, name = posixpath.split(part)
-    return posixpath.join(directory, "_rels", name + ".rels")
 
 
 def _sheet_relation_id(element: ET.Element, name: str) -> str:

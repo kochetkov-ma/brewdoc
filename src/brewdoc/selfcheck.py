@@ -1,4 +1,4 @@
-"""Shipped self-check: synthetic PDF, DOCX and workbook documents, no fixture file needed."""
+"""Shipped self-check for synthetic documents and presentations, with no fixture files."""
 
 from __future__ import annotations
 
@@ -9,10 +9,11 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from brewdoc.common import (_escape_markdown_text, cell_text, markdown_table, new_tally,
-                            sanitise, sha256)
+from brewdoc.common import (UNIT_COUNTERS, _escape_markdown_text, cell_text, markdown_table,
+                            new_tally, sanitise, sha256)
 from brewdoc.docx import render_doc
 from brewdoc.pdf import render_pdf
+from brewdoc.pptx import render_presentation
 from brewdoc.service import EXIT_FAIL, EXIT_OK, run
 from brewdoc.sheets import render_book
 
@@ -178,6 +179,44 @@ def synthetic_docx() -> bytes:
     return stream.getvalue()
 
 
+def synthetic_pptx() -> bytes:
+    """Return a one-slide presentation with a title and body text."""
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as package:
+        package.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/'
+            'package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.'
+            'openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+            'Target="ppt/presentation.xml"/></Relationships>',
+        )
+        package.writestr(
+            "ppt/presentation.xml",
+            '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>',
+        )
+        package.writestr(
+            "ppt/_rels/presentation.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/'
+            '2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>',
+        )
+        package.writestr(
+            "ppt/slides/slide1.xml",
+            '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>'
+            '<p:nvGrpSpPr/><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/>'
+            '<p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr/>'
+            '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Harvest plan</a:t></a:r>'
+            '</a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Content 2"/>'
+            '<p:cNvSpPr/><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:spPr/>'
+            '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>North field</a:t></a:r>'
+            '</a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>',
+        )
+    return stream.getvalue()
+
+
 def self_check() -> int:
     """Render synthetic fixtures and compare against pinned expectations; 0 when green."""
     failures, checks = [], []
@@ -217,6 +256,18 @@ def self_check() -> int:
               "| Moddus | 0.4 | 31 |"])
         want("the docx tally counts its chapter and its table",
              (tally["chapters"], tally["tables"], tally["text_regions"]), (1, 1, 1))
+
+    with tempfile.TemporaryDirectory(prefix="brewdoc_pptx_") as tmp:
+        presentation_path = Path(tmp, "fixture.pptx")
+        presentation_path.write_bytes(synthetic_pptx())
+        markdown, tally = render_presentation(presentation_path)
+        want("a presentation title labels its slide once",
+             (markdown.count('## Slide 1: "Harvest plan"'),
+              chapter_lines(markdown, "Harvest plan")),
+             (1, ["North field"]))
+        want("the presentation tally counts its declared slide", tally["slides"], 1)
+        want("a presentation render is deterministic",
+             sha256(render_presentation(presentation_path)[0]), sha256(markdown))
 
     with tempfile.TemporaryDirectory(prefix="brewdoc_") as tmp:
         pdf_path = Path(tmp, "fixture.pdf")
@@ -285,17 +336,20 @@ def self_check() -> int:
 
 
 def chapter_lines(markdown: str, heading: str) -> list[str]:
-    """Return content under a `## <heading>` line or a sheet or chapter display label."""
+    """Return content under a plain heading or any registered unit display label."""
     lines = markdown.splitlines()
     label = ': "%s"' % _escape_markdown_text(heading)
+    unit_headings = tuple("## %s " % kind.title() for kind in UNIT_COUNTERS)
+    unit_anchor = r'<a id="brewdoc-(?:%s)-\d{6}"></a>' % "|".join(
+        re.escape(kind) for kind in UNIT_COUNTERS)
     matched = next((index for index, line in enumerate(lines) if line == "## " + heading
-                    or (line.startswith(("## Sheet ", "## Chapter ")) and line.endswith(label))),
+                    or (line.startswith(unit_headings) and line.endswith(label))),
                    None)
     if matched is None:
         raise ValueError("chapter heading not found: %s" % heading)
     start = matched + 1
     rest = [index for index, line in enumerate(lines[start:], start)
             if line.startswith("## ")
-            or re.match(r'<a id="brewdoc-(?:page|sheet|chapter)-\d{6}"></a>', line)]
+            or re.match(unit_anchor, line)]
     body = lines[start:rest[0]] if rest else lines[start:]
     return [line for line in body if line.strip()]

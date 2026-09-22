@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import brewdoc
+from brewdoc import common
 from brewdoc.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -37,8 +38,25 @@ def exact(message: str) -> str:
 
 def tally(sheets: int, tables: int) -> dict:
     """Return the full render tally of a workbook with these sheet and table counts."""
-    return {"pages": 0, "sheets": sheets, "chapters": 0, "tables": tables, "text_regions": 0,
-            "columns_split": 0, "broken_ligature_words": 0, "dropped": DROPPED}
+    return {"pages": 0, "sheets": sheets, "chapters": 0, "slides": 0, "tables": tables,
+            "text_regions": 0, "columns_split": 0, "broken_ligature_words": 0,
+            "dropped": DROPPED}
+
+
+@pytest.mark.parametrize(
+    ("part", "relationships"),
+    [
+        ("presentation.xml", "_rels/presentation.xml.rels"),
+        ("ppt/presentation.xml", "ppt/_rels/presentation.xml.rels"),
+        ("xl/worksheets/sheet1.xml", "xl/worksheets/_rels/sheet1.xml.rels"),
+    ],
+)
+def test_relationship_part_follows_the_opc_sidecar_convention(part, relationships):
+    # GIVEN a package part at the root or inside a nested package directory
+    # WHEN its paired relationship part is derived
+    actual = common._relationship_part(part)
+    # THEN the relationship file sits in the adjacent _rels directory
+    assert actual == relationships, "OPC consumers must share one sidecar-path rule"
 
 
 def refused(reason: str) -> dict:

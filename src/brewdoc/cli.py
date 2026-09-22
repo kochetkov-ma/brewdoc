@@ -33,15 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
-        description="Render a PDF, a Word document or a spreadsheet as deterministic, "
-                    "sanitised, LLM-readable "
+        description="Render a PDF, a Word document, a presentation or a spreadsheet as "
+                    "deterministic, sanitised, LLM-readable "
                     "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
                     "a Markdown table, an unlined captioned table is cropped then read, other "
                     "regions become fixed-width or plain text, and two-column prose is cropped at "
                     "the gutter. A spreadsheet becomes one anchored '## Sheet N: \"<name>\"' "
-                    "section per sheet, only the --sheet ones when given, and a .docx one "
-                    "anchored '## Chapter N: \"<heading>\"' section per Word heading, its "
-                    "tables kept as tables.",
+                    "section per sheet, using only the --sheet names when given. A .docx becomes "
+                    "one anchored '## Chapter N: \"<heading>\"' section per Word heading and "
+                    "keeps its tables. A .pptx becomes one anchored "
+                    "'## Slide N: \"<title>\"' section per declared slide.",
         epilog="Both paths may be absolute or relative; a relative one is resolved against the "
                "current working directory, never against this script's location, and --out "
                "creates its parent directories. "
@@ -51,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
                "Without --out the Markdown follows that line on stdout."
                % SUFFIXES)
     parser.add_argument("document", nargs="?",
-                        help="the .pdf, .docx or spreadsheet to render")
+                        help="the .pdf, .docx, .pptx or spreadsheet to render")
     parser.add_argument("--out", help="write the Markdown here (ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")

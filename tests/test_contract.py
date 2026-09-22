@@ -109,8 +109,8 @@ def schema_two(path: Path, body: str, **fields) -> str:
 
 def zero_tally() -> dict:
     """Return a fresh render tally with every count at zero."""
-    return {"pages": 0, "sheets": 0, "chapters": 0, "tables": 0, "text_regions": 0,
-            "columns_split": 0, "broken_ligature_words": 0, "dropped": {
+    return {"pages": 0, "sheets": 0, "chapters": 0, "slides": 0, "tables": 0,
+            "text_regions": 0, "columns_split": 0, "broken_ligature_words": 0, "dropped": {
                 "control_chars": 0, "soft_hyphens": 0, "nbsp": 0, "pua_glyphs": 0,
                 "cid_survivors": 0, "ligatures": 0, "running_heads": 0, "page_numbers": 0,
                 "non_ascii_replaced": 0}}
@@ -190,7 +190,7 @@ def test_public_api_is_exactly_the_package_exports():
     assert exports == [
         "ArtifactRef", "BrewdocError", "CellFormula", "FormulaArtifact", "__version__",
         "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
-        "render_doc", "render_pdf", "run", "self_check",
+        "render_doc", "render_pdf", "render_presentation", "run", "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
 
 
@@ -280,7 +280,7 @@ def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
         pytest.param(
             "brief.doc", lambda path: path.write_bytes(b"\xd0\xcf\x11\xe0"), "none",
             "unsupported suffix '.doc' in {path}: brewdoc reads "
-            ".docx .ods .pdf .xls .xlsb .xlsm .xlsx", id="binary-word"),
+            ".docx .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
         pytest.param("absent.pdf", lambda path: None, "pdf", "no such file: {path}",
                      id="missing-file"),
     ],
