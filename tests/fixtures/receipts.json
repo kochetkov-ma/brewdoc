@@ -3,67 +3,70 @@
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "chapter/000001"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 1
  },
  "docx/poi-ThreeColHead.docx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 0,
   "text_regions": 4,
   "unit_keys": [
    "chapter/000001",
    "chapter/000002"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 2
  },
  "docx/poi-deep-table-cell.docx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "chapter/000001"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 1
  },
  "docx/poi-table-alignment.docx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 6,
   "text_regions": 0,
   "unit_keys": [
    "chapter/000001"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 1
  },
  "docx/tika-testWORD.docx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 10,
   "unit_keys": [
@@ -71,30 +74,32 @@
    "chapter/000002",
    "chapter/000003",
    "chapter/000004"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 4
  },
  "docx/tika-testWORD_various.docx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "doc",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 28,
   "unit_keys": [
    "chapter/000001"
-  ]
+  ],
+  "unit_kind": "chapter",
+  "units": 1
  },
  "ods/calamine-any_sheets.ods": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 4,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
@@ -102,30 +107,32 @@
    "sheet/000002",
    "sheet/000003",
    "sheet/000004"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 4
  },
  "ods/calamine-date.ods": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "ods/calamine-issues.ods": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 6,
   "tables": 6,
   "text_regions": 0,
   "unit_keys": [
@@ -135,44 +142,47 @@
    "sheet/000004",
    "sheet/000005",
    "sheet/000006"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 6
  },
  "ods/calamine-merged_cells.ods": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "ods/calamine-special_cells.ods": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "pdf/arxiv-2302.13971v1.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 27,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 16,
   "text_regions": 88,
   "unit_keys": [
@@ -203,16 +213,17 @@
    "page/000025",
    "page/000026",
    "page/000027"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 27
  },
  "pdf/arxiv-2305.18290v3.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 27,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 2,
   "text_regions": 170,
   "unit_keys": [
@@ -243,16 +254,17 @@
    "page/000025",
    "page/000026",
    "page/000027"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 27
  },
  "pdf/arxiv-2402.00838v4.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 21,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 8,
   "text_regions": 77,
   "unit_keys": [
@@ -277,44 +289,47 @@
    "page/000019",
    "page/000020",
    "page/000021"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 21
  },
  "pdf/eia-steo-table1.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 1,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 2,
   "unit_keys": [
    "page/000001"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 1
  },
  "pdf/fbi-nics-background-checks-2015-11.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 1,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 2,
   "unit_keys": [
    "page/000001"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 1
  },
  "pdf/federal-register-2020-17221.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 15,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 2,
   "text_regions": 79,
   "unit_keys": [
@@ -333,16 +348,17 @@
    "page/000013",
    "page/000014",
    "page/000015"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 15
  },
  "pdf/nist-sp800-145.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 7,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 26,
   "unit_keys": [
@@ -353,39 +369,42 @@
    "page/000005",
    "page/000006",
    "page/000007"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 7
  },
  "pdf/us-patent-223898-scan.pdf": {
   "file_ok": false,
-  "pages": 0,
   "rc": 1,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 0,
-  "text_regions": 0
+  "text_regions": 0,
+  "unit_kind": "page",
+  "units": 0
  },
  "pdf/us-senate-expenditures.pdf": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 1,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
-  "sheets": 0,
   "tables": 1,
   "text_regions": 1,
   "unit_keys": [
    "page/000001"
-  ]
+  ],
+  "unit_kind": "page",
+  "units": 1
  },
  "xls/calamine-any_sheets.xls": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 4,
   "tables": 2,
   "text_regions": 0,
   "unit_keys": [
@@ -393,87 +412,93 @@
    "sheet/000002",
    "sheet/000003",
    "sheet/000004"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 4
  },
  "xls/calamine-date.xls": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xls/calamine-merge_cells.xls": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xls/calamine-xls_formula.xls": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 2,
   "tables": 2,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001",
    "sheet/000002"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 2
  },
  "xls/census-st-est00int-01.xls": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsb/calamine-date.xlsb": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsb/calamine-issue127.xlsb": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 8,
   "tables": 0,
   "text_regions": 0,
   "unit_keys": [
@@ -485,7 +510,9 @@
    "sheet/000006",
    "sheet/000007",
    "sheet/000008"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 8
  },
  "xlsb/calamine-issues.xlsb": {
   "artifacts": [
@@ -503,10 +530,9 @@
   ],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 6,
   "tables": 6,
   "text_regions": 0,
   "unit_keys": [
@@ -516,37 +542,41 @@
    "sheet/000004",
    "sheet/000005",
    "sheet/000006"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 6
  },
  "xlsm/calamine-issue221.xlsm": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsm/calamine-issue3.xlsm": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 3,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001",
    "sheet/000002",
    "sheet/000003"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 3
  },
  "xlsm/calamine-vba.xlsm": {
   "artifacts": [
@@ -564,26 +594,26 @@
   ],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 3,
   "tables": 0,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001",
    "sheet/000002",
    "sheet/000003"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 3
  },
  "xlsx/calamine-any_sheets.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 4,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
@@ -591,77 +621,84 @@
    "sheet/000002",
    "sheet/000003",
    "sheet/000004"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 4
  },
  "xlsx/calamine-date.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsx/calamine-inventory-table.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsx/calamine-merge_cells.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  },
  "xlsx/calamine-temperature-table.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 2,
   "tables": 2,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001",
    "sheet/000002"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 2
  },
  "xlsx/census-NST-EST2024-POP.xlsx": {
   "artifacts": [],
   "file_ok": true,
   "markdown_schema": "brewdoc.markdown/2",
-  "pages": 0,
   "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
   "route": "sheet",
-  "sheets": 1,
   "tables": 1,
   "text_regions": 0,
   "unit_keys": [
    "sheet/000001"
-  ]
+  ],
+  "unit_kind": "sheet",
+  "units": 1
  }
 }

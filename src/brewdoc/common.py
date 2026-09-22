@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
+import posixpath
 import re
 import unicodedata
+import xml.etree.ElementTree as ET
+import zipfile
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 MARKDOWN_SCHEMA = "brewdoc.markdown/2"
+# Receipt versions on its own: its key set moves when a format lands, the Markdown schema does not.
+RECEIPT_SCHEMA = "brewdoc.receipt/1"
 
 CID_RE = re.compile(r"\(cid:\d+\)")
 FOLD = {
@@ -42,6 +49,66 @@ class BrewdocError(Exception):
     """A refusal naming what was not found or not parsed, and where."""
 
 
+@contextlib.contextmanager
+def reading(path: Path, noun: str) -> Iterator[None]:
+    """Every parser error becomes one `<noun> unreadable` refusal; a BrewdocError passes through."""
+    try:
+        yield
+    except BrewdocError:
+        raise
+    except Exception as exc:                      # each reader raises its own error types
+        raise BrewdocError("%s unreadable: %s: %s" % (noun, path, exc)) from exc
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_part(package: zipfile.ZipFile, part: str) -> ET.Element:
+    """Read one required OOXML part and name missing or malformed XML."""
+    try:
+        data = package.read(part)
+    except KeyError as exc:
+        raise BrewdocError("OOXML part is missing: %s" % part) from exc
+    try:
+        return ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
+
+
+def _resolve_ooxml_part(base: str, target: str) -> str:
+    """Resolve one internal relationship target without leaving the package root."""
+    if not target:
+        raise BrewdocError("OOXML relationship target is missing")
+    # join keeps an absolute target whole; OPC absolute part names start at the package root.
+    joined = posixpath.join(posixpath.dirname(base), target).removeprefix("/")
+    resolved = posixpath.normpath(joined)
+    if resolved in (".", "..") or resolved.startswith("../"):
+        raise BrewdocError("OOXML relationship target leaves the package: %s" % target)
+    return resolved
+
+
+def _relationship_elements(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
+    """Return every relationship element in document order, duplicate ids and types included."""
+    root = _xml_part(package, part)
+    return tuple(element for element in root.iter()
+                 if _local_name(element.tag) == "Relationship")
+
+
+def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]:
+    return {element.attrib["Id"]: element for element in _relationship_elements(package, part)
+            if "Id" in element.attrib}
+
+
+def _opc_main_part(package: zipfile.ZipFile) -> str:
+    """Find a package's main part through its package-level office relationship."""
+    for relationship in _relationships(package, "_rels/.rels").values():
+        if (relationship.attrib.get("Type", "").endswith("/officeDocument")
+                and relationship.attrib.get("TargetMode") != "External"):
+            return _resolve_ooxml_part("", relationship.attrib.get("Target", ""))
+    raise BrewdocError("OOXML office document relationship is missing")
+
+
 @dataclass(frozen=True, slots=True)
 class ArtifactRef:
     """A retrievable workbook artifact described without retaining its payload."""
@@ -63,11 +130,15 @@ class ArtifactRef:
                 "out": str(out) if out is not None else None, "sha256": self.sha256}
 
 
+# The only mapping from a route's unit kind to its tally counter; `_assemble` derives the count.
+UNIT_COUNTERS = {"page": "pages", "sheet": "sheets", "chapter": "chapters"}
+
+
 def new_tally() -> dict:
-    """An empty render tally: counts of pages, tables, regions and every dropped class."""
-    return {"pages": 0, "sheets": 0, "chapters": 0, "tables": 0, "text_regions": 0,
-            "columns_split": 0,
-            "broken_ligature_words": 0, "dropped": {key: 0 for key in DROP_KEYS}}
+    """An empty render tally: counts of units, tables, regions and every dropped class."""
+    return {**dict.fromkeys(UNIT_COUNTERS.values(), 0), "tables": 0, "text_regions": 0,
+            "columns_split": 0, "broken_ligature_words": 0,
+            "dropped": dict.fromkeys(DROP_KEYS, 0)}
 
 
 def sha256(text: str) -> str:
@@ -133,17 +204,18 @@ def cell_text(value) -> str:
         return str(value)
     if isinstance(value, float):
         return repr(value)
-    return str(value).replace("\n", " ").replace("|", "\\|").strip()
+    return str(value).replace("\n", " ").strip()
 
 
 def markdown_table(rows) -> list[str]:
     """Rows -> a Markdown table, first row as the header; ragged rows are padded, never cut."""
+    # The only place a cell's pipe is escaped, so no caller can escape it twice.
     width = max((len(row) for row in rows), default=0)
     if not width:
         return []
     out = []
     for index, row in enumerate(rows):
-        cells = [cell_text(value) for value in row] + [""] * (width - len(row))
+        cells = [cell_text(value).replace("|", "\\|") for value in row] + [""] * (width - len(row))
         out.append("| " + " | ".join(cells) + " |")
         if index == 0:
             out.append("| " + " | ".join(["---"] * width) + " |")
@@ -170,8 +242,9 @@ def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
 
 
 # Punctuation gets a backslash, HTML specials and controls an entity; non-ASCII follows in encode.
+# No pipe here: outside a table it is literal, and inside one `markdown_table` escapes it.
 MARKDOWN_ESCAPES = str.maketrans({
-    **{character: "\\" + character for character in "\\`*_{}[]()#+-.!|"},
+    **{character: "\\" + character for character in "\\`*_{}[]()#+-.!"},
     **{chr(code): "&#%d;" % code for code in (*range(32), 127)},
     "\r": " ", "\n": " ", "\t": " ", "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
 
@@ -238,6 +311,19 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
 
 # Every private renderer returns (Markdown, tally, unit keys, artifact references).
 Rendered = tuple[str, dict, tuple[str, ...], tuple[ArtifactRef, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class Route:
+    """One adapter's whole contract: each adapter declares exactly one, the service folds them."""
+
+    name: str
+    unit_kind: str
+    suffixes: tuple[str, ...]
+    render: Callable[..., Rendered] | None
+    not_carried: tuple[str, ...]
+
+
 CAPABILITY_FIELDS = ("Formula capability", "Selected formula count", "VBA project capability",
                      "VBA project count", "VBA source module capability", "VBA source module count")
 NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
@@ -294,7 +380,11 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
               capabilities: tuple = NOT_APPLICABLE,
               artifacts: tuple[ArtifactRef, ...] = ()) -> Rendered:
     """Build schema 2 once content and loss counters are final; every route returns this shape."""
+    if unit_kind not in UNIT_COUNTERS:
+        raise BrewdocError("unknown unit kind %r; expected one of: %s"
+                           % (unit_kind, ", ".join(UNIT_COUNTERS)))
     body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally)
+    tally[UNIT_COUNTERS[unit_kind]] = len(unit_keys)
     metadata = _metadata_rows(path, route, unit_kind, source_units, unit_keys, body, tally)
     out = ['# "%s"' % _escape_markdown_text(path.name), "",
            '<a id="brewdoc-metadata"></a>', "## Metadata", ""]

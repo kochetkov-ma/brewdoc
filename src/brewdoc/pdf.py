@@ -12,14 +12,8 @@ import pdfplumber
 from pdfminer.pdftypes import resolve1
 from pdfplumber.utils import extract_text
 
-from brewdoc.common import (CID_RE, BrewdocError, Rendered, _assemble, head_key, new_tally,
-                            sanitise)
-
-PDF_SUFFIX = ".pdf"
-
-PDF_NOT_CARRIED = ("images, figures and the text drawn inside them",
-                   "a table that spans a page break",
-                   "text rotated out of the horizontal reading order")
+from brewdoc.common import (CID_RE, BrewdocError, Rendered, Route, _assemble, head_key, new_tally,
+                            reading, sanitise)
 
 # Layout thresholds, measured on real documents.
 HIST_BINS = 60           # char x-histogram resolution for the gutter search
@@ -1136,8 +1130,7 @@ def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
 def _render_pdf(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     pages, margins, empty = [], [], 0
-    with pdfplumber.open(path) as pdf:
-        tally["pages"] = len(pdf.pages)
+    with reading(path, "pdf"), pdfplumber.open(path) as pdf:
         for page in pdf.pages:
             if not page.chars:
                 empty += 1
@@ -1145,15 +1138,21 @@ def _render_pdf(path: Path, _sheets=None) -> Rendered:
             pages.append(blocks)
             margins.append(page_margins)
             page.flush_cache()          # a long book otherwise holds every char object
-    if tally["pages"] and empty == tally["pages"]:
+    if pages and empty == len(pages):
         raise BrewdocError(
             "no text layer: %d of %d pages carry zero characters in %s - this reader does no OCR"
-            % (empty, tally["pages"], path))
+            % (empty, len(pages), path))
     heads, numbers = furniture(margins)
     units = [(number, "Page %d" % number, blocks)
              for number, blocks in enumerate(pages, 1)]
-    return _assemble(path, "pdf", "page", len(pages), units, tally, not_carried=PDF_NOT_CARRIED,
-                     heads=heads, numbers=numbers)
+    return _assemble(path, ROUTE.name, ROUTE.unit_kind, len(pages), units, tally,
+                     not_carried=ROUTE.not_carried, heads=heads, numbers=numbers)
+
+
+ROUTE = Route("pdf", "page", (".pdf",), _render_pdf,
+              ("images, figures and the text drawn inside them",
+               "a table that spans a page break",
+               "text rotated out of the horizontal reading order"))
 
 
 def render_pdf(path) -> tuple[str, dict]:

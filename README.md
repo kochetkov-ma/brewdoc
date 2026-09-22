@@ -57,10 +57,11 @@ One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omi
  "not_carried": ["images, figures and the text drawn inside them",
                  "a table that spans a page break",
                  "text rotated out of the horizontal reading order"],
- "out": "file.md", "pages": 7,
+ "out": "file.md",
  "reason": "pdf rendered: 7 pages, 1 tables, 26 text regions, 1 column splits",
- "route": "pdf", "sheets": 0, "source": "nist-sp800-145.pdf", "tables": 1,
- "text_regions": 26}
+ "receipt_schema": "brewdoc.receipt/1",
+ "route": "pdf", "source": "nist-sp800-145.pdf", "tables": 1,
+ "text_regions": 26, "unit_kind": "page", "units": 7}
 ```
 
 | key | meaning |
@@ -68,7 +69,9 @@ One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omi
 | `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
 | `route` | which reader ran: `pdf`, `doc` or `sheet` |
 | `source` | the input file name, without its directory |
-| `pages`, `sheets`, `tables`, `text_regions`, `columns_split` | what was rendered |
+| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
+| `tables`, `text_regions`, `columns_split` | what else was rendered |
+| `receipt_schema` | the receipt key contract; `brewdoc.receipt/1` replaced the per-format `pages` and `sheets` counters |
 | `broken_ligature_words` | words with a ligature the font mapped to a stray code point, folded to ASCII, not repaired |
 | `dropped` | sanitised items removed on purpose, counted by kind (running heads, page numbers, ...) |
 | `not_carried` | what this route structurally cannot represent - read it before concluding a fact is absent |
@@ -107,6 +110,8 @@ code, receipt, markdown = brewdoc.run(
 `artifact_outputs` maps artifact keys to paths. The CLI builds it from repeated `--artifact KEY=PATH`.
 
 Planned formats (all stdlib, zero new dependencies), deferred ones and the never-list: `FORMATS.md`.
+A planned format is refused by name today. The adapter contract and the ordered checklist for
+adding one are in [`docs/architecture.md`](docs/architecture.md).
 
 PDF regions, in the order tried:
 

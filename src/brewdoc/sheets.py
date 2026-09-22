@@ -14,11 +14,12 @@ from pathlib import Path
 
 from python_calamine import CalamineWorkbook
 
-from brewdoc.common import (CAPABILITY_FIELDS, ArtifactRef, BrewdocError, Rendered, _assemble,
-                            _unit_anchor, _unit_key, cell_text, new_tally, sanitise)
+from brewdoc.common import (CAPABILITY_FIELDS, ArtifactRef, BrewdocError, Rendered, Route,
+                            _assemble, _local_name, _opc_main_part, _relationship_elements,
+                            _relationships, _resolve_ooxml_part, _unit_anchor, _unit_key,
+                            _xml_part, cell_text, new_tally, reading, sanitise)
 
 FORMULA_SCHEMA = "brewdoc.formulas/1"
-SHEET_SUFFIXES = (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx")
 FORMULA_SUFFIXES = (".xlsm", ".xlsx")
 VBA_SUFFIXES = (".xlsb", ".xlsm")
 
@@ -26,11 +27,6 @@ VBA_PROJECT_KEY = "vba/project/000001"
 VBA_RELATIONSHIP_TYPE = "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
 # The two project fixtures top out at 17,920 bytes; 16 MiB is the passive-read boundary.
 MAX_VBA_PROJECT_BYTES = 16 * 1024 * 1024
-
-SHEET_NOT_CARRIED = ("cell formulas in Markdown content - only cached values are rendered",
-                     "formatting, colours, comments and data validation",
-                     "charts and embedded images",
-                     "readable VBA source modules")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,13 +99,8 @@ def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
 @contextlib.contextmanager
 def _workbook(path: Path):
     """Open a workbook with calamine; its own error types become one BrewdocError."""
-    try:
-        with CalamineWorkbook.from_path(str(path)) as book:
-            yield book
-    except BrewdocError:
-        raise
-    except Exception as exc:                      # calamine raises its own error types
-        raise BrewdocError("spreadsheet unreadable: %s: %s" % (path, exc)) from exc
+    with reading(path, "spreadsheet"), CalamineWorkbook.from_path(str(path)) as book:
+        yield book
 
 
 def _render_book(path: Path, sheets) -> Rendered:
@@ -122,14 +113,20 @@ def _render_book(path: Path, sheets) -> Rendered:
         for ordinal, name in selected:
             raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
             rows = _sheet_grid(raw, tally)
-            tally["sheets"] += 1
             if rows:
                 tally["tables"] += 1
             units.append((ordinal, name, [("table", rows)] if rows else []))
     artifacts = _book_artifacts(path, sheets)
-    return _assemble(path, "sheet", "sheet", source_units, units, tally,
-                     not_carried=SHEET_NOT_CARRIED, artifacts=artifacts,
+    return _assemble(path, ROUTE.name, ROUTE.unit_kind, source_units, units, tally,
+                     not_carried=ROUTE.not_carried, artifacts=artifacts,
                      capabilities=_book_capabilities(path.suffix.lower(), artifacts))
+
+
+ROUTE = Route("sheet", "sheet", (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx"), _render_book,
+              ("cell formulas in Markdown content - only cached values are rendered",
+               "formatting, colours, comments and data validation",
+               "charts and embedded images",
+               "readable VBA source modules"))
 
 
 def render_book(path, *, sheets=None) -> tuple[str, dict]:
@@ -145,56 +142,6 @@ def _book_capabilities(suffix: str, artifacts: tuple[ArtifactRef, ...]) -> tuple
     values = ("available", str(formulas)) if suffix in FORMULA_SUFFIXES else unknown
     values += ("available", str(projects)) if suffix in VBA_SUFFIXES else unknown
     return tuple(zip(CAPABILITY_FIELDS, values + unknown))
-
-
-def _local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def _xml_part(package: zipfile.ZipFile, part: str) -> ET.Element:
-    """Read one required OOXML part and name missing or malformed XML."""
-    try:
-        data = package.read(part)
-    except KeyError as exc:
-        raise BrewdocError("OOXML part is missing: %s" % part) from exc
-    try:
-        return ET.fromstring(data)
-    except ET.ParseError as exc:
-        raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
-
-
-def _resolve_ooxml_part(base: str, target: str) -> str:
-    """Resolve one internal relationship target without leaving the package root."""
-    if not target:
-        raise BrewdocError("OOXML relationship target is missing")
-    # join keeps an absolute target whole; OPC absolute part names start at the package root.
-    joined = posixpath.join(posixpath.dirname(base), target).removeprefix("/")
-    resolved = posixpath.normpath(joined)
-    if resolved in (".", "..") or resolved.startswith("../"):
-        raise BrewdocError("OOXML relationship target leaves the package: %s" % target)
-    return resolved
-
-
-def _relationship_elements(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
-    """Read relationship elements without hiding duplicate identifiers or types."""
-    root = _xml_part(package, part)
-    return tuple(element for element in root.iter()
-                 if _local_name(element.tag) == "Relationship")
-
-
-def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]:
-    return {element.attrib["Id"]: element for element in _relationship_elements(package, part)
-            if "Id" in element.attrib}
-
-
-def _workbook_part(package: zipfile.ZipFile) -> str:
-    """Find the workbook through its package-level office relationship."""
-    relationships = _relationships(package, "_rels/.rels")
-    for relationship in relationships.values():
-        if (relationship.attrib.get("Type", "").endswith("/officeDocument")
-                and relationship.attrib.get("TargetMode") != "External"):
-            return _resolve_ooxml_part("", relationship.attrib.get("Target", ""))
-    raise BrewdocError("OOXML office document relationship is missing")
 
 
 def _relationship_part(part: str) -> str:
@@ -237,7 +184,7 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
     try:
         digest = None if references else hashlib.sha256(path.read_bytes()).hexdigest()
         with zipfile.ZipFile(path) as package:
-            workbook_part = _workbook_part(package)
+            workbook_part = _opc_main_part(package)
             workbook = _xml_part(package, workbook_part)
             entries = []
             for ordinal, element in enumerate(
@@ -324,7 +271,7 @@ def _vba_project(path: Path) -> bytes | None:
     """Read the related opaque VBA project as exact bytes without parsing its streams."""
     try:
         with zipfile.ZipFile(path) as package:
-            package_part = _vba_relationship(package, _workbook_part(package))
+            package_part = _vba_relationship(package, _opc_main_part(package))
             return None if package_part is None else _vba_member(package, package_part)
     except BrewdocError:
         raise
@@ -335,7 +282,7 @@ def _vba_project(path: Path) -> bytes | None:
 def _workbook_suffix(path: Path) -> str:
     """Return a workbook suffix or refuse the artifact capability before any read."""
     suffix = path.suffix.lower()
-    if suffix not in SHEET_SUFFIXES:
+    if suffix not in ROUTE.suffixes:
         raise BrewdocError("workbook artifacts unavailable for '%s'" % suffix)
     return suffix
 

@@ -1,23 +1,16 @@
-"""DOCX adapter: `word/document.xml` paragraphs and tables in reading order, stdlib only."""
+"""DOCX adapter: OPC main part paragraphs and tables in reading order, stdlib only."""
 
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from brewdoc.common import BrewdocError, Rendered, _assemble, cell_text, new_tally, sanitise
-
-DOC_SUFFIX = ".docx"
-
-DOC_NOT_CARRIED = ("images, charts and the text drawn inside them",
-                   "tracked changes, comments, footnotes, headers and footers",
-                   "a table's own formatting - only its cells, row by row")
+from brewdoc.common import (BrewdocError, Rendered, Route, _assemble, _opc_main_part, _xml_part,
+                            new_tally, reading, sanitise)
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-DOC_PART = "word/document.xml"
-DOC_BODY = "Body"                       # the chapter of a document that declares no headings
+DOC_BODY = "Body"                     # the chapter of a document that declares no headings
 HEADING_STYLE_RE = re.compile(r"^(?:Heading\d|Title)$")
 
 
@@ -70,7 +63,7 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
         for cell in row:
             if cell.tag != W + "tc":
                 continue
-            cells.append(cell_text(" ".join(_doc_lines(cell, tally))))
+            cells.append(" ".join(_doc_lines(cell, tally)))
             cells += [""] * (_doc_span(cell) - 1)
         if any(cell for cell in cells):
             rows.append(cells)
@@ -79,13 +72,11 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
 
 def _render_doc(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
-    try:
-        with zipfile.ZipFile(path) as package:
-            body = ET.fromstring(package.read(DOC_PART)).find(W + "body")
-    except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
-        raise BrewdocError("document unreadable: %s: %s" % (path, exc)) from exc
+    with reading(path, "document"), zipfile.ZipFile(path) as package:
+        part = _opc_main_part(package)
+        body = _xml_part(package, part).find(W + "body")
     if body is None:
-        raise BrewdocError("no document body: %s carries no <w:body> in %s" % (path, DOC_PART))
+        raise BrewdocError("no document body: %s carries no <w:body> in %s" % (path, part))
     chapters, heading, blocks = [], DOC_BODY, []
     for node in body:
         if node.tag == W + "tbl":
@@ -106,10 +97,16 @@ def _render_doc(path: Path, _sheets=None) -> Rendered:
                 blocks.append(("text", lines))
     if blocks or heading != DOC_BODY or not chapters:
         chapters.append((heading, blocks))
-    tally["chapters"] = len(chapters)
     units = [(ordinal, heading, chapter_blocks)
              for ordinal, (heading, chapter_blocks) in enumerate(chapters, 1)]
-    return _assemble(path, "doc", "chapter", len(units), units, tally, not_carried=DOC_NOT_CARRIED)
+    return _assemble(path, ROUTE.name, ROUTE.unit_kind, len(units), units, tally,
+                     not_carried=ROUTE.not_carried)
+
+
+ROUTE = Route("doc", "chapter", (".docx",), _render_doc,
+              ("images, charts and the text drawn inside them",
+               "tracked changes, comments, footnotes, headers and footers",
+               "a table's own formatting - only its cells, row by row"))
 
 
 def render_doc(path) -> tuple[str, dict]:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from brewdoc.common import (_escape_markdown_text, cell_text, markdown_table, new_tally,
                             sanitise, sha256)
-from brewdoc.docx import DOC_PART, render_doc
+from brewdoc.docx import render_doc
 from brewdoc.pdf import render_pdf
 from brewdoc.service import EXIT_FAIL, EXIT_OK, run
 from brewdoc.sheets import render_book
@@ -171,7 +171,7 @@ def synthetic_docx() -> bytes:
                          'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
                          'relationships/officeDocument" Target="word/document.xml"/>'
                          '</Relationships>')
-        package.writestr(DOC_PART,
+        package.writestr("word/document.xml",
                          '<?xml version="1.0"?><w:document xmlns:w="http://schemas.'
                          'openxmlformats.org/wordprocessingml/2006/main"><w:body>%s</w:body>'
                          '</w:document>' % body)

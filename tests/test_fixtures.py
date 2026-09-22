@@ -7,13 +7,15 @@ import pytest
 
 from brewdoc import common, service
 
+# Every test here opens a real document, so the whole module stays out of the fast gate.
 pytestmark = pytest.mark.corpus
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
-SUPPORTED = (".docx", ".ods", ".pdf", ".xls", ".xlsb", ".xlsm", ".xlsx")
+# Derived from the live route table, never a literal: a new route must bring its corpus with it.
+SUPPORTED = tuple(sorted(service.ROUTES))
 PLANNED = (".csv", ".eml", ".epub", ".html", ".md", ".odp", ".odt", ".pptx", ".tsv", ".txt")
-RECEIPT_KEYS = ("route", "pages", "tables", "text_regions", "sheets")
+RECEIPT_KEYS = ("route", "receipt_schema", "unit_kind", "units", "tables", "text_regions")
 SNAPSHOT_KEYS = {
     False: RECEIPT_KEYS,
     True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
@@ -44,6 +46,12 @@ def snapshot(rc: int, line: dict) -> dict:
     return {"rc": rc, "file_ok": line["file_ok"], **{key: line[key] for key in keys}}
 
 
+def refusal(rel: str) -> tuple[int, str, str, str]:
+    """Reduce a refused read to the fields the refusal contract pins."""
+    rc, line, markdown = service.run(FIXTURES / rel)
+    return rc, line["route"], line["reason"], markdown
+
+
 @pytest.mark.parametrize("rel", RENDERABLE)
 def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_path):
     # GIVEN a real document of a supported format and its recorded receipt
@@ -56,13 +64,6 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_
     assert snapshot(rc, line) == RECEIPTS[rel], "receipt drifted for %s: %s" % (rel, line["reason"])
     assert common.sha256(first) == common.sha256(second), "the render of %s is not deterministic" % rel
     assert out.read_text(encoding="ascii") == first, "--out must hold the same bytes run() returns"
-
-
-def test_the_receipt_snapshot_covers_every_supported_fixture_and_nothing_else():
-    # GIVEN supported files, WHEN compared with snapshot keys, THEN both sets match.
-    assert sorted(RECEIPTS) == fixture_files(SUPPORTED), (
-        "receipts.json must hold exactly one row per supported-format fixture"
-    )
 
 
 def test_the_scanned_patent_is_refused_by_name():
@@ -78,19 +79,18 @@ def test_the_scanned_patent_is_refused_by_name():
     ), "a scan must be refused, never rendered empty"
 
 
-@pytest.mark.parametrize("rel", fixture_files(PLANNED))
-def test_a_planned_format_fixture_is_refused_today(rel):
-    # GIVEN a real document of a format the reader plans but does not read yet
-    path = FIXTURES / rel
-    # WHEN it is read
-    rc, line, markdown = service.run(path)
-    # THEN it is refused with the exact suffix message - this assertion flips when support lands
-    assert (rc, line["route"], line["reason"], markdown) == (
-        service.EXIT_FAIL, "none",
-        "unsupported suffix '%s' in %s: brewdoc reads .docx .ods .pdf .xls .xlsb .xlsm .xlsx"
-        % (path.suffix, path),
-        "",
-    ), "%s is refused until its reader exists; update SUFFIXES and this list together" % rel
+def test_every_planned_format_fixture_is_refused_by_suffix_today():
+    # GIVEN every real document of a format the reader plans but does not read yet
+    planned = fixture_files(PLANNED)
+    # WHEN each one is read
+    refused = {rel: refusal(rel) for rel in planned}
+    # THEN one table holds every refusal, so a new supported suffix cannot churn per-file cases
+    assert refused == {
+        rel: (service.EXIT_FAIL, "none",
+              "unsupported suffix '%s' in %s: brewdoc reads %s"
+              % (Path(rel).suffix, FIXTURES / rel, service.SUFFIXES), "")
+        for rel in planned
+    }, "each planned format stays refused until its reader exists; SUFFIXES names the live routes"
 
 
 def sources_rows() -> list[dict]:

@@ -1,6 +1,7 @@
 import hashlib
 import importlib.metadata
 import json
+import os
 import subprocess
 import sys
 import zipfile
@@ -9,8 +10,10 @@ from pathlib import Path
 import pytest
 
 import brewdoc
-from brewdoc import common, selfcheck
+from brewdoc import common, selfcheck, service
 from brewdoc.cli import main
+
+from test_fixtures import RECEIPTS, SUPPORTED, fixture_files, sources_rows
 
 OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -25,6 +28,8 @@ GROWTH_REGULATORS = (
               for row in (("Product", "Dose", "BBCH"), ("Moddus", "0.4", "31")))
     + "</w:tbl>"
 )
+# Characters this platform refuses inside a filename: Windows bans all nine, POSIX only the separator.
+RESERVED_FILENAME_CHARS = '<>:"/\\|?*' if os.name == "nt" else "/"
 PDF_NOT_CARRIED = ["images, figures and the text drawn inside them",
                    "a table that spans a page break",
                    "text rotated out of the horizontal reading order"]
@@ -135,10 +140,13 @@ def three_page_pdf(path: Path) -> Path:
                        + text_op(300, 40, page) for page in "123"))
 
 
-def docx(path: Path, body: str) -> Path:
-    """Write a bare DOCX package whose document body is `body`."""
+def docx(path: Path, body: str, main: str = "word/document.xml") -> Path:
+    """Write a bare DOCX package whose main part is `main` and document body is `body`."""
     with zipfile.ZipFile(path, "w") as package:
-        package.writestr("word/document.xml",
+        package.writestr("_rels/.rels", '<Relationships xmlns="%s"><Relationship Id="rId1" '
+                         'Type="%s/officeDocument" Target="%s"/></Relationships>'
+                         % (PACKAGE, OFFICE, main))
+        package.writestr(main,
                          '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://'
                          'schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>%s'
                          "</w:body></w:document>" % body)
@@ -184,6 +192,31 @@ def test_public_api_is_exactly_the_package_exports():
         "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
         "render_doc", "render_pdf", "run", "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
+
+
+def test_two_routes_claiming_one_suffix_are_refused_when_the_suffix_map_is_folded():
+    # GIVEN a second route claiming a suffix the live pdf route already owns
+    clash = common.Route("clash", "page", (".pdf",), lambda path, sheets: None, ())
+    # WHEN the suffix map is folded over both
+    with pytest.raises(common.BrewdocError) as error:
+        service._route_map(service.ROUTES[".pdf"], clash)
+    # THEN it names the suffix and both routes instead of letting the last one silently win
+    assert str(error.value) == "suffix '.pdf' is claimed by both the pdf and clash routes", (
+        "a duplicate suffix must be refused where the routes are folded, not resolved by order"
+    )
+
+
+def test_every_supported_suffix_has_a_fixture_a_receipt_row_and_a_provenance_row():
+    # GIVEN the supported suffixes taken from the live route table and the fixture listing
+    fixtures = fixture_files(SUPPORTED)
+    # WHEN the listing is reduced to covered suffixes, receipt rows and provenance rows
+    covered = {Path(rel).suffix.lower() for rel in fixtures}
+    documented = sorted({row["path"] for row in sources_rows()}.intersection(fixtures))
+    # THEN all three cover exactly the supported formats - a directory listing, so the fast gate runs it
+    assert (covered, sorted(RECEIPTS), documented) == (set(SUPPORTED), fixtures, fixtures), (
+        "every suffix in service.ROUTES needs a corpus fixture, a receipts.json row and a"
+        " SOURCES.md row; add them with the route, not after it"
+    )
 
 
 def test_version_matches_package_metadata():
@@ -338,10 +371,11 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
             "artifacts": [], "broken_ligature_words": 0, "columns_split": 3,
             "dropped": {**zero_tally()["dropped"], "running_heads": 3, "page_numbers": 3},
             "file_ok": True, "markdown_schema": "brewdoc.markdown/2",
-            "not_carried": PDF_NOT_CARRIED, "pages": 3,
+            "not_carried": PDF_NOT_CARRIED, "receipt_schema": "brewdoc.receipt/1",
             "reason": "pdf rendered: 3 pages, 3 tables, 15 text regions, 3 column splits",
-            "route": "pdf", "sheets": 0, "source": "fixture.pdf", "tables": 3,
-            "text_regions": 15, "unit_keys": ["page/000001", "page/000002", "page/000003"],
+            "route": "pdf", "source": "fixture.pdf", "tables": 3, "unit_kind": "page",
+            "units": 3, "text_regions": 15,
+            "unit_keys": ["page/000001", "page/000002", "page/000003"],
         }, id="pdf"),
         pytest.param("zones.xlsx", zones_book, {
             "artifacts": [], "broken_ligature_words": 0, "columns_split": 0,
@@ -350,10 +384,10 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
                 "cell formulas in Markdown content - only cached values are rendered",
                 "formatting, colours, comments and data validation",
                 "charts and embedded images", "readable VBA source modules"],
-            "pages": 0, "reason": "sheet rendered: 1 sheets, 1 tables, 0 text regions, "
-                                  "0 column splits",
-            "route": "sheet", "sheets": 1, "source": "zones.xlsx", "tables": 1,
-            "text_regions": 0, "unit_keys": ["sheet/000001"],
+            "receipt_schema": "brewdoc.receipt/1",
+            "reason": "sheet rendered: 1 sheets, 1 tables, 0 text regions, 0 column splits",
+            "route": "sheet", "source": "zones.xlsx", "tables": 1, "unit_kind": "sheet",
+            "units": 1, "text_regions": 0, "unit_keys": ["sheet/000001"],
         }, id="xlsx"),
         pytest.param("growth.docx", lambda path: docx(path, GROWTH_REGULATORS), {
             "artifacts": [], "broken_ligature_words": 0, "columns_split": 0,
@@ -362,10 +396,10 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
                 "images, charts and the text drawn inside them",
                 "tracked changes, comments, footnotes, headers and footers",
                 "a table's own formatting - only its cells, row by row"],
-            "pages": 0, "reason": "doc rendered: 1 chapters, 1 tables, 1 text regions, "
-                                  "0 column splits",
-            "route": "doc", "sheets": 0, "source": "growth.docx", "tables": 1,
-            "text_regions": 1, "unit_keys": ["chapter/000001"],
+            "receipt_schema": "brewdoc.receipt/1",
+            "reason": "doc rendered: 1 chapters, 1 tables, 1 text regions, 0 column splits",
+            "route": "doc", "source": "growth.docx", "tables": 1, "unit_kind": "chapter",
+            "units": 1, "text_regions": 1, "unit_keys": ["chapter/000001"],
         }, id="docx"),
     ],
 )
@@ -517,6 +551,67 @@ def test_docx_literal_anchor_content_cannot_forge_receipt_unit_keys(tmp_path):
         "&lt;a name=brewdoc-chapter-888888&gt;cell&lt;/a&gt; "
         '&lt;div id="brewdoc&#45;page-666666"&gt;table-entity&lt;/div&gt; |\n| --- |\n',
     ), "source elements and id or name attributes must not forge contract anchors or unit keys"
+
+
+def test_a_pipe_in_a_docx_table_cell_is_escaped_once_not_twice(tmp_path):
+    # GIVEN a one-cell DOCX table whose cell text is a|b
+    path = docx(tmp_path / "pipe.docx", "<w:tbl><w:tr>%s</w:tr></w:tbl>" % (CELL % ("", "a|b")))
+    # WHEN the document is rendered
+    markdown, _tally = brewdoc.render_doc(path)
+    # THEN the pipe keeps exactly one escaping backslash, so the cell stays one column
+    assert markdown[markdown.index('<a id="brewdoc-chapter-'):] == (
+        '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\n| a\\|b |\n| --- |\n'
+    ), "a DOCX table cell's pipe must be escaped once, not twice"
+
+
+def test_a_pipe_in_a_source_name_is_escaped_once_by_the_metadata_row():
+    # GIVEN a source name carrying the character a Markdown table splits cells on
+    name = "a|b.pdf"
+    # WHEN it is escaped and written as a metadata row, exactly as _assemble composes the two
+    rows = common.markdown_table(
+        [["Field", "Value"], ["Source name", '"%s"' % common._escape_markdown_text(name)]])
+    # THEN the pipe keeps one backslash, so the row stays two cells wide on every platform
+    assert rows == ["| Field | Value |", "| --- | --- |", '| Source name | "a\\|b\\.pdf" |'], (
+        "text escaping must leave the pipe to markdown_table, the sole place it is escaped")
+
+
+@pytest.mark.skipif(
+    "|" in RESERVED_FILENAME_CHARS,
+    reason="this platform reserves | in filenames, so a|b.pdf cannot exist on disk")
+def test_a_pipe_in_a_source_filename_is_escaped_once_not_twice(tmp_path):
+    # GIVEN a one-page PDF saved under a name carrying a pipe
+    path = pdf(tmp_path / "a|b.pdf", text_op(72, 700, "hello"))
+    # WHEN it is rendered
+    markdown, _tally = brewdoc.render_pdf(path)
+    # THEN the metadata row keeps one backslash, so the name stays inside a two-cell row
+    assert [line for line in markdown.splitlines() if line.startswith("| Source name |")] == [
+        '| Source name | "a\\|b\\.pdf" |'
+    ], "a source name's pipe must be escaped once, not twice; twice splits the metadata table"
+
+
+def test_a_docx_main_part_is_resolved_through_its_package_relationship(tmp_path):
+    # GIVEN a DOCX whose office relationship targets a part outside the conventional name
+    path = docx(tmp_path / "relocated.docx", "<w:p><w:r><w:t>body</w:t></w:r></w:p>",
+                main="parts/main.xml")
+    # WHEN it is rendered
+    markdown, _tally = brewdoc.render_doc(path)
+    # THEN the relationship, not the conventional part name, locates the document body
+    assert markdown[markdown.index('<a id="brewdoc-chapter-'):] == (
+        '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\nbody\n'
+    ), "a DOCX main part must be read from _rels/.rels, not assumed at word/document.xml"
+
+
+def test_a_docx_relationship_target_that_escapes_the_package_is_refused(tmp_path):
+    # GIVEN a DOCX whose office relationship target climbs out of the package root
+    path = docx(tmp_path / "escape.docx", "<w:p><w:r><w:t>body</w:t></w:r></w:p>",
+                main="../outside.xml")
+    # WHEN it is rendered
+    with pytest.raises(common.BrewdocError) as error:
+        brewdoc.render_doc(path)
+    # THEN the refusal names the escaping target and no part is read
+    assert str(error.value) == (
+        "OOXML relationship target leaves the package: ../outside.xml"
+    ), "the DOCX path must reject a relationship target that leaves the package root"
 
 
 def test_fixed_layout_block_keeps_source_angle_brackets_and_ampersands_literal(tmp_path):

@@ -15,6 +15,12 @@ All supported routes emit `brewdoc.markdown/2`: quoted source title, determinist
 artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
 PDF pages, selected empty sheets, and heading-created empty DOCX chapters remain navigable.
 
+Every receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `sheet`), its
+unit kind (`page`, `chapter`, `sheet`) and how many units were rendered. The unit kind decides the
+content keys: `page/000001`, `chapter/000001`, `sheet/000001`. A suffix brewdoc does not read is
+refused with route `none` and unit kind `none`; every other refusal keeps its route's own name and
+unit kind, with zero units.
+
 ## Workbook artifacts
 
 | input | formulas | VBA project | limit |
@@ -31,6 +37,7 @@ not change Markdown bytes.
 
 ## Planned
 
+Planned means not readable today: every suffix below is refused by name, and the receipt says so.
 Zero new dependencies, all stdlib. Order = implementation order, by value for agents.
 
 | # | in | mechanism | output |
@@ -45,6 +52,12 @@ Zero new dependencies, all stdlib. Order = implementation order, by value for ag
 
 Images inside any container (pptx, docx, odt, epub, html, eml) become placeholders carrying size,
 alt text and caption. Never OCR.
+
+Ten planned suffixes share seven adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
+`.md` with `.txt` each pair into one module, the other four rows take one each. Nine source
+modules today, sixteen at all ten formats. Each format is its own task and follows the ordered
+checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
+user approval.
 
 ## Deferred
 

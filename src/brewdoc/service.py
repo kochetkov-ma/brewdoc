@@ -6,41 +6,49 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
-from brewdoc.common import MARKDOWN_SCHEMA, BrewdocError, new_tally
-from brewdoc.docx import DOC_NOT_CARRIED, DOC_SUFFIX, _render_doc
+from brewdoc.common import MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route, new_tally
+from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
-from brewdoc.pdf import PDF_NOT_CARRIED, PDF_SUFFIX, _render_pdf
-from brewdoc.sheets import (SHEET_NOT_CARRIED, SHEET_SUFFIXES, _artifact_payloads, _render_book,
-                            _sheet_selection)
+from brewdoc.pdf import ROUTE as PDF_ROUTE
+from brewdoc.sheets import ROUTE as SHEET_ROUTE
+from brewdoc.sheets import _artifact_payloads, _sheet_selection
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
-SUFFIXES = " ".join(sorted((PDF_SUFFIX, DOC_SUFFIX) + SHEET_SUFFIXES))
+
+def _route_map(*routes: Route) -> dict[str, Route]:
+    """Suffix -> route; two adapters claiming one suffix is a defect, not a last-one-wins race."""
+    table: dict[str, Route] = {}
+    for route in routes:
+        for suffix in route.suffixes:
+            if suffix in table:
+                raise BrewdocError("suffix '%s' is claimed by both the %s and %s routes"
+                                   % (suffix, table[suffix].name, route.name))
+            table[suffix] = route
+    return table
 
 
-# Suffix -> (route, unit kind, private renderer, what the route structurally cannot carry).
-ROUTES = {PDF_SUFFIX: ("pdf", "page", _render_pdf, PDF_NOT_CARRIED),
-          DOC_SUFFIX: ("doc", "chapter", _render_doc, DOC_NOT_CARRIED),
-          **dict.fromkeys(SHEET_SUFFIXES, ("sheet", "sheet", _render_book, SHEET_NOT_CARRIED))}
-NO_ROUTE = ("none", "none", None, ())
+ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, SHEET_ROUTE)
+SUFFIXES = " ".join(sorted(ROUTES))
+NO_ROUTE = Route("none", "none", (), None, ())
 
 
-def _route(path: Path) -> tuple:
+def _route(path: Path) -> Route:
     return ROUTES.get(path.suffix.lower(), NO_ROUTE)
 
 
-def _line(route: tuple, file_ok: bool, reason: str, path, tally: dict | None = None,
+def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = None,
           out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
           selected_sheets=None) -> dict:
-    name, _unit_kind, _render, not_carried = route
     tally = tally or new_tally()
-    line = {"file_ok": file_ok, "route": name, "reason": reason,
+    line = {"file_ok": file_ok, "route": route.name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
-            "pages": tally["pages"], "sheets": tally["sheets"], "tables": tally["tables"],
+            "receipt_schema": RECEIPT_SCHEMA, "unit_kind": route.unit_kind,
+            "units": len(unit_keys), "tables": tally["tables"],
             "text_regions": tally["text_regions"], "columns_split": tally["columns_split"],
             "dropped": dict(tally["dropped"]),
             "broken_ligature_words": tally["broken_ligature_words"],
-            "not_carried": list(not_carried)}
+            "not_carried": list(route.not_carried)}
     if file_ok:
         line.update({"artifacts": list(artifacts), "markdown_schema": MARKDOWN_SCHEMA,
                      "unit_keys": list(unit_keys)})
@@ -68,8 +76,7 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
     route = _route(path)
-    name, unit_kind, render, _not_carried = route
-    if render is None:
+    if route.render is None:
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
                                 % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
@@ -77,10 +84,10 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
     try:
         sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
-        if name != "sheet" and (sheets is not None or pairs):
+        if route.name != "sheet" and (sheets is not None or pairs):
             raise BrewdocError("--sheet and --artifact are workbook-only options")
         targets = _output_targets(path, out, pairs)
-        markdown, tally, unit_keys, references = render(path, sheets)
+        markdown, tally, unit_keys, references = route.render(path, sheets)
         keys = tuple(key for key, _target, _shown in pairs)
         listed = {item.key for item in references}
         unknown = [key for key in keys if key not in listed]
@@ -92,13 +99,13 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
     except Exception as exc:                      # a third-party parser raises its own types
         return EXIT_FAIL, _line(route, False, "%s unreadable: %s: %s: %s"
-                                % (name, path, type(exc).__name__, exc), path), ""
+                                % (route.name, path, type(exc).__name__, exc), path), ""
     try:
         _write_outputs(tuple(zip(targets, payloads)))
     except (BrewdocError, OSError) as exc:
         return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
     reason = "%s rendered: %d %ss, %d tables, %d text regions, %d column splits" % (
-        name, len(unit_keys), unit_kind, tally["tables"], tally["text_regions"],
+        route.name, len(unit_keys), route.unit_kind, tally["tables"], tally["text_regions"],
         tally["columns_split"])
     shown = {key: text for key, _target, text in pairs}
     receipt_artifacts = tuple(item.to_dict(shown.get(item.key)) for item in references)
