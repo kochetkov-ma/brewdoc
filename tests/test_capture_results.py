@@ -89,23 +89,33 @@ def test_missing_executable_is_a_captured_failure(capture_args, tmp_path):
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX process group cleanup")
 def test_timeout_kills_the_command_and_its_child(capture_args, tmp_path):
-    # GIVEN a command whose child would write after the timeout
-    marker = tmp_path / "late output"
-    child_code = "import pathlib,sys,time; time.sleep(1.5); pathlib.Path(sys.argv[1]).write_text('alive')"
-    code = ("import subprocess,sys,time; "
-            "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]]); "
+    # GIVEN a command that records a sleeping descendant
+    pid_file = tmp_path / "descendant.pid"
+    child_code = "import time; time.sleep(30)"
+    code = ("import pathlib,subprocess,sys,time; "
+            "child = subprocess.Popen([sys.executable, '-c', sys.argv[1]]); "
+            "pathlib.Path(sys.argv[2]).write_text(str(child.pid)); "
             "sys.stdout.write('started'); sys.stdout.flush(); time.sleep(30)")
-    assert not marker.exists(), "no child output may predate the command"
+    assert not pid_file.exists(), "the descendant PID must start absent"
     # WHEN the helper enforces its timeout
     run = subprocess.run(capture_args + ["--timeout", "0.5", "--", sys.executable, "-c", code,
-                                         child_code, str(marker)], timeout=10)
+                                         child_code, str(pid_file)], timeout=10)
     result = read_result(tmp_path)
-    time.sleep(1.5)
+    assert pid_file.is_file(), "the parent command must record its descendant PID"
+    descendant_pid = int(pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(descendant_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    else:
+        pytest.fail(f"descendant process {descendant_pid} survived process-group cleanup")
     # THEN both the command and its descendant stop before further output
     assert (run.returncode, result["status"], result["returncode"], result["signal"], result["timeout_seconds"]) == (
         1, "timeout", -signal.SIGKILL, signal.SIGKILL, 0.5), "timeout must retain the forced termination status"
     assert (tmp_path / "captured run" / "stdout.bin").read_bytes() == b"started", "output preceding timeout must survive"
-    assert not marker.exists(), "the command's child must not survive the timeout"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX signal return codes")

@@ -2,8 +2,8 @@
 
 Run from the repository checkout with its prepared Python 3.12 environment.
 Use [corpus.json](corpus.json) and [capture_results.py](capture_results.py).
-Do not install or discover tools during measurement. The corpus contains 31
-inputs: 11 `core` documents and 20 `feature_probe` documents. Select all 31;
+Do not install or discover tools during measurement. The corpus contains 41
+inputs: 11 `core` documents and 30 `feature_probe` documents. Select all 41;
 report the groups separately. These inputs are also test fixtures, not a
 held-out evaluation set.
 
@@ -145,7 +145,7 @@ label them cold/warm measurements or infer a speed improvement from two values.
 
 ## Compare observations
 
-First check all 62 capture locations, helper exits, tool statuses and
+First check all 82 capture locations, helper exits, tool statuses and
 `capture_errors`. A command exit of zero does not override incomplete capture.
 Verify hashes of saved artifacts before review. Keep scan refusals and other
 failures visible in the result table.
@@ -167,11 +167,11 @@ for these two runs, not content quality or correctness on other documents.
 
 ## Review source content and report results
 
-Review every input against its emitted Markdown or refusal. Cite PDF page
-numbers or workbook sheet names and cell/range coordinates. Check source text,
-table headers and values, reading order, empty areas, dates and merged regions
-where relevant. Record exactly which pages/cells were inspected; sampled
-evidence does not establish complete fidelity across uninspected content.
+Review every input against its emitted Markdown or refusal. Use PDF page numbers, workbook sheet
+names and cell/range coordinates, DOCX main-story blocks and chapter labels, or PPTX slide numbers
+and package objects. Check source text, table headers and values, reading order, empty areas, dates,
+merged regions, notes and pictures where relevant. Record exactly which source locations were
+inspected; sampled evidence does not establish complete fidelity across uninspected content.
 Do not invent expected Markdown or edit observed output to match a judgment.
 
 Assign a separate quality judgment with a concrete rationale:
@@ -205,7 +205,7 @@ is the authoritative raw evidence and remains unchanged. A reviewed, portable
 bundle in `benchmarks/results/<run-id>/` is versioned on the `benchmark` branch;
 the [full-run registry](results/README.md) links its summary and actual outputs.
 
-Select a completed full run explicitly for sharing. It must account for all 31
+Select a completed full run explicitly for sharing. It must account for all 41
 inputs in every pass, including refusals and failures, and retain provenance,
 source identity, output-integrity checks and source-based quality review.
 Quality failures belong in the bundle; a green quality verdict is not required.

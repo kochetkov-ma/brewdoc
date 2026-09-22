@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "document_id": "docx-tika-testword-various",
+  "source_sha256": "f7761e3893d795ed09f12f89a16d3265c3919da549adf00127b0f7094bccd0ee",
+  "title": "Word lists, text boxes, multilingual text and related parts",
+  "topics": [
+    "document parser features",
+    "lists and text boxes",
+    "multilingual text",
+    "related footnote"
+  ],
+  "language": "mul",
+  "annotation_scope": "main_story",
+  "review_status": "complete",
+  "evidence_method": "The complete ZIP member list, relationships, main-story XML, header, footer, and footnotes were inspected with Python 3.12 zipfile and ElementTree. These are source facts, not expected Markdown.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Main document story",
+      "source_part": "word/document.xml",
+      "wordprocessingml_conformance": "Transitional",
+      "direct_body_block_order": [
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:ListParagraph",
+        "paragraph:ListParagraph",
+        "paragraph:ListParagraph",
+        "paragraph:Normal",
+        "paragraph:ListParagraph",
+        "paragraph:ListParagraph",
+        "paragraph:ListParagraph",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "table",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal:Japanese",
+        "paragraph:Normal:Japanese",
+        "paragraph:Normal:Gothic-lead",
+        "paragraph:Normal:Gothic",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Caption1",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:none",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:Normal",
+        "paragraph:none",
+        "paragraph:Normal",
+        "paragraph:none",
+        "section_properties"
+      ],
+      "paragraph_style_counts": {
+        "Normal": 32,
+        "ListParagraph": 6,
+        "Caption1": 1,
+        "none": 3
+      },
+      "tables": [
+        {
+          "block_index": 22,
+          "rows": 2,
+          "cells_per_row": [3, 3],
+          "alignment": "left",
+          "nested_table_count": 0,
+          "grid_span_values": [],
+          "vertical_merge_elements": 0
+        }
+      ],
+      "source_features": {
+        "drawing_elements": 1,
+        "legacy_pict_elements": 1,
+        "text_box_content_elements": 2,
+        "text_box_text_instances": [
+          "Here is a text box",
+          "Here is a text box"
+        ],
+        "footnote_reference_elements": 1,
+        "hyperlink_elements": 1,
+        "bookmark_start_elements": 1
+      }
+    }
+  ],
+  "related_omitted_content": {
+    "headers": [
+      {"part": "word/header1.xml", "text": "This is the header text."}
+    ],
+    "footers": [
+      {"part": "word/footer1.xml", "text": "This is the footer text."}
+    ],
+    "footnotes": [
+      {"part": "word/footnotes.xml", "substantive_notes": 1, "text": "This is a footnote."}
+    ],
+    "endnotes": [],
+    "comments": [],
+    "external_hyperlink_relationships": 1,
+    "custom_xml_parts": 2
+  },
+  "resource_measurements": {
+    "archive_bytes": 14470,
+    "package_members": 18,
+    "uncompressed_member_bytes": 71638,
+    "xml_member_count": 18,
+    "xml_member_bytes": 71638,
+    "main_document_bytes": 17319,
+    "largest_member": {
+      "path": "word/styles.xml",
+      "bytes": 26805
+    }
+  },
+  "limitations": [
+    "No visual rendering, list-number reconstruction, or style inheritance analysis was performed.",
+    "Text-box counts are structural; their visual positions and reading order were not reconstructed.",
+    "The main story stores the same text-box text once in DrawingML and once in legacy VML."
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "document_id": "pptx-poi-table-test",
+  "source_sha256": "b9c3eb4b198ef3e53a4ff1a5ef4118a5ce6ba1760592c553abf665b37dcac5f8",
+  "title": "Empty six-by-three DrawingML table",
+  "topics": [
+    "presentation parser features",
+    "empty table cells",
+    "DrawingML table"
+  ],
+  "language": "und",
+  "annotation_scope": "all_slides",
+  "review_status": "complete",
+  "evidence_method": "Presentation order, slide relationships and slide XML were inspected with zipfile and ElementTree on CPython 3.12.3. Observations describe source structure, not expected Markdown.",
+  "slides": [
+    {
+      "index": 1,
+      "part": "ppt/slides/slide1.xml",
+      "hidden": false,
+      "title_placeholders": [],
+      "shape_order": [
+        "table"
+      ],
+      "text_shapes": [],
+      "tables": [
+        {
+          "shape_index": 1,
+          "dimensions": {
+            "rows": 6,
+            "columns": 3
+          },
+          "rows": [
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""]
+          ],
+          "merge_cells": []
+        }
+      ],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    }
+  ],
+  "resource_measurements": {
+    "archive_bytes": 28935,
+    "members": 37,
+    "uncompressed_member_bytes": 89555,
+    "xml_and_relationship_parts": 36,
+    "xml_and_relationship_bytes": 86883,
+    "media_bytes": 0,
+    "largest_member": {
+      "path": "ppt/slideMasters/slideMaster1.xml",
+      "bytes": 12916
+    }
+  },
+  "limitations": [
+    "No visual rendering or layout inheritance was inspected.",
+    "Theme, master and layout styling were not annotated."
+  ],
+  "title_basis": "Descriptive annotation title; the only slide has no title placeholder.",
+  "review_coverage": {
+    "slides": "complete",
+    "presentation_order": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

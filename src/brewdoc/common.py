@@ -100,6 +100,12 @@ def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]
             if "Id" in element.attrib}
 
 
+def _relationship_part(part: str) -> str:
+    """Return the OPC relationship part paired with one package part."""
+    directory, name = posixpath.split(part)
+    return posixpath.join(directory, "_rels", name + ".rels")
+
+
 def _opc_main_part(package: zipfile.ZipFile) -> str:
     """Find a package's main part through its package-level office relationship."""
     for relationship in _relationships(package, "_rels/.rels").values():
@@ -131,7 +137,8 @@ class ArtifactRef:
 
 
 # The only mapping from a route's unit kind to its tally counter; `_assemble` derives the count.
-UNIT_COUNTERS = {"page": "pages", "sheet": "sheets", "chapter": "chapters"}
+UNIT_COUNTERS = {"page": "pages", "sheet": "sheets", "chapter": "chapters",
+                 "slide": "slides"}
 
 
 def new_tally() -> dict:

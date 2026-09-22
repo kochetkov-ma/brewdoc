@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "document_id": "pptx-poi-testppt",
+  "source_sha256": "730a6ade20208eaad375160949db37b2ffb52af4d3704b51976ff45564bff83b",
+  "title": "Three-slide attachment test presentation",
+  "topics": [
+    "presentation parser features",
+    "title and subtitle placeholders",
+    "body paragraphs"
+  ],
+  "language": "en",
+  "annotation_scope": "all_slides",
+  "review_status": "complete",
+  "evidence_method": "Presentation order, slide relationships and slide XML were inspected with zipfile and ElementTree on CPython 3.12.3. Observations describe source structure, not expected Markdown.",
+  "slides": [
+    {
+      "index": 1,
+      "part": "ppt/slides/slide1.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "ctrTitle",
+          "paragraphs": ["Attachment Test"]
+        }
+      ],
+      "shape_order": ["ctrTitle", "subTitle"],
+      "text_shapes": [
+        {
+          "shape_index": 1,
+          "name": "Title 1",
+          "placeholder": "ctrTitle",
+          "paragraphs": ["Attachment Test"]
+        },
+        {
+          "shape_index": 2,
+          "name": "Subtitle 2",
+          "placeholder": "subTitle",
+          "paragraphs": ["Rajiv"]
+        }
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    },
+    {
+      "index": 2,
+      "part": "ppt/slides/slide2.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "body"],
+      "text_shapes": [
+        {
+          "shape_index": 1,
+          "name": "Title 1",
+          "placeholder": "title",
+          "paragraphs": [""]
+        },
+        {
+          "shape_index": 2,
+          "name": "Content Placeholder 2",
+          "placeholder": "body",
+          "paragraphs": [
+            "This is a test file data with the same content as every other file being tested for tika content parsing. This has been developed by Rajiv Kumar Nistala.",
+            "\u00a0",
+            ""
+          ]
+        }
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    },
+    {
+      "index": 3,
+      "part": "ppt/slides/slide3.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "body"],
+      "text_shapes": [
+        {
+          "shape_index": 1,
+          "name": "Title 1",
+          "placeholder": "title",
+          "paragraphs": [""]
+        },
+        {
+          "shape_index": 2,
+          "name": "Content Placeholder 2",
+          "placeholder": "body",
+          "paragraphs": [
+            "Different words to test against",
+            "\u00a0",
+            "Quest",
+            "Hello",
+            "Watershed",
+            "Avalanche",
+            "Black Panther",
+            "Mystery",
+            "Banking",
+            "Investment",
+            ""
+          ]
+        }
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    }
+  ],
+  "resource_measurements": {
+    "archive_bytes": 36518,
+    "members": 41,
+    "uncompressed_member_bytes": 90396,
+    "xml_and_relationship_parts": 40,
+    "xml_and_relationship_bytes": 84252,
+    "media_bytes": 0,
+    "largest_member": {
+      "path": "ppt/slideMasters/slideMaster1.xml",
+      "bytes": 12082
+    }
+  },
+  "limitations": [
+    "No visual rendering or layout inheritance was inspected.",
+    "Theme, master and layout styling were not annotated."
+  ],
+  "title_basis": "Descriptive annotation title based on the first slide and fixture purpose.",
+  "review_coverage": {
+    "slides": "complete",
+    "presentation_order": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

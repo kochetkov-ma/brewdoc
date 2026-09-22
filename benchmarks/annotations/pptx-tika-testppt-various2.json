@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "document_id": "pptx-tika-testppt-various2",
+  "source_sha256": "24f56e909a0597264ca77e340c291382530f08b17bf03ead33e8c17b389a7938",
+  "title": "Presentation feature collection with notes, media and a hidden slide",
+  "topics": [
+    "presentation parser features",
+    "speaker notes",
+    "pictures and embedded objects",
+    "tables and charts",
+    "hidden slides"
+  ],
+  "language": "en",
+  "annotation_scope": "all_slides",
+  "review_status": "complete",
+  "evidence_method": "Presentation order, slide and notes relationships, and XML parts were inspected with zipfile and ElementTree on CPython 3.12.3. Observations describe source structure, not expected Markdown.",
+  "slides": [
+    {
+      "index": 1,
+      "part": "ppt/slides/slide1.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "ctrTitle",
+          "paragraphs": ["This is some content"]
+        }
+      ],
+      "shape_order": ["ctrTitle", "subTitle", "dt", "ftr", "sldNum"],
+      "text_blocks": [
+        {"shape_index": 1, "placeholder": "ctrTitle", "paragraphs": ["This is some content"]},
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["1"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": ["comments relationship"]
+    },
+    {
+      "index": 2,
+      "part": "ppt/slides/slide2.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": ["Slide2Header"]
+        }
+      ],
+      "shape_order": ["title", "body", "dt", "ftr", "sldNum", "text box", "table", "embedded object"],
+      "text_blocks": [
+        {"shape_index": 1, "placeholder": "title", "paragraphs": ["Slide2Header"]},
+        {"shape_index": 2, "placeholder": "body", "paragraphs": ["FirstBullet", "SecondBullet", "tika_hyperlink", ""]},
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["2"]},
+        {"shape_index": 6, "placeholder": null, "paragraphs": ["Slide2TextBox"]}
+      ],
+      "tables": [
+        {
+          "shape_index": 7,
+          "dimensions": {"rows": 3, "columns": 5},
+          "rows": [
+            ["R1c1", "R1c2", "r1c3", "", ""],
+            ["r2c1", "", "lucene_hyperlink", "", ""],
+            ["", "", "", "", ""]
+          ],
+          "merge_cells": []
+        }
+      ],
+      "notes": {
+        "part": "ppt/notesSlides/notesSlide1.xml",
+        "body_paragraphs": ["NotesForSlide2 "],
+        "other_placeholders": [
+          {"type": "sldImg", "paragraphs": []},
+          {"type": "hdr", "paragraphs": ["NotesMasterHeader"]},
+          {"type": "ftr", "paragraphs": ["NotesMasterFooter\t\t"]},
+          {"type": "sldNum", "paragraphs": ["NotesMasterPageNumber 2"]},
+          {"type": null, "paragraphs": ["NotesWordArtPage2"]}
+        ]
+      },
+      "pictures": [],
+      "unsupported_objects": [
+        "embedded OLE object",
+        "comments relationship",
+        "VML drawing",
+        "image relationship associated with the embedded object"
+      ]
+    },
+    {
+      "index": 3,
+      "part": "ppt/slides/slide3.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": ["Slide3Header"]
+        }
+      ],
+      "shape_order": ["title", "chart", "dt", "ftr", "sldNum", "text shape"],
+      "text_blocks": [
+        {"shape_index": 1, "placeholder": "title", "paragraphs": ["Slide3Header"]},
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["3"]},
+        {"shape_index": 6, "placeholder": null, "paragraphs": ["This is some WordART"]}
+      ],
+      "tables": [],
+      "notes": {
+        "part": "ppt/notesSlides/notesSlide2.xml",
+        "body_paragraphs": ["Notes for slide3"],
+        "other_placeholders": [
+          {"type": "sldImg", "paragraphs": []},
+          {"type": "hdr", "paragraphs": ["NotesMasterHeader"]},
+          {"type": "ftr", "paragraphs": ["NotesMasterFooter\t\t"]},
+          {"type": "sldNum", "paragraphs": ["NotesMasterPageNumber 3"]}
+        ]
+      },
+      "pictures": [],
+      "unsupported_objects": ["chart", "comments relationship"]
+    },
+    {
+      "index": 4,
+      "part": "ppt/slides/slide4.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "SmartArt diagram", "dt", "ftr", "sldNum"],
+      "text_blocks": [
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["4"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": ["SmartArt diagram and its data, drawing, color, layout and style parts"]
+    },
+    {
+      "index": 5,
+      "part": "ppt/slides/slide5.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "picture", "dt", "ftr", "sldNum"],
+      "text_blocks": [
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["5"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [
+        {
+          "shape_index": 2,
+          "name": "Content Placeholder 6",
+          "description": null,
+          "title": null,
+          "size_emu": {"cx": 3632200, "cy": 2724150},
+          "source": "embedded",
+          "target": "ppt/media/image5.jpg",
+          "bytes": 7686
+        }
+      ],
+      "unsupported_objects": []
+    },
+    {
+      "index": 6,
+      "part": "ppt/slides/slide6.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "dt", "ftr", "sldNum", "embedded object"],
+      "text_blocks": [
+        {"shape_index": 2, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 4, "placeholder": "sldNum", "paragraphs": ["6"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": ["embedded OLE object", "VML drawing", "image relationship associated with the embedded object"]
+    },
+    {
+      "index": 7,
+      "part": "ppt/slides/slide7.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "dt", "ftr", "sldNum", "embedded object"],
+      "text_blocks": [
+        {"shape_index": 2, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 4, "placeholder": "sldNum", "paragraphs": ["7"]}
+      ],
+      "tables": [],
+      "notes": {
+        "part": "ppt/notesSlides/notesSlide3.xml",
+        "body_paragraphs": [""],
+        "other_placeholders": [
+          {"type": "sldImg", "paragraphs": []},
+          {"type": "hdr", "paragraphs": ["NotesMasterHeader"]},
+          {"type": "ftr", "paragraphs": ["NotesMasterFooter\t\t"]},
+          {"type": "sldNum", "paragraphs": ["NotesMasterPageNumber 7"]}
+        ]
+      },
+      "pictures": [],
+      "unsupported_objects": [
+        "embedded OLE object",
+        "comments relationship",
+        "VML drawing",
+        "image relationship associated with the embedded object"
+      ]
+    },
+    {
+      "index": 8,
+      "part": "ppt/slides/slide8.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "body", "dt", "ftr", "sldNum", "text box", "ink AlternateContent fallback picture"],
+      "text_blocks": [
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["8"]},
+        {"shape_index": 6, "placeholder": null, "paragraphs": ["3/4"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [
+        {
+          "shape_index": 7,
+          "branch": "mc:Fallback",
+          "name": "Ink 8",
+          "description": null,
+          "title": null,
+          "size_emu": {"cx": 1812240, "cy": 2031480},
+          "source": "embedded",
+          "target": "ppt/media/image9.emf",
+          "bytes": 880
+        }
+      ],
+      "unsupported_objects": ["ink content part in the mc:Choice branch", "custom XML relationship"]
+    },
+    {
+      "index": 9,
+      "part": "ppt/slides/slide9.xml",
+      "hidden": true,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "body", "dt", "ftr", "sldNum"],
+      "text_blocks": [
+        {"shape_index": 2, "placeholder": "body", "paragraphs": ["This slide is hidden"]},
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["9"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    },
+    {
+      "index": 10,
+      "part": "ppt/slides/slide10.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "title",
+          "paragraphs": [""]
+        }
+      ],
+      "shape_order": ["title", "body", "dt", "ftr", "sldNum"],
+      "text_blocks": [
+        {"shape_index": 3, "placeholder": "dt", "paragraphs": ["12/16/2016"]},
+        {"shape_index": 4, "placeholder": "ftr", "paragraphs": ["MASTERFOOTERMSG"]},
+        {"shape_index": 5, "placeholder": "sldNum", "paragraphs": ["10"]}
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    }
+  ],
+  "package_objects": {
+    "comment_parts": 4,
+    "chart_parts": 1,
+    "embedded_object_parts": 5,
+    "media_parts": 9
+  },
+  "resource_measurements": {
+    "archive_bytes": 248937,
+    "members": 104,
+    "uncompressed_member_bytes": 2013277,
+    "xml_and_relationship_parts": 85,
+    "xml_and_relationship_bytes": 271097,
+    "media_bytes": 112906,
+    "largest_member": {
+      "path": "ppt/embeddings/oleObject2.bin",
+      "bytes": 1555968
+    }
+  },
+  "limitations": [
+    "No visual rendering, layout inheritance or positioning review was performed.",
+    "Chart, SmartArt, ink, comments, VML and embedded object contents were identified but not decoded.",
+    "Theme, master and layout styling were not annotated."
+  ],
+  "title_basis": "Descriptive annotation title; slide 1 centered-title text is `This is some content`.",
+  "review_coverage": {
+    "slides": "complete",
+    "presentation_order": "complete",
+    "notes_placeholders": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

@@ -10,20 +10,34 @@ from brewdoc.common import (BrewdocError, Rendered, Route, _assemble, _opc_main_
                             new_tally, reading, sanitise)
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+W_STRICT = "{http://purl.oclc.org/ooxml/wordprocessingml/main}"
+W_NAMESPACES = (W, W_STRICT)
 DOC_BODY = "Body"                     # the chapter of a document that declares no headings
-HEADING_STYLE_RE = re.compile(r"^(?:Heading\d|Title)$")
+HEADING_STYLE_RE = re.compile(r"(?:Heading[1-9]|Title)")
+
+
+def _word_tag(element, local_name: str) -> bool:
+    return any(element.tag == namespace + local_name for namespace in W_NAMESPACES)
+
+
+def _word_child(element, local_name: str):
+    return next((child for child in element if _word_tag(child, local_name)), None)
+
+
+def _word_value(element) -> str | None:
+    return next((element.get(namespace + "val") for namespace in W_NAMESPACES
+                 if element.get(namespace + "val") is not None), None)
 
 
 def _doc_lines(node, tally: dict) -> list[str]:
-    # `w:br` and `w:tab` are siblings of the `w:t` runs; `w:delText`, `w:instrText`, footnotes
-    # and comments carry other tags and are never picked up.
+    # Breaks and tabs are siblings of text; tracked text and references use other tags.
     lines, current = [], []
     for element in node.iter():
-        if element.tag == W + "t":
+        if _word_tag(element, "t"):
             current.append(element.text or "")
-        elif element.tag == W + "tab":
+        elif _word_tag(element, "tab"):
             current.append(" ")
-        elif element.tag == W + "br":
+        elif _word_tag(element, "br") or _word_tag(element, "cr"):
             lines.append("".join(current))
             current = []
     lines.append("".join(current))
@@ -34,34 +48,37 @@ def _doc_label(node) -> str:
     """Read a heading label without folding semantic Unicode before Markdown escaping."""
     parts = []
     for element in node.iter():
-        if element.tag == W + "t":
+        if _word_tag(element, "t"):
             parts.append(element.text or "")
-        elif element.tag in (W + "tab", W + "br"):
+        elif (_word_tag(element, "tab") or _word_tag(element, "br")
+              or _word_tag(element, "cr")):
             parts.append(" ")
     return re.sub(r"\s+", " ", "".join(parts)).strip() or "Untitled"
 
 
 def _doc_style(node) -> str:
-    style = node.find("%spPr/%spStyle" % (W, W))
-    return style.get(W + "val", "") if style is not None else ""
+    properties = _word_child(node, "pPr")
+    style = _word_child(properties, "pStyle") if properties is not None else None
+    return (_word_value(style) or "") if style is not None else ""
 
 
 def _doc_span(cell) -> int:
-    span = cell.find("%stcPr/%sgridSpan" % (W, W))
+    properties = _word_child(cell, "tcPr")
+    span = _word_child(properties, "gridSpan") if properties is not None else None
     try:
-        return max(1, int(span.get(W + "val"))) if span is not None else 1
-    except ValueError:
+        return max(1, int(_word_value(span))) if span is not None else 1
+    except (TypeError, ValueError):
         return 1
 
 
 def _doc_rows(table, tally: dict) -> list[list[str]]:
     rows = []
     for row in table:
-        if row.tag != W + "tr":
+        if not _word_tag(row, "tr"):
             continue
         cells = []
         for cell in row:
-            if cell.tag != W + "tc":
+            if not _word_tag(cell, "tc"):
                 continue
             cells.append(" ".join(_doc_lines(cell, tally)))
             cells += [""] * (_doc_span(cell) - 1)
@@ -74,21 +91,21 @@ def _render_doc(path: Path, _sheets=None) -> Rendered:
     tally = new_tally()
     with reading(path, "document"), zipfile.ZipFile(path) as package:
         part = _opc_main_part(package)
-        body = _xml_part(package, part).find(W + "body")
+        body = _word_child(_xml_part(package, part), "body")
     if body is None:
         raise BrewdocError("no document body: %s carries no <w:body> in %s" % (path, part))
     chapters, heading, blocks = [], DOC_BODY, []
     for node in body:
-        if node.tag == W + "tbl":
+        if _word_tag(node, "tbl"):
             rows = _doc_rows(node, tally)
             if rows:
                 tally["tables"] += 1
                 blocks.append(("table", rows))
-        elif node.tag == W + "p":
+        elif _word_tag(node, "p"):
             lines = _doc_lines(node, tally)
             if not lines:
                 continue
-            if HEADING_STYLE_RE.match(_doc_style(node)):
+            if HEADING_STYLE_RE.fullmatch(_doc_style(node)):
                 if blocks or heading != DOC_BODY:
                     chapters.append((heading, blocks))
                 heading, blocks = _doc_label(node), []

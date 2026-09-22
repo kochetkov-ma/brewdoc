@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "document_id": "docx-poi-deep-table-cell",
+  "source_sha256": "31c5bfe1f68c98699cb356891de2e02fe223f633706d666c430ca79fd2cdf6bb",
+  "title": "Five thousand nested Word tables",
+  "topics": [
+    "document parser features",
+    "nested tables",
+    "archive expansion"
+  ],
+  "language": "en",
+  "annotation_scope": "main_story",
+  "review_status": "complete",
+  "evidence_method": "The complete ZIP member list, package relationships, and main-story XML were inspected with Python 3.12 zipfile and iterative ElementTree walks. These are source facts, not expected Markdown.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Main document story",
+      "source_part": "word/document.xml",
+      "wordprocessingml_conformance": "Transitional",
+      "direct_body_block_order": ["table"],
+      "tables": [
+        {
+          "block_index": 1,
+          "top_level_rows": 1,
+          "top_level_cells_per_row": [1],
+          "total_table_count": 5000,
+          "maximum_table_depth": 5000,
+          "grid_span_values": [],
+          "vertical_merge_elements": 0,
+          "text_pattern": "Nested level 0 through Nested level 4999"
+        }
+      ],
+      "paragraph_styles": []
+    }
+  ],
+  "related_omitted_content": {
+    "headers": [],
+    "footers": [],
+    "footnotes": [],
+    "endnotes": [],
+    "comments": [],
+    "drawings_in_main_story": 0,
+    "external_hyperlinks": 0
+  },
+  "resource_measurements": {
+    "archive_bytes": 17198,
+    "package_members": 3,
+    "uncompressed_member_bytes": 1209795,
+    "xml_member_count": 3,
+    "xml_member_bytes": 1209795,
+    "main_document_bytes": 1209061,
+    "largest_member": {
+      "path": "word/document.xml",
+      "bytes": 1209061
+    }
+  },
+  "limitations": [
+    "No visual rendering or layout reconstruction was performed.",
+    "The depth and table totals come from XML structure, not a recursive renderer."
+  ]
+}

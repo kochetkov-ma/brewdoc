@@ -1,15 +1,17 @@
 # Corpus catalog
 
-The corpus contains **31 public Internet inputs and 0 generated inputs**:
-9 PDFs and 22 workbooks, totaling 4,227,297 bytes. Original files remain in
+The corpus contains **41 public Internet inputs and 0 generated inputs**:
+9 PDFs, 6 DOCX documents, 4 PPTX presentations and 22 workbooks, totaling
+4,658,579 bytes. Original files remain in
 [tests/fixtures](../tests/fixtures). Each input below links to its source file,
 public download and detailed annotation. [corpus.json](corpus.json) holds the
 searchable metadata, license links and immutable local hashes.
 
 `core` contains 11 original government/research documents; `feature_probe`
-contains 20 public upstream Calamine examples. Both groups already appear in
-tests. Public provenance is separate from the feature-probe selection label.
-Thirty downloaded files match the stored bytes exactly. The patent endpoint
+contains 20 public upstream Calamine examples and 10 public office-format
+examples. Both groups already appear in tests. Public provenance is separate
+from the feature-probe selection label. Forty downloaded files match the stored
+bytes exactly. The patent endpoint
 regenerates CreationDate; its explicit mismatch is confined to metadata in a
 bounded comparison, with all page images unchanged.
 
@@ -29,6 +31,37 @@ counts below describe source objects, not what a converter managed to extract.
 | [nist-sp800-145.pdf](../tests/fixtures/pdf/nist-sp800-145.pdf)<br>The NIST Definition of Cloud Computing | PDF / 85,781 | 7 | cloud computing; service models. Cloud definitions, indented lists, footnote, errata table and cover graphics. | [public download](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf) / [annotation](annotations/pdf-nist-sp800-145.json) |
 | [us-patent-223898-scan.pdf](../tests/fixtures/pdf/us-patent-223898-scan.pdf)<br>US Patent 223,898: Electric-Lamp, with correction documents | PDF / 227,921 | 5 | electric lamp; carbon filament. Five full-page scanned images; lamp drawings, patent prose and correction documents; no text layer. | [public download](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/0223898) / [annotation](annotations/pdf-us-patent-223898-scan.json) |
 | [us-senate-expenditures.pdf](../tests/fixtures/pdf/us-senate-expenditures.pdf)<br>United States Senate expenditures, page B-1191 | PDF / 53,481 | 1 | government expenditure; staff compensation. Landscape payment table; grouped date header, names, amounts and body rows without separators. | [public download](https://raw.githubusercontent.com/jsvine/pdfplumber/stable/tests/pdfs/senate-expenditures.pdf) / [annotation](annotations/pdf-us-senate-expenditures.json) |
+
+## Word documents
+
+All six DOCX main stories have source annotations. The records preserve direct
+body block order, styles, tables and spans, nested tables, related omitted parts
+and archive/XML resource measurements. They do not treat headers, footers,
+footnotes or inherited styles as main-story content.
+
+| Original file and title | Format / bytes | Main stories | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [libreoffice-negative-cell-margin-twips.docx](../tests/fixtures/docx/libreoffice-negative-cell-margin-twips.docx)<br>Horizontal table span in a compact Word package | DOCX / 5,902 | 1 | document parser features; horizontal table span. Three-row table with one `gridSpan=2` cell. | [public download](https://raw.githubusercontent.com/LibreOffice/core/master/sw/qa/extras/ooxmlexport/data/negative-cell-margin-twips.docx) / [annotation](annotations/docx-libreoffice-negative-cell-margin-twips.json) |
+| [poi-ThreeColHead.docx](../tests/fixtures/docx/poi-ThreeColHead.docx)<br>Two-page Word body with a Heading1 boundary | DOCX / 12,508 | 1 | document parser features; heading boundary. Ten main-story paragraphs, a page break and a related three-column header. | [public download](https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/ThreeColHead.docx) / [annotation](annotations/docx-poi-three-col-head.json) |
+| [poi-deep-table-cell.docx](../tests/fixtures/docx/poi-deep-table-cell.docx)<br>Five thousand nested Word tables | DOCX / 17,198 | 1 | document parser features; nested tables. A 1.2 MB XML main part contains 5,000 table levels. | [public download](https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/deep-table-cell.docx) / [annotation](annotations/docx-poi-deep-table-cell.json) |
+| [poi-table-alignment.docx](../tests/fixtures/docx/poi-table-alignment.docx)<br>Six table alignment values | DOCX / 15,519 | 1 | document parser features; table alignment values. Six repeated 3 x 3 tables use absent, left, start, center, right and end alignment. | [public download](https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/table-alignment.docx) / [annotation](annotations/docx-poi-table-alignment.json) |
+| [tika-testWORD.docx](../tests/fixtures/docx/tika-testWORD.docx)<br>Word title, headings, nested table and links | DOCX / 13,436 | 1 | document parser features; title and heading styles. Title, heading styles, a nested table, bookmarks, hyperlinks and related header/footer parts. | [public download](https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD.docx) / [annotation](annotations/docx-tika-testword.json) |
+| [tika-testWORD_various.docx](../tests/fixtures/docx/tika-testWORD_various.docx)<br>Word lists, text boxes, multilingual text and related parts | DOCX / 14,470 | 1 | document parser features; lists and text boxes. List paragraphs, two text-box containers, a 2 x 3 table, Japanese and Gothic text, and a related footnote. | [public download](https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD_various.docx) / [annotation](annotations/docx-tika-testword-various.json) |
+
+## Presentations
+
+The four PPTX inputs contain 15 declared slides. Source annotations preserve
+relationship order, hidden state, title and shape order, tables, notes,
+pictures and unsupported objects. One slide is hidden. The richer Tika fixture
+contains all three notes parts and both picture shapes, including an
+`AlternateContent` fallback picture.
+
+| Original file and title | Format / bytes | Slides | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [poi-table_test.pptx](../tests/fixtures/pptx/poi-table_test.pptx)<br>Empty six-by-three DrawingML table | PPTX / 28,935 | 1 | presentation parser features; empty table cells. One slide with an empty 6 x 3 DrawingML table. | [public download](https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/table_test.pptx) / [annotation](annotations/pptx-poi-table-test.json) |
+| [poi-testPPT.pptx](../tests/fixtures/pptx/poi-testPPT.pptx)<br>Three-slide attachment test presentation | PPTX / 36,518 | 3 | presentation parser features; title and subtitle placeholders. Title, subtitle and body text across three slides; no notes parts. | [public download](https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/testPPT.pptx) / [annotation](annotations/pptx-poi-testppt.json) |
+| [python-pptx-test.pptx](../tests/fixtures/pptx/python-pptx-test.pptx)<br>Presentation Title Text | PPTX / 37,859 | 1 | presentation parser features; centered title placeholder. One title slide with centered title and subtitle. | [public download](https://raw.githubusercontent.com/scanny/python-pptx/master/tests/test_files/test.pptx) / [annotation](annotations/pptx-python-pptx-test.json) |
+| [tika-testPPT_various2.pptx](../tests/fixtures/pptx/tika-testPPT_various2.pptx)<br>Presentation feature collection with notes, media and a hidden slide | PPTX / 248,937 | 10 | presentation parser features; speaker notes. Notes, embedded pictures, table, chart, SmartArt, OLE objects, hyperlinks and one hidden slide. | [pinned public source](https://github.com/apache/tika/blob/cc1eaf5317d99588b9ee90468723e407d0c72d28/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testPPT_various2.pptx) / [annotation](annotations/pptx-tika-testppt-various2.json) |
 
 ## Workbooks
 
@@ -69,9 +102,10 @@ The two Census workbooks belong to `core`; all Calamine workbooks belong to
 
 ## Scope and reuse
 
-Tables, figures, charts, cell ranges, source order and review methods are detailed
-in the annotations. Unknown locations and undecompiled XLSB formula expressions stay
-explicit. [Manifest gaps](corpus.json) list missing source coverage. Complete
+Tables, figures, charts, cell ranges, main-story blocks, slide shapes, source
+order and review methods are detailed in the annotations. Unknown locations and
+undecompiled XLSB formula expressions stay explicit. [Manifest gaps](corpus.json)
+list missing source coverage. Complete
 annotation records do not establish correct conversion, formula calculation,
 chart extraction or OCR. Compare actual outputs with the source evidence using
 [the measurement method](METHODOLOGY.md).

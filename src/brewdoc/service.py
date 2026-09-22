@@ -10,6 +10,7 @@ from brewdoc.common import MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route,
 from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
 from brewdoc.pdf import ROUTE as PDF_ROUTE
+from brewdoc.pptx import ROUTE as PRESENTATION_ROUTE
 from brewdoc.sheets import ROUTE as SHEET_ROUTE
 from brewdoc.sheets import _artifact_payloads, _sheet_selection
 
@@ -28,7 +29,7 @@ def _route_map(*routes: Route) -> dict[str, Route]:
     return table
 
 
-ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, SHEET_ROUTE)
+ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE)
 SUFFIXES = " ".join(sorted(ROUTES))
 NO_ROUTE = Route("none", "none", (), None, ())
 

@@ -1,25 +1,25 @@
-# PDF and Excel corpus
+# Document conversion corpus
 
-[corpus.json](corpus.json) indexes 31 existing files (4,227,297 bytes) in
+[corpus.json](corpus.json) indexes 41 existing files (4,658,579 bytes) in
 [tests/fixtures](../tests/fixtures). Run examples from a repository checkout.
 Fixtures and benchmark tools are not installed by the brewdoc wheel.
 
-Browse the [file catalog](CATALOG.md) for each document's title, topics, pages or
-sheets, and table/chart/cell features. All 31 inputs are public Internet files;
-none were generated for this corpus. The [annotation and provenance contract](annotations/README.md)
-explains source evidence, download verification and remaining unknowns.
+Browse the [file catalog](CATALOG.md) for each document's title, topics, structural features and
+pages, sheets, chapters or slides. All 41 inputs are public Internet files; none were generated for
+this corpus. The [annotation and provenance contract](annotations/README.md) explains source
+evidence, download verification and remaining unknowns.
 
 For a complete run, follow the [baseline methodology](METHODOLOGY.md): freeze
-the context, capture all 31 inputs twice, compare observations and review source
+the context, capture all 41 inputs twice, compare observations and review source
 content. Immutable raw results live in `.codex/reports/<UTC>_baseline-results/`.
 Selected completed full runs have reviewed portable bundles in
 `benchmarks/results/<run-id>/`, versioned on the `benchmark` branch. Browse the
 [full-run registry](results/README.md) for summaries and actual outputs.
 
 The `core` group contains 9 government/research PDFs and 2 Census workbooks.
-The `feature_probe` group contains 20 upstream Calamine parser examples for XLS,
-XLSX, XLSM, XLSB and ODS. Keep group results separate. Every input already appears
-in the test suite; this is a reusable comparison set, not a held-out quality set.
+The `feature_probe` group contains 20 upstream Calamine parser examples and 10
+DOCX/PPTX container examples from public upstream projects. Keep group results separate. Every input
+already appears in the test suite; this is a reusable comparison set, not a held-out quality set.
 
 ## Find an input
 
@@ -44,18 +44,16 @@ for document in corpus["documents"]:
 PY
 ```
 
-Features describe source content and observed cell types, not successful
+Features describe source content and observed package structures, not successful
 conversion. The scan has five image-only pages; brewdoc refuses it because it
-has no text layer. An empty workbook and an unreadable document are different
-cases. Preserve the actual outcome when comparing tools.
+has no text layer. An empty workbook or slide and an unreadable document are
+different cases. Preserve the actual outcome when comparing tools.
 
 [Fixture provenance](../tests/fixtures/SOURCES.md) owns source URLs, licenses and
-input hashes. Some older shape descriptions there are inaccurate: the ODS
-`special_cells` file contains whitespace strings; XLSX `date` contains dates
-and a duration; ODS `date` contains date, datetime and time cells. ODS
-`any_sheets` names do not imply Excel chart or VeryHidden semantics. The index
-uses inspected features. Hashes identify the stored bytes; changing upstream
-URLs do not authorize automatic replacement.
+input hashes. Shape descriptions distinguish observed package features from
+claims implied by fixture names. The index uses inspected features. Hashes
+identify the stored bytes; changing upstream URLs do not authorize automatic
+replacement.
 
 ## Capture one command
 
@@ -103,7 +101,8 @@ selected completed full runs enter the [shared registry](results/README.md).
 Its bundles preserve Markdown bytes and document receipt/path transformations.
 Captured Markdown is an observation, not an authored expected output. Timing,
 exit status and matching hashes do not establish semantic quality. Compare the
-actual output against source pages/cells and retain review notes beside the run.
+actual output against source pages, cells, main-story blocks or slides and retain
+review notes beside the run.
 The fixture receipt snapshots and synthetic unit assertions remain separate.
 
 ## Attribution

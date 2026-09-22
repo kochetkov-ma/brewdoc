@@ -14,14 +14,15 @@ FIXTURES = Path(__file__).parent / "fixtures"
 RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
 # Derived from the live route table, never a literal: a new route must bring its corpus with it.
 SUPPORTED = tuple(sorted(service.ROUTES))
-PLANNED = (".csv", ".eml", ".epub", ".html", ".md", ".odp", ".odt", ".pptx", ".tsv", ".txt")
+PLANNED = (".csv", ".eml", ".epub", ".html", ".md", ".odp", ".odt", ".tsv", ".txt")
 RECEIPT_KEYS = ("route", "receipt_schema", "unit_kind", "units", "tables", "text_regions")
 SNAPSHOT_KEYS = {
     False: RECEIPT_KEYS,
     True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
 }
 SCAN = "pdf/us-patent-223898-scan.pdf"
-CORPUS_BYTES = 5_713_778
+CORPUS_FILES = 64
+CORPUS_BYTES = 5_962_715
 PROVENANCE = ("SOURCES.md", "receipts.json")
 ROW = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<url>\S+) \| \[(?P<license>[^\]]+)\]\((?P<link>[^)]+)\)"
                  r" \| `(?P<sha256>[0-9a-f]{64})` \| (?P<size>\d+) \| (?P<shape>.+) \|$")
@@ -126,7 +127,7 @@ def test_the_corpus_stays_small():
     # WHEN each file is measured against the 3 MB cap
     oversized = sorted(rel for rel, size in sizes.items() if size > 3_000_000)
     # THEN no file crosses it and the corpus keeps its recorded total, far below the 20 MB cap
-    assert (oversized, sum(sizes.values())) == ([], CORPUS_BYTES), (
+    assert (oversized, len(sizes), sum(sizes.values())) == ([], CORPUS_FILES, CORPUS_BYTES), (
         "fixtures must stay small enough for a public CI checkout: 3 MB per file, 20 MB in total;"
-        " change CORPUS_BYTES with SOURCES.md when the corpus changes"
+        " change CORPUS_FILES and CORPUS_BYTES with SOURCES.md when the corpus changes"
     )
