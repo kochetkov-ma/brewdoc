@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "document_id": "docx-libreoffice-negative-cell-margin-twips",
+  "source_sha256": "874b4a87e9230f42383ca7f15077081b4f9733d3d5c45bf8c0411f48b91b1108",
+  "title": "Horizontal table span in a compact Word package",
+  "topics": [
+    "document parser features",
+    "horizontal table span",
+    "main-story table"
+  ],
+  "language": "en",
+  "annotation_scope": "main_story",
+  "review_status": "complete",
+  "evidence_method": "The complete ZIP member list, package relationships, and main-story XML were inspected with Python 3.12 zipfile and ElementTree. These are source facts, not expected Markdown.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Main document story",
+      "source_part": "word/document.xml",
+      "wordprocessingml_conformance": "Transitional",
+      "direct_body_block_order": [
+        "table",
+        "paragraph:Normal",
+        "section_properties"
+      ],
+      "tables": [
+        {
+          "block_index": 1,
+          "rows": 3,
+          "cells_per_row": [3, 3, 2],
+          "grid_span_values": [2],
+          "nested_table_count": 0,
+          "vertical_merge_elements": 0,
+          "alignment": null
+        }
+      ],
+      "paragraphs": [
+        {
+          "block_index": 2,
+          "style": "Normal",
+          "text_state": "empty"
+        }
+      ]
+    }
+  ],
+  "related_omitted_content": {
+    "headers": [],
+    "footers": [],
+    "footnotes": [],
+    "endnotes": [],
+    "comments": [],
+    "drawings_in_main_story": 0,
+    "external_hyperlinks": 0
+  },
+  "resource_measurements": {
+    "archive_bytes": 5902,
+    "package_members": 13,
+    "uncompressed_member_bytes": 22545,
+    "xml_member_count": 9,
+    "xml_member_bytes": 22545,
+    "main_document_bytes": 16132,
+    "largest_member": {
+      "path": "word/document.xml",
+      "bytes": 16132
+    }
+  },
+  "limitations": [
+    "No visual rendering or style inheritance analysis was performed.",
+    "Cell-margin values were not converted into visual geometry."
+  ]
+}

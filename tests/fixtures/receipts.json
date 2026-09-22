@@ -398,6 +398,77 @@
   "unit_kind": "page",
   "units": 1
  },
+ "pptx/poi-table_test.pptx": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "presentation",
+  "tables": 1,
+  "text_regions": 0,
+  "unit_keys": [
+   "slide/000001"
+  ],
+  "unit_kind": "slide",
+  "units": 1
+ },
+ "pptx/poi-testPPT.pptx": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "presentation",
+  "tables": 0,
+  "text_regions": 3,
+  "unit_keys": [
+   "slide/000001",
+   "slide/000002",
+   "slide/000003"
+  ],
+  "unit_kind": "slide",
+  "units": 3
+ },
+ "pptx/python-pptx-test.pptx": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "presentation",
+  "tables": 0,
+  "text_regions": 1,
+  "unit_keys": [
+   "slide/000001"
+  ],
+  "unit_kind": "slide",
+  "units": 1
+ },
+ "pptx/tika-testPPT_various2.pptx": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "presentation",
+  "tables": 1,
+  "text_regions": 30,
+  "unit_keys": [
+   "slide/000001",
+   "slide/000002",
+   "slide/000003",
+   "slide/000004",
+   "slide/000005",
+   "slide/000006",
+   "slide/000007",
+   "slide/000008",
+   "slide/000009",
+   "slide/000010"
+  ],
+  "unit_kind": "slide",
+  "units": 10
+ },
  "xls/calamine-any_sheets.xls": {
   "artifacts": [],
   "file_ok": true,

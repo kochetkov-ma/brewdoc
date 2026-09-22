@@ -20,10 +20,11 @@ formats and local hashes retain their meanings. Added fields are:
 | `sha256`, `size_bytes` | Identity of the stored input bytes, independent of the current remote response. |
 | `annotation_path` | Repository-relative path to an existing annotation bound to the same input hash. |
 
-All 31 current inputs are `public`; none were generated for this corpus. The
-20 Calamine examples are public upstream fixtures. Their `feature_probe` group
-is separate from provenance. The `core` group holds 11 original documents.
-All inputs already appear in the test suite, so neither group is held out.
+All 41 current inputs are `public`; none were generated for this corpus. The
+20 Calamine examples and 10 document or presentation examples are public
+upstream fixtures. Their `feature_probe` group is separate from provenance.
+The `core` group holds 11 original documents. All inputs already appear in the
+test suite, so neither group is held out.
 Private company documents and private source-derived test shapes are prohibited.
 
 A source match requires a completed HTTP 200 GET with both hash and size equal
@@ -37,12 +38,15 @@ shows all other bytes and decoded page images equal. That remains a byte
 
 Annotation `schema_version` is 1. Required document fields are `document_id`,
 `source_sha256`, `title`, `topics`, `language`, `annotation_scope`,
-`review_status`, `limitations`, and either `pages` or `sheets`.
+`review_status`, `limitations`, and exactly one of `pages`, `sheets`, `chapters`
+or `slides`.
 `document_id` and `source_sha256` must match the manifest. Enumerate every
-page or sheet in source order, including empty sheets and image-only pages.
+page, sheet, main-story chapter or declared slide in source order, including
+empty sheets, image-only pages, hidden slides and empty slides.
 
-`annotation_scope` is `all_pages` or `all_sheets`. `review_status` is
-`complete` or `partial`; state what was inspected and what remains uncertain.
+`annotation_scope` is `all_pages`, `all_sheets`, `main_story` or `all_slides`.
+`review_status` is `complete` or `partial`; state what was inspected and what
+remains uncertain.
 Completeness refers to the declared annotation work. It does not imply successful
 extraction or a full visual review unless the recorded review methods establish
 that. Explicit uncertainty is preferable to an invented count or location.
@@ -83,6 +87,20 @@ one-based A1 ranges or explicit cell anchors when observed. Separate source
 package evidence from values returned by a reader. A sheet named Chart is not
 proof of a chart object; an empty value grid is not proof of an empty package.
 Formula expressions, cached values and calculated results are different facts.
+
+DOCX chapter records describe the WordprocessingML main story. Preserve direct
+body block order and record paragraph styles, table dimensions and spans, nested
+tables, related omitted parts and archive/XML resource measurements. A chapter
+is an inspection unit for source facts. It is not authored expected Markdown or
+a claim that style inheritance was reconstructed.
+
+PPTX slide records follow the relationship order declared by presentation.xml,
+not ZIP member names. Record hidden state, title candidates, shape-tree text and
+table order, body speaker notes, pictures and unsupported objects. Keep notes
+body text separate from slide image, header, footer, date and number furniture.
+For pictures, distinguish embedded and external sources and retain exact package
+byte counts when an embedded member exists. Do not infer captions from nearby
+text or fetch external resources.
 
 Use `null` and an explanation when a location, count or property is unknown.
 An empty object array means no such object was found by the stated method; it

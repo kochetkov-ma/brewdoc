@@ -1,10 +1,10 @@
 # brewdoc
 
-Document to Markdown for agent systems: PDF, Word and spreadsheets in, one Markdown file plus a
-JSON receipt out. Small (~45 MB installed), fast (0.08 s import), no models, no OCR, no network,
-deterministic (same file, same bytes). The receipt says what was rendered, what was dropped and
-what the route structurally cannot carry, so an agent never mistakes a silent gap for "the
-document does not say so".
+Document to Markdown for agent systems: PDF, Word, PPTX presentations and spreadsheets in, one
+Markdown file plus a JSON receipt out. Small (~45 MB installed), fast (0.08 s import), no models,
+no OCR, no network, deterministic (same file, same bytes). The receipt says what was rendered,
+what was dropped and what the route structurally cannot carry, so an agent never mistakes a
+silent gap for "the document does not say so".
 
 ## Install
 
@@ -29,6 +29,7 @@ cryptography) and `python-calamine`.
 
 ```
 brewdoc file.pdf --out file.md
+brewdoc slides.pptx --out slides.md
 brewdoc file.xlsx                # no --out: receipt line, then the Markdown, on stdout
 brewdoc file.xlsx --sheet Calc --sheet Inputs
 brewdoc file.xlsm --artifact formula/sheet/000002=formulas.json
@@ -38,13 +39,15 @@ brewdoc --self-check             # renders synthetic fixtures twice, compares sh
 
 `--sheet` is repeatable. Names are exact and case-sensitive. Output follows caller order while
 keeping each sheet's full-workbook ordinal. `--artifact` is also repeatable. Use keys listed in the
-Markdown artifact table. brewdoc validates every request and output collision before writing.
+Markdown artifact table. Both options are workbook-only. brewdoc validates every request and
+output collision before writing.
 
 Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,
 Artifacts, Known omissions, Contents, then anchored content units. PDF keys are `page/000001`,
-workbook keys are `sheet/000001`, and DOCX keys are `chapter/000001`. Metadata contains deterministic
-source identity, selection, content hashes, conversion tallies, and artifact capabilities. It excludes
-paths, timestamps, permissions, host data, and unsupported author metadata.
+workbook keys are `sheet/000001`, DOCX keys are `chapter/000001`, and PPTX keys are `slide/000001`.
+Metadata contains deterministic source identity, selection, content hashes, conversion tallies, and
+artifact capabilities. It excludes paths, timestamps, permissions, host data, and unsupported author
+metadata.
 
 One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omitted):
 
@@ -67,9 +70,9 @@ One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omi
 | key | meaning |
 |---|---|
 | `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
-| `route` | which reader ran: `pdf`, `doc` or `sheet` |
+| `route` | which reader ran: `pdf`, `doc`, `presentation` or `sheet` |
 | `source` | the input file name, without its directory |
-| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
+| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
 | `tables`, `text_regions`, `columns_split` | what else was rendered |
 | `receipt_schema` | the receipt key contract; `brewdoc.receipt/1` replaced the per-format `pages` and `sheets` counters |
 | `broken_ligature_words` | words with a ligature the font mapped to a stray code point, folded to ASCII, not repaired |
@@ -89,6 +92,7 @@ Exit code is non-zero on refusal; the receipt line is still printed.
 |---|---|---|
 | `.pdf` | pdfplumber | needs a text layer; route chosen per region, never per page |
 | `.docx` | stdlib zip + XML | paragraphs and tables |
+| `.pptx` | stdlib zip + XML | slides in declared order; text, tables, notes and picture metadata |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | selected sheets keep full-source ordinals; numbers as stored (`85.0`), dates as ISO days |
 
 `.xlsx` and `.xlsm` expose original OOXML formulas as one deterministic JSON artifact per
@@ -96,9 +100,10 @@ formula-bearing selected sheet. Markdown still contains cached values. `.xlsm` a
 one complete related `vbaProject.bin` as opaque bytes. brewdoc does not execute macros, decompile VBA,
 report source-module counts, evaluate formulas, or infer dependency graphs.
 
-The public Python API keeps the existing render tuples and adds generic artifact access:
+The public Python API exposes presentation rendering and generic workbook artifact access:
 
 ```python
+markdown, tally = brewdoc.render_presentation("slides.pptx")
 refs = brewdoc.list_book_artifacts("book.xlsm", sheets=("Calc",))
 payload = brewdoc.read_book_artifact("book.xlsm", refs[0].key, sheets=("Calc",))
 code, receipt, markdown = brewdoc.run(
@@ -130,7 +135,9 @@ PDF regions, in the order tried:
 | gap | behaviour |
 |---|---|
 | OCR | a PDF with no text layer is refused by name, never rendered empty |
-| images, figures, text drawn inside them | not carried; listed in `not_carried` |
+| PDF and DOCX images, figures, text drawn inside them | not carried; listed in `not_carried` |
+| PPTX pictures | represented by deterministic name, size, alt text, caption, source and byte-count placeholders; pixels are never emitted |
+| PPTX charts, SmartArt, audio, video and embedded objects | not carried; listed in `not_carried` |
 | a table spanning a page break | columns recovered, wrapped rows stay separate rows |
 | text rotated out of horizontal reading order | not carried |
 | sub/superscripts | folded back into their line (`NH4H2PO4`, not `NHHPO` over `4 2 4`) |

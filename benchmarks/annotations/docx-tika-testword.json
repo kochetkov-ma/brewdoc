@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "document_id": "docx-tika-testword",
+  "source_sha256": "67797f5691cb5346201f1c40000a959f9f08d05d0b4493b4291e8d5f16e81e65",
+  "title": "Word title, headings, nested table and links",
+  "topics": [
+    "document parser features",
+    "title and heading styles",
+    "nested table",
+    "hyperlinks"
+  ],
+  "language": "en",
+  "annotation_scope": "main_story",
+  "review_status": "complete",
+  "evidence_method": "The complete ZIP member list, relationships, main-story XML, headers, footers, footnotes, and endnotes were inspected with Python 3.12 zipfile and ElementTree. These are source facts, not expected Markdown.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Main document story",
+      "source_part": "word/document.xml",
+      "wordprocessingml_conformance": "Transitional",
+      "direct_body_block_order": [
+        "paragraph:Title",
+        "paragraph:Subtitle",
+        "paragraph:Heading",
+        "paragraph:Heading1",
+        "paragraph:Heading2",
+        "paragraph:Heading3",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "table",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Signature",
+        "paragraph:Default",
+        "paragraph:Default",
+        "paragraph:Default",
+        "section_properties"
+      ],
+      "heading_paragraphs": [
+        {"block_index": 1, "style": "Title", "text": "Sample Word Document Title"},
+        {"block_index": 2, "style": "Subtitle", "text": "And now for a subtitle"},
+        {"block_index": 3, "style": "Heading", "text": "Main Heading"},
+        {"block_index": 4, "style": "Heading1", "text": "Heading Level 1"},
+        {"block_index": 5, "style": "Heading2", "text": "Heading Level 2"},
+        {"block_index": 6, "style": "Heading3", "text": "Heading Level 3"}
+      ],
+      "tables": [
+        {
+          "block_index": 12,
+          "top_level_rows": 3,
+          "top_level_cells_per_row": [2, 2, 2],
+          "nested_table_count": 1,
+          "total_table_count": 2,
+          "grid_span_values": [],
+          "vertical_merge_elements": 0
+        }
+      ],
+      "hyperlink_elements": 6,
+      "bookmark_start_elements": 2
+    }
+  ],
+  "related_omitted_content": {
+    "headers": [
+      {"part": "word/header1.xml", "text": "This is the header for our document"}
+    ],
+    "footers": [
+      {"part": "word/footer1.xml", "text": "This is the footer for our document"}
+    ],
+    "footnotes": [
+      {"part": "word/footnotes.xml", "substantive_notes": 0}
+    ],
+    "endnotes": [
+      {"part": "word/endnotes.xml", "substantive_notes": 0}
+    ],
+    "comments": [],
+    "drawings_in_main_story": 0,
+    "external_hyperlink_relationships": 4,
+    "distinct_external_hyperlink_targets": [
+      "http://poi.apache.org/",
+      "http://tika.apache.org/"
+    ]
+  },
+  "resource_measurements": {
+    "archive_bytes": 13436,
+    "package_members": 21,
+    "uncompressed_member_bytes": 56037,
+    "xml_member_count": 16,
+    "xml_member_bytes": 56037,
+    "main_document_bytes": 12897,
+    "largest_member": {
+      "path": "word/styles.xml",
+      "bytes": 19349
+    }
+  },
+  "limitations": [
+    "No visual rendering or style inheritance analysis was performed.",
+    "Hyperlink counts distinguish XML elements, relationships, and distinct external targets."
+  ]
+}

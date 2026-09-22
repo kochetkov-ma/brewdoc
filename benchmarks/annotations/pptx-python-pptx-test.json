@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "document_id": "pptx-python-pptx-test",
+  "source_sha256": "8765677cdf43181ef41657cedf28485b5f2cbf166667218c217af07f8336c96f",
+  "title": "Presentation Title Text",
+  "topics": [
+    "presentation parser features",
+    "centered title placeholder",
+    "subtitle placeholder"
+  ],
+  "language": "en",
+  "annotation_scope": "all_slides",
+  "review_status": "complete",
+  "evidence_method": "Presentation order, slide relationships and slide XML were inspected with zipfile and ElementTree on CPython 3.12.3. Observations describe source structure, not expected Markdown.",
+  "slides": [
+    {
+      "index": 1,
+      "part": "ppt/slides/slide1.xml",
+      "hidden": false,
+      "title_placeholders": [
+        {
+          "type": "ctrTitle",
+          "paragraphs": ["Presentation Title Text"]
+        }
+      ],
+      "shape_order": ["ctrTitle", "subTitle"],
+      "text_shapes": [
+        {
+          "shape_index": 1,
+          "name": "Title 1",
+          "placeholder": "ctrTitle",
+          "paragraphs": ["Presentation Title Text"]
+        },
+        {
+          "shape_index": 2,
+          "name": "Subtitle 2",
+          "placeholder": "subTitle",
+          "paragraphs": ["Subtitle Text"]
+        }
+      ],
+      "tables": [],
+      "notes": null,
+      "pictures": [],
+      "unsupported_objects": []
+    }
+  ],
+  "resource_measurements": {
+    "archive_bytes": 37859,
+    "members": 38,
+    "uncompressed_member_bytes": 97530,
+    "xml_and_relationship_parts": 36,
+    "xml_and_relationship_bytes": 79988,
+    "media_bytes": 0,
+    "largest_member": {
+      "path": "ppt/slideMasters/slideMaster1.xml",
+      "bytes": 12081
+    }
+  },
+  "limitations": [
+    "No visual rendering or layout inheritance was inspected.",
+    "Theme, master and layout styling were not annotated."
+  ],
+  "title_basis": "The non-empty centered-title placeholder on slide 1.",
+  "review_coverage": {
+    "slides": "complete",
+    "presentation_order": "complete",
+    "source_structure": "complete within declared structural fields"
+  }
+}

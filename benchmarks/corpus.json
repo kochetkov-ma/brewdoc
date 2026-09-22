@@ -1245,6 +1245,391 @@
         "large-integer-valued-floats"
       ],
       "annotation_path": "benchmarks/annotations/xlsx-census-nst-est2024-pop.json"
+    },
+    {
+      "id": "docx-libreoffice-negative-cell-margin-twips",
+      "title": "Horizontal table span in a compact Word package",
+      "topics": [
+        "document parser features",
+        "horizontal table span",
+        "main-story table"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/libreoffice-negative-cell-margin-twips.docx",
+      "source_url": "https://raw.githubusercontent.com/LibreOffice/core/master/sw/qa/extras/ooxmlexport/data/negative-cell-margin-twips.docx",
+      "download_url": "https://raw.githubusercontent.com/LibreOffice/core/master/sw/qa/extras/ooxmlexport/data/negative-cell-margin-twips.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/LibreOffice/core/master/sw/qa/extras/ooxmlexport/data/negative-cell-margin-twips.docx",
+        "download_sha256": "874b4a87e9230f42383ca7f15077081b4f9733d3d5c45bf8c0411f48b91b1108",
+        "download_size_bytes": 5902
+      },
+      "license": "MPL-2.0",
+      "license_url": "https://github.com/LibreOffice/core/blob/master/COPYING.MPL",
+      "sha256": "874b4a87e9230f42383ca7f15077081b4f9733d3d5c45bf8c0411f48b91b1108",
+      "size_bytes": 5902,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "horizontal-table-span",
+        "empty-table-cells",
+        "main-story-table"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-libreoffice-negative-cell-margin-twips.json"
+    },
+    {
+      "id": "docx-poi-three-col-head",
+      "title": "Two-page Word body with a Heading1 boundary",
+      "topics": [
+        "document parser features",
+        "heading boundary",
+        "related header"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/poi-ThreeColHead.docx",
+      "source_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/ThreeColHead.docx",
+      "download_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/ThreeColHead.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/ThreeColHead.docx",
+        "download_sha256": "304656fd791bd829f5cabebf8e7ec058260b669e9f572e500f69ff176387e090",
+        "download_size_bytes": 12508
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/poi/blob/trunk/legal/LICENSE",
+      "sha256": "304656fd791bd829f5cabebf8e7ec058260b669e9f572e500f69ff176387e090",
+      "size_bytes": 12508,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "heading1",
+        "page-break",
+        "related-header"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-poi-three-col-head.json"
+    },
+    {
+      "id": "docx-poi-deep-table-cell",
+      "title": "Five thousand nested Word tables",
+      "topics": [
+        "document parser features",
+        "nested tables",
+        "archive expansion"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/poi-deep-table-cell.docx",
+      "source_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/deep-table-cell.docx",
+      "download_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/deep-table-cell.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/deep-table-cell.docx",
+        "download_sha256": "31c5bfe1f68c98699cb356891de2e02fe223f633706d666c430ca79fd2cdf6bb",
+        "download_size_bytes": 17198
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/poi/blob/trunk/legal/LICENSE",
+      "sha256": "31c5bfe1f68c98699cb356891de2e02fe223f633706d666c430ca79fd2cdf6bb",
+      "size_bytes": 17198,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "nested-tables",
+        "deep-xml-nesting",
+        "large-uncompressed-part"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-poi-deep-table-cell.json"
+    },
+    {
+      "id": "docx-poi-table-alignment",
+      "title": "Six table alignment values",
+      "topics": [
+        "document parser features",
+        "table alignment values",
+        "repeated tables"
+      ],
+      "language": "und",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/poi-table-alignment.docx",
+      "source_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/table-alignment.docx",
+      "download_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/table-alignment.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/document/table-alignment.docx",
+        "download_sha256": "ee36729e0d050e529fea0b444006a194bea72b35cf8958ae58c6624c26156b41",
+        "download_size_bytes": 15519
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/poi/blob/trunk/legal/LICENSE",
+      "sha256": "ee36729e0d050e529fea0b444006a194bea72b35cf8958ae58c6624c26156b41",
+      "size_bytes": 15519,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "six-tables",
+        "table-alignment-values",
+        "interleaved-empty-paragraphs"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-poi-table-alignment.json"
+    },
+    {
+      "id": "docx-tika-testword",
+      "title": "Word title, headings, nested table and links",
+      "topics": [
+        "document parser features",
+        "title and heading styles",
+        "nested table",
+        "hyperlinks"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/tika-testWORD.docx",
+      "source_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD.docx",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD.docx",
+        "download_sha256": "67797f5691cb5346201f1c40000a959f9f08d05d0b4493b4291e8d5f16e81e65",
+        "download_size_bytes": 13436
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/main/LICENSE.txt",
+      "sha256": "67797f5691cb5346201f1c40000a959f9f08d05d0b4493b4291e8d5f16e81e65",
+      "size_bytes": 13436,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "title-style",
+        "heading-styles",
+        "nested-table",
+        "external-hyperlinks",
+        "related-header-and-footer"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-tika-testword.json"
+    },
+    {
+      "id": "docx-tika-testword-various",
+      "title": "Word lists, text boxes, multilingual text and related parts",
+      "topics": [
+        "document parser features",
+        "lists and text boxes",
+        "multilingual text",
+        "related footnote"
+      ],
+      "language": "mul",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/docx/tika-testWORD_various.docx",
+      "source_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD_various.docx",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD_various.docx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testWORD_various.docx",
+        "download_sha256": "f7761e3893d795ed09f12f89a16d3265c3919da549adf00127b0f7094bccd0ee",
+        "download_size_bytes": 14470
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/main/LICENSE.txt",
+      "sha256": "f7761e3893d795ed09f12f89a16d3265c3919da549adf00127b0f7094bccd0ee",
+      "size_bytes": 14470,
+      "format": "docx",
+      "variant": "OOXML document",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "list-paragraphs",
+        "text-boxes",
+        "related-footnote",
+        "multilingual-text",
+        "three-column-table"
+      ],
+      "annotation_path": "benchmarks/annotations/docx-tika-testword-various.json"
+    },
+    {
+      "id": "pptx-poi-table-test",
+      "title": "Empty six-by-three DrawingML table",
+      "topics": [
+        "presentation parser features",
+        "empty table cells",
+        "DrawingML table"
+      ],
+      "language": "und",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/pptx/poi-table_test.pptx",
+      "source_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/table_test.pptx",
+      "download_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/table_test.pptx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/table_test.pptx",
+        "download_sha256": "b9c3eb4b198ef3e53a4ff1a5ef4118a5ce6ba1760592c553abf665b37dcac5f8",
+        "download_size_bytes": 28935
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/poi/blob/trunk/legal/LICENSE",
+      "sha256": "b9c3eb4b198ef3e53a4ff1a5ef4118a5ce6ba1760592c553abf665b37dcac5f8",
+      "size_bytes": 28935,
+      "format": "pptx",
+      "variant": "OOXML presentation",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "single-slide",
+        "drawingml-table",
+        "empty-table-cells"
+      ],
+      "annotation_path": "benchmarks/annotations/pptx-poi-table-test.json"
+    },
+    {
+      "id": "pptx-poi-testppt",
+      "title": "Three-slide attachment test presentation",
+      "topics": [
+        "presentation parser features",
+        "title and subtitle placeholders",
+        "body paragraphs"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/pptx/poi-testPPT.pptx",
+      "source_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/testPPT.pptx",
+      "download_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/testPPT.pptx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/poi/trunk/test-data/slideshow/testPPT.pptx",
+        "download_sha256": "730a6ade20208eaad375160949db37b2ffb52af4d3704b51976ff45564bff83b",
+        "download_size_bytes": 36518
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/poi/blob/trunk/legal/LICENSE",
+      "sha256": "730a6ade20208eaad375160949db37b2ffb52af4d3704b51976ff45564bff83b",
+      "size_bytes": 36518,
+      "format": "pptx",
+      "variant": "OOXML presentation",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "three-slides",
+        "centered-title-placeholder",
+        "subtitle-placeholder",
+        "body-paragraphs"
+      ],
+      "annotation_path": "benchmarks/annotations/pptx-poi-testppt.json"
+    },
+    {
+      "id": "pptx-python-pptx-test",
+      "title": "Presentation Title Text",
+      "topics": [
+        "presentation parser features",
+        "centered title placeholder",
+        "subtitle placeholder"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/pptx/python-pptx-test.pptx",
+      "source_url": "https://raw.githubusercontent.com/scanny/python-pptx/master/tests/test_files/test.pptx",
+      "download_url": "https://raw.githubusercontent.com/scanny/python-pptx/master/tests/test_files/test.pptx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/scanny/python-pptx/master/tests/test_files/test.pptx",
+        "download_sha256": "8765677cdf43181ef41657cedf28485b5f2cbf166667218c217af07f8336c96f",
+        "download_size_bytes": 37859
+      },
+      "license": "MIT",
+      "license_url": "https://github.com/scanny/python-pptx/blob/master/LICENSE",
+      "sha256": "8765677cdf43181ef41657cedf28485b5f2cbf166667218c217af07f8336c96f",
+      "size_bytes": 37859,
+      "format": "pptx",
+      "variant": "OOXML presentation",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "single-slide",
+        "centered-title-placeholder",
+        "subtitle-placeholder"
+      ],
+      "annotation_path": "benchmarks/annotations/pptx-python-pptx-test.json"
+    },
+    {
+      "id": "pptx-tika-testppt-various2",
+      "title": "Presentation feature collection with notes, media and a hidden slide",
+      "topics": [
+        "presentation parser features",
+        "speaker notes",
+        "pictures and embedded objects",
+        "tables and charts",
+        "hidden slides"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/pptx/tika-testPPT_various2.pptx",
+      "source_url": "https://github.com/apache/tika/blob/cc1eaf5317d99588b9ee90468723e407d0c72d28/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testPPT_various2.pptx",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/cc1eaf5317d99588b9ee90468723e407d0c72d28/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testPPT_various2.pptx",
+      "source_verification": {
+        "checked_at_utc": "2026-09-22T14:05:17+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/apache/tika/cc1eaf5317d99588b9ee90468723e407d0c72d28/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-microsoft-module/src/test/resources/test-documents/testPPT_various2.pptx",
+        "download_sha256": "24f56e909a0597264ca77e340c291382530f08b17bf03ead33e8c17b389a7938",
+        "download_size_bytes": 248937
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/cc1eaf5317d99588b9ee90468723e407d0c72d28/LICENSE.txt",
+      "sha256": "24f56e909a0597264ca77e340c291382530f08b17bf03ead33e8c17b389a7938",
+      "size_bytes": 248937,
+      "format": "pptx",
+      "variant": "OOXML presentation",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "ten-slides",
+        "speaker-notes",
+        "embedded-picture",
+        "drawingml-table",
+        "chart",
+        "smartart",
+        "embedded-objects",
+        "hyperlinks",
+        "hidden-slide"
+      ],
+      "annotation_path": "benchmarks/annotations/pptx-tika-testppt-various2.json"
     }
   ],
   "gaps": [
@@ -1253,7 +1638,9 @@
     "No wholly unruled standalone PDF table, mixed PDF with an entirely textless page, nonzero page-box origin, encrypted PDF or malformed PDF is confirmed.",
     "No workbook establishes leading empty columns, ragged Python rows, error cells, missing or stale formula caches, or XLSX/XLSM formula cells.",
     "No workbook establishes 1904 dates, old BIFF generations, strict OOXML, password handling, malformed archives or large sparse-sheet scaling.",
+    "No corpus DOCX establishes Strict WordprocessingML, vertical table merges, tracked-change reconstruction or embedded image handling.",
+    "No corpus PPTX establishes external pictures, grouped shapes, merged table cells, animations or transitions.",
     "Features describe inputs, not correct extraction. OCR, formula calculation, VBA execution and chart extraction are outside brewdoc acceptance.",
-    "All 105 PDF pages and 54 workbook sheets have complete annotations within their declared inspection scope. XLSB formula expressions are not decompiled; token record types, locations and cached results are inventoried. Workbook visual rendering, formula recalculation and a full binary-format conformance audit were not performed."
+    "All 105 PDF pages, 54 workbook sheets, 6 DOCX main stories and 15 PPTX slides have complete annotations within their declared inspection scope. XLSB formula expressions are not decompiled; token record types, locations and cached results are inventoried. Visual rendering, formula recalculation and full binary-format conformance audits were not performed."
   ]
 }

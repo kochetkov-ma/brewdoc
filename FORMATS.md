@@ -9,17 +9,50 @@ dependencies stay at two (`pdfplumber`, `python-calamine`): every planned format
 |---|---|---|
 | `.pdf` | pdfplumber | text layer required; anchored page units; each region routed by its own ruling |
 | `.docx` | stdlib `zipfile` + `xml.etree` | paragraphs and tables in reading order; anchored chapters retain duplicate and empty headings |
+| `.pptx` | stdlib `zipfile` + `xml.etree` | slides in declared order; text, tables, speaker notes and picture metadata placeholders |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | exact sheet selection in caller order with full-source ordinal keys; cached values in Markdown |
 
 All supported routes emit `brewdoc.markdown/2`: quoted source title, deterministic metadata,
 artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
-PDF pages, selected empty sheets, and heading-created empty DOCX chapters remain navigable.
+PDF pages, selected empty sheets, heading-created empty DOCX chapters, and declared empty or hidden
+PPTX slides remain navigable.
 
-Every receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `sheet`), its
-unit kind (`page`, `chapter`, `sheet`) and how many units were rendered. The unit kind decides the
-content keys: `page/000001`, `chapter/000001`, `sheet/000001`. A suffix brewdoc does not read is
-refused with route `none` and unit kind `none`; every other refusal keeps its route's own name and
-unit kind, with zero units.
+Every receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
+`sheet`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
+unit kind decides the content keys: `page/000001`, `chapter/000001`, `slide/000001`,
+`sheet/000001`. A suffix brewdoc does not read is refused with route `none` and unit kind `none`;
+every other refusal keeps its route's own name and unit kind, with zero units.
+
+## Container documents
+
+DOCX accepts Transitional and Strict WordprocessingML. Main-story paragraphs and tables stay in
+document order. `Title` and `Heading1` through `Heading9` start chapters. Tabs become spaces and
+line breaks are retained. Nested table text is flattened into its parent cell, and invalid or
+non-positive table spans fall back to one column. Images, headers, footers, footnotes, comments,
+tracked-change reconstruction, list formatting, style inheritance and vertical merge reconstruction
+are omitted.
+
+PPTX follows the presentation relationships and declared slide list instead of ZIP member names.
+It reads every declared slide, including hidden and empty slides. Title placeholders label units;
+slides without one use `Untitled`. Headings are `## Slide N: "<title>"`, with ordered keys such as
+`slide/000001`. The public `render_presentation` tally reports `slides`; there is no Slides metadata
+row. Shape and grouped-shape XML order controls reading order. Text keeps paragraph and run order,
+DrawingML tables keep row and cell order, and merge continuation cells stay empty. Body speaker
+notes follow slide content. Other notes placeholders are omitted.
+
+PPTX pictures use this exact metadata placeholder and never include pixels:
+
+```text
+Image: name="<name>"; size=<cx>x<cy> EMU; alt="<descr|none>"; caption="<title|none>"; source=<embedded|external>; bytes=<n|unknown>
+```
+
+Embedded picture byte counts come from the related package member. External pictures are never
+fetched. Charts, SmartArt, audio, video, embedded objects, animations, transitions,
+layout/master-only text, styling and visual positioning are omitted. Required package, presentation
+and slide relationships or XML must resolve inside the archive; malformed or missing required parts
+refuse the document. A slide may have no picture or notes relationship, but a referenced part must
+be valid. PPTX is the only supported container that promises image placeholders. DOCX images
+remain omitted.
 
 ## Workbook artifacts
 
@@ -42,20 +75,18 @@ Zero new dependencies, all stdlib. Order = implementation order, by value for ag
 
 | # | in | mechanism | output |
 |---|---|---|---|
-| 1 | `.pptx` | `zipfile` + `ppt/slides/slideN.xml`; `a:p` paragraphs, `a:tbl` tables, notes | one `## Slide N` chapter per slide |
-| 2 | `.csv` `.tsv` | `csv` | one Markdown table |
-| 3 | `.html` | `html.parser` | headings, lists, tables |
-| 4 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
-| 5 | `.epub` | `zipfile` + XHTML chapters through the html path | one chapter per spine item |
-| 6 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
-| 7 | `.eml` | `email` | headers, text body, attachment names |
+| 1 | `.csv` `.tsv` | `csv` | one Markdown table |
+| 2 | `.html` | `html.parser` | headings, lists, tables |
+| 3 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
+| 4 | `.epub` | `zipfile` + XHTML chapters through the html path | one chapter per spine item |
+| 5 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
+| 6 | `.eml` | `email` | headers, text body, attachment names |
 
-Images inside any container (pptx, docx, odt, epub, html, eml) become placeholders carrying size,
-alt text and caption. Never OCR.
+Image behavior for planned containers is not accepted yet. Never OCR.
 
-Ten planned suffixes share seven adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
-`.md` with `.txt` each pair into one module, the other four rows take one each. Nine source
-modules today, sixteen at all ten formats. Each format is its own task and follows the ordered
+Nine planned suffixes share six adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
+`.md` with `.txt` each pair into one module, the other three rows take one each. Ten source
+modules today, sixteen at all planned formats. Each format is its own task and follows the ordered
 checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
 user approval.
 

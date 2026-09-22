@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "document_id": "docx-poi-three-col-head",
+  "source_sha256": "304656fd791bd829f5cabebf8e7ec058260b669e9f572e500f69ff176387e090",
+  "title": "Two-page Word body with a Heading1 boundary",
+  "topics": [
+    "document parser features",
+    "heading boundary",
+    "related header"
+  ],
+  "language": "en",
+  "annotation_scope": "main_story",
+  "review_status": "complete",
+  "evidence_method": "The complete ZIP member list, relationships, main-story XML, header, footnotes, and endnotes were inspected with Python 3.12 zipfile and ElementTree. These are source facts, not expected Markdown.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Main document story",
+      "source_part": "word/document.xml",
+      "wordprocessingml_conformance": "Transitional",
+      "direct_body_block_order": [
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:Heading1",
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:none",
+        "paragraph:none",
+        "section_properties"
+      ],
+      "paragraph_count": 10,
+      "styled_paragraphs": [
+        {
+          "block_index": 3,
+          "style": "Heading1",
+          "text": "HEADING TEXT"
+        }
+      ],
+      "break_elements": [
+        {
+          "block_index": 9,
+          "kind": "page"
+        }
+      ],
+      "tables": []
+    }
+  ],
+  "related_omitted_content": {
+    "headers": [
+      {
+        "part": "word/header1.xml",
+        "text_regions": ["First header column!", "Mid header", "Right header!"]
+      }
+    ],
+    "footers": [],
+    "footnotes": [
+      {
+        "part": "word/footnotes.xml",
+        "substantive_notes": 0
+      }
+    ],
+    "endnotes": [
+      {
+        "part": "word/endnotes.xml",
+        "substantive_notes": 0
+      }
+    ],
+    "comments": [],
+    "drawings_in_main_story": 0,
+    "external_hyperlinks": 0
+  },
+  "resource_measurements": {
+    "archive_bytes": 12508,
+    "package_members": 14,
+    "uncompressed_member_bytes": 38812,
+    "xml_member_count": 14,
+    "xml_member_bytes": 38812,
+    "main_document_bytes": 2190,
+    "largest_member": {
+      "path": "word/styles.xml",
+      "bytes": 17768
+    }
+  },
+  "limitations": [
+    "No visual rendering or pagination reconstruction was performed.",
+    "The three header regions are recorded from source text and structure without visual coordinates."
+  ]
+}
