@@ -5,7 +5,7 @@ import re
 import pdfplumber
 import pytest
 
-from brewdoc import common, selfcheck, service
+from brewdoc import common, pdf, selfcheck, service
 
 FONT_NAME = "BDTEST+CMEX10"
 
@@ -469,6 +469,120 @@ def test_adjacent_centred_header_heads_keep_their_own_body_columns(tmp_path):
         "| OLMo | 28.3 | 12.5 | 81.4 |", "| Llama | 45.1 | 10.2 | 76.8 |",
         "| Falcon | 30.0 | 55.0 | 70.1 |",
     ], "a centred head belongs to the body column it is centred over, never to its left neighbour"
+
+
+def test_fused_header_token_keeps_body_supported_heads_and_every_character_once(tmp_path, monkeypatch):
+    # GIVEN two centred headers fused across a boundary inside the first percent glyph
+    path = tmp_path / "fused-heads.pdf"
+    commands = "".join(rule(60, y, 280) for y in (732, 690, 626))
+    commands += "".join(text_op(x, 716, value) for x, value in
+                        ((65, "Model"), (136.665, "Score"), (184.44, "Rate"),
+                         (230.275, "Risk"), (279.68, "Truth")))
+    commands += "".join(text_op(x, 696, value) for x, value in
+                        ((131.795, "0-shot +"), (178.745, "%win +"),
+                         (219.165, "% Toxic -"), (261.335, "%Info+True +")))
+    rows = [(676, "Alpha", ("11.1", "12.2", "13.3", "14.4")),
+            (656, "Beta", ("21.1", "22.2", "23.3", "24.4")),
+            (636, "Gamma", ("31.1", "32.2", "33.3", "34.4"))]
+    for y, name, values in rows:
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(centre - 9.73, y, value)
+                            for centre, value in zip((150, 195, 240, 291.63), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    source = source_lines(path)
+    assert source == ["Model Score Rate Risk Truth", "0-shot + %win + % Toxic -%Info+True +",
+                      "Alpha 11.1 12.2 13.3 14.4", "Beta 21.1 22.2 23.3 24.4",
+                      "Gamma 31.1 32.2 33.3 34.4"], "the independent source must retain both complete headers and three five-field records"
+    with pdfplumber.open(path) as document:
+        words = document.pages[0].extract_words(x_tolerance_ratio=0.2, return_chars=True)
+        fused = next(word for word in words if word["text"] == "-%Info+True")
+        left, right = [word for word in words if word["text"] in ("13.3", "14.4")]
+        boundary = (left["x1"] + right["x0"]) / 2
+        dash, percent = fused["chars"][:2]
+    assert (fused["text"], "".join(char["text"] for char in fused["chars"]),
+            round(percent["x0"] - dash["x1"], 3), round(dash["size"] * 0.2, 3),
+            round(boundary, 3), round(percent["x0"], 3), round(percent["x1"], 3),
+            round((percent["x0"] + percent["x1"]) / 2, 3)) == (
+                "-%Info+True", "-%Info+True", 0.5, 2.0, 265.815, 261.335, 270.225, 265.78,
+            ), "pdfplumber must fuse the token while the percent centre lies left of the body boundary inside its glyph"
+    ownership = []
+    logical_rows, fold_subscripts = pdf._logical_rows, pdf._fold_subscripts
+
+    def observe_rows(page, bbox, xs, table=None):
+        """Observe final cell ownership without changing the real extraction or folding."""
+        owned = []
+
+        def observe_folding(page, bbox, cell, chars):
+            """Retain each source index and original object identity at the cell boundary."""
+            owned.extend((char["_source_index"], id(char)) for char in chars)
+            return fold_subscripts(page, bbox, cell, chars)
+
+        expected = sorted((char["_source_index"], id(char)) for char in page.chars
+                          if char["text"].strip()
+                          and bbox[0] <= (char["x0"] + char["x1"]) / 2 < bbox[2]
+                          and bbox[1] <= (char["top"] + char["bottom"]) / 2 < bbox[3])
+        with monkeypatch.context() as patch:
+            patch.setattr(pdf, "_fold_subscripts", observe_folding)
+            grid = logical_rows(page, bbox, xs, table)
+        ownership.append((sorted(owned), expected))
+        return grid
+
+    monkeypatch.setattr(pdf, "_logical_rows", observe_rows)
+    # WHEN the fused word is associated with the independently established body columns
+    code, receipt, markdown = service.run(path)
+    # THEN complete headers follow their body centres and every source glyph survives once
+    assert (code, receipt["file_ok"], receipt["route"], receipt["units"], receipt["tables"],
+            receipt["text_regions"], receipt["columns_split"], receipt["broken_ligature_words"],
+            receipt["dropped"]) == (0, True, "pdf", 1, 1, 0, 0, 0, dict.fromkeys(common.DROP_KEYS, 0)), "the synthetic table must retain the exact successful PDF counters without drops"
+    assert len(ownership[0][1]) == len("".join(source).replace(" ", "")), "the observed table must own all nonspace source characters"
+    assert [owned for owned, _ in ownership] == [expected for _, expected in ownership], "every extraction must assign each original source index and char object exactly once to its final cells"
+    content = selfcheck.chapter_lines(markdown, "Page 1")
+    assert content == [
+        "| Model | Score | Rate | Risk | Truth |", "| --- | --- | --- | --- | --- |",
+        "|  | 0-shot + | %win + | % Toxic - | %Info+True + |",
+        "| Alpha | 11.1 | 12.2 | 13.3 | 14.4 |", "| Beta | 21.1 | 22.2 | 23.3 | 24.4 |",
+        "| Gamma | 31.1 | 32.2 | 33.3 | 34.4 |",
+    ], "the fused dash belongs to Risk and the whole percent glyph begins Truth without shifting any body value"
+    rendered = "\n".join(content).replace("| --- | --- | --- | --- | --- |", "")
+    assert sorted(re.sub(r"[|\s]", "", rendered)) == sorted("".join(source).replace(" ", "")), "every source character must appear once across the full rendered table"
+
+
+def test_spanning_header_token_crossing_body_boundary_stays_whole(tmp_path):
+    # GIVEN a legitimate single-word heading centred over two numeric body columns
+    path = tmp_path / "spanning-body-boundary.pdf"
+    commands = "".join(rule(60, y, 280) for y in (732, 690, 626))
+    commands += text_op(239.975, 716, "SharedRisk")
+    commands += "".join(text_op(x, 696, value) for x, value in
+                        ((65, "Model"), (136.665, "Score"), (184.44, "Rate"),
+                         (230.275, "Risk"), (279.68, "Truth")))
+    rows = [(676, "Alpha", ("11.1", "12.2", "13.3", "14.4")),
+            (656, "Beta", ("21.1", "22.2", "23.3", "24.4")),
+            (636, "Gamma", ("31.1", "32.2", "33.3", "34.4"))]
+    for y, name, values in rows:
+        commands += text_op(65, y, name)
+        commands += "".join(text_op(centre - 9.73, y, value)
+                            for centre, value in zip((150, 195, 240, 291.63), values))
+    path.write_bytes(selfcheck.synthetic_pdf([commands]))
+    assert source_lines(path) == ["SharedRisk", "Model Score Rate Risk Truth",
+                                  "Alpha 11.1 12.2 13.3 14.4", "Beta 21.1 22.2 23.3 24.4",
+                                  "Gamma 31.1 32.2 33.3 34.4"], "the source must contain one spanning word above the five-column table"
+    with pdfplumber.open(path) as document:
+        heading = next(word for word in document.pages[0].extract_words(return_chars=True)
+                       if word["text"] == "SharedRisk")
+    assert (heading["text"], round(heading["x0"], 3), round(heading["x1"], 3),
+            round((heading["x0"] + heading["x1"]) / 2, 3)) == (
+                "SharedRisk", 239.975, 291.655, 265.815,
+            ), "the indivisible source word must span and be centred over the body-column boundary"
+    # WHEN a spanning source word crosses the same independently inferred boundary
+    code, receipt, markdown = service.run(path)
+    # THEN it stays whole in one cell above the unchanged headers and body records
+    assert (code, receipt["file_ok"], receipt["tables"], receipt["text_regions"],
+            receipt["columns_split"], receipt["dropped"]) == (0, True, 1, 0, 0, dict.fromkeys(common.DROP_KEYS, 0)), "the spanning table must keep its exact counters without drops"
+    assert selfcheck.chapter_lines(markdown, "Page 1") == [
+        "|  |  |  | SharedRisk |  |", "| --- | --- | --- | --- | --- |",
+        "| Model | Score | Rate | Risk | Truth |", "| Alpha | 11.1 | 12.2 | 13.3 | 14.4 |",
+        "| Beta | 21.1 | 22.2 | 23.3 | 24.4 |", "| Gamma | 31.1 | 32.2 | 33.3 | 34.4 |",
+    ], "crossing a body boundary alone must never split a legitimate spanning header"
 
 
 def test_separate_plot_axes_do_not_turn_a_figure_legend_into_a_table(tmp_path):

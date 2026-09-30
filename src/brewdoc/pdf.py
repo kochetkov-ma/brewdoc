@@ -833,11 +833,36 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
         column = min(centres, key=lambda index: abs(centres[index] - centre), default=None)
         return column if column is not None and abs(centres[column] - centre) <= COLUMN_TOLERANCE else None
 
+    def recover_header(word, gaps):
+        """Split only one supported source gap into two complete, body-centred heads."""
+        if not inferred or headed(word) is not None:
+            return [word]
+        chars, candidates = word["chars"], []
+        for index, (left_char, right_char) in enumerate(zip(chars, chars[1:]), 1):
+            if (id(left_char), id(right_char)) not in gaps:
+                continue
+            fragments = [dict(word, chars=part, x0=min(char["x0"] for char in part),
+                              x1=max(char["x1"] for char in part), top=min(char["top"] for char in part),
+                              bottom=max(char["bottom"] for char in part))
+                         for part in (chars[:index], chars[index:])]
+            left, right = map(headed, fragments)
+            if left is not None and right == left + 1 and body_gaps[left] > height * 0.4:
+                candidates.append(fragments)
+        if len(candidates) != 1:
+            return [word]
+        for fragment in candidates[0]:
+            fragment["text"] = extract_text(fragment["chars"], x_tolerance_ratio=0.2)
+        return candidates[0]
+
     rows = []
     for band in bands:
         ordered_words = sorted(band, key=lambda item: item["x0"])
         header = horizontal and band[0]["top"] < body_top
         if header:
+            # Contiguous character edges can differ by sub-micropoint rounding residue.
+            gaps = {(id(left), id(right)) for word in ordered_words
+                    for left, right in zip(word["chars"], word["chars"][1:])
+                    if right["x0"] - left["x1"] > 1e-6}
             grouped = []
             for word in ordered_words:
                 aim = headed(grouped[-1]) if grouped else None
@@ -850,7 +875,7 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
                     grouped[-1]["chars"] += word["chars"]
                 else:
                     grouped.append(dict(word, chars=list(word["chars"])))
-            ordered_words = grouped
+            ordered_words = [fragment for word in grouped for fragment in recover_header(word, gaps)]
         middle = statistics.median((word["top"] + word["bottom"]) / 2 for word in band)
         unused = {index for index, boundary in enumerate(xs[1:-1], 1)
                   if not any(abs(edge["x0"] - boundary) <= RULE_SNAP
