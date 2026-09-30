@@ -1,25 +1,35 @@
 # Document conversion corpus
 
-[corpus.json](corpus.json) indexes 41 existing files (4,658,579 bytes) in
+[corpus.json](corpus.json) indexes 47 existing files (4,681,527 bytes) in
 [tests/fixtures](../tests/fixtures). Run examples from a repository checkout.
 Fixtures and benchmark tools are not installed by the brewdoc wheel.
 
 Browse the [file catalog](CATALOG.md) for each document's title, topics, structural features and
-pages, sheets, chapters or slides. All 41 inputs are public Internet files; none were generated for
+pages, sheets, chapters or slides. All 47 inputs are public Internet files; none were generated for
 this corpus. The [annotation and provenance contract](annotations/README.md) explains source
 evidence, download verification and remaining unknowns.
 
 For a complete run, follow the [baseline methodology](METHODOLOGY.md): freeze
-the context, capture all 41 inputs twice, compare observations and review source
+the context, capture all 47 inputs twice, compare observations and review source
 content. Immutable raw results live in `.codex/reports/<UTC>_baseline-results/`.
 Selected completed full runs have reviewed portable bundles in
 `benchmarks/results/<run-id>/`, versioned on the `benchmark` branch. Browse the
 [full-run registry](results/README.md) for summaries and actual outputs.
 
-The `core` group contains 9 government/research PDFs and 2 Census workbooks.
+The `core` group contains 9 government/research PDFs, 2 Census workbooks and
+1 Apache HTML reference.
 The `feature_probe` group contains 20 upstream Calamine parser examples and 10
-DOCX/PPTX container examples from public upstream projects. Keep group results separate. Every input
-already appears in the test suite; this is a reusable comparison set, not a held-out quality set.
+DOCX/PPTX container examples, plus 5 MDN HTML learning examples. Keep the 12 core
+and 35 feature-probe results separate. Every input already appears in the test
+suite; this is a reusable comparison set, not a held-out quality set.
+
+HTML adds three table pages, an article example, a technical reference and a form.
+Each source annotation covers one recovered body, including navigation and footer
+content. See [HTML source scope](annotations/README.md#html-body-records) for
+tables, declared controls, literal code and static exclusions. Source coverage
+does not establish format acceptance. A targeted six-HTML capture has its own
+selection and cannot count as a complete 47-input run. Historical runs retain
+their frozen manifests and recorded coverage.
 
 ## Find an input
 
@@ -101,8 +111,8 @@ selected completed full runs enter the [shared registry](results/README.md).
 Its bundles preserve Markdown bytes and document receipt/path transformations.
 Captured Markdown is an observation, not an authored expected output. Timing,
 exit status and matching hashes do not establish semantic quality. Compare the
-actual output against source pages, cells, main-story blocks or slides and retain
-review notes beside the run.
+actual output against source pages, cells, main-story blocks, slides or HTML
+bodies and retain review notes beside the run.
 The fixture receipt snapshots and synthetic unit assertions remain separate.
 
 ## Attribution
@@ -111,6 +121,12 @@ The original fixture bytes are reused without modification by this corpus.
 Keep the source and license links with redistributed inputs. Calamine examples
 retain the [MIT notice](LICENSES/calamine-MIT.txt), copyright 2016 Johann Tuffe.
 Government documents retain their individual public-domain bases in the index.
+
+The five MDN HTML learning examples use CC0-1.0; their pinned license links are
+in the index. The Apache HTTP Server reference retains its
+[Apache-2.0 license](LICENSES/apache-httpd-LICENSE.txt) and
+[upstream NOTICE](LICENSES/apache-httpd-NOTICE.txt), copyright 2026 The Apache
+Software Foundation. The original HTML keeps its attribution footer.
 
 The three research papers are licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):

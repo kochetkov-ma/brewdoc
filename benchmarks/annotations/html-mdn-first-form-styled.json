@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "document_id": "html-mdn-first-form-styled",
+  "source_sha256": "cd7c192dc6e230737064e053f92947a5159e82e72cd8740d2529c4f1a8abad06",
+  "title": "Your first HTML form, styled",
+  "topics": [
+    "static HTML source features",
+    "labels",
+    "declared-input-types",
+    "textarea",
+    "submit-button",
+    "inert-form-metadata"
+  ],
+  "language": "en",
+  "annotation_scope": "full_body",
+  "review_status": "complete",
+  "evidence_method": "Original HTML was read in full. Selectolax 0.4.13 Lexbor inspected the recovered body, implicit table row groups and decoded source text on CPython 3.12.14. Manual review checked element order, whole tables, spans, controls, code and exclusions. No brewdoc renderer was run.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Recovered HTML body",
+      "source_part": "body",
+      "body_element_order": [
+        {
+          "tag": "form",
+          "attributes": {
+            "action": "/my-handling-form-page",
+            "method": "post"
+          }
+        }
+      ],
+      "headings": [],
+      "paragraph_count": 4,
+      "list_count": 0,
+      "list_item_count": 0,
+      "link_count": 0,
+      "tables": [],
+      "forms": [
+        {
+          "attributes": {
+            "action": "/my-handling-form-page",
+            "method": "post"
+          }
+        }
+      ],
+      "controls": [
+        {
+          "tag": "label",
+          "attributes": {
+            "for": "name"
+          },
+          "source_text": "Name:"
+        },
+        {
+          "tag": "input",
+          "attributes": {
+            "type": "text",
+            "id": "name",
+            "name": "user_name"
+          },
+          "source_text": ""
+        },
+        {
+          "tag": "label",
+          "attributes": {
+            "for": "mail"
+          },
+          "source_text": "E-mail:"
+        },
+        {
+          "tag": "input",
+          "attributes": {
+            "type": "email",
+            "id": "mail",
+            "name": "user_mail"
+          },
+          "source_text": ""
+        },
+        {
+          "tag": "label",
+          "attributes": {
+            "for": "msg"
+          },
+          "source_text": "Message:"
+        },
+        {
+          "tag": "textarea",
+          "attributes": {
+            "id": "msg",
+            "name": "user_message"
+          },
+          "source_text": ""
+        },
+        {
+          "tag": "button",
+          "attributes": {
+            "type": "submit"
+          },
+          "source_text": "Send your message"
+        }
+      ],
+      "code": [],
+      "navigation_and_content_regions": [],
+      "images": [],
+      "excluded_source_objects": {
+        "script_elements": 0,
+        "style_elements": 1,
+        "comment_nodes": 0,
+        "template_elements": 0,
+        "source_hidden_elements": 0,
+        "svg_geometry_elements": 0,
+        "browser_created_controls": 0
+      }
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 1966,
+    "tables": 0,
+    "source_table_rows": 0,
+    "source_table_cells": 0,
+    "source_controls": 4,
+    "pre_blocks": 0,
+    "inline_code_elements": 0
+  },
+  "omissions": [
+    "Head metadata and comments do not contribute visible body text.",
+    "External stylesheets, computed style, browser layout and script execution were not inspected.",
+    "Embedded stylesheet source is excluded from visible content."
+  ],
+  "limitations": [
+    "No browser rendering or interactive state was inspected.",
+    "Counts and decoded source text describe the input, not adapter output or semantic acceptance."
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "document_id": "html-mdn-timetable-caption",
+  "source_sha256": "4bd40caabd196b48506000f053e59836409fa97961e6c9a3939961c2e2fd7db7",
+  "title": "School timetable",
+  "topics": [
+    "static HTML source features",
+    "caption",
+    "row-headers",
+    "colgroup",
+    "nonbreaking-space-cells",
+    "implicit-tbody"
+  ],
+  "language": "en",
+  "annotation_scope": "full_body",
+  "review_status": "complete",
+  "evidence_method": "Original HTML was read in full. Selectolax 0.4.13 Lexbor inspected the recovered body, implicit table row groups and decoded source text on CPython 3.12.14. Manual review checked element order, whole tables, spans, controls, code and exclusions. No brewdoc renderer was run.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Recovered HTML body",
+      "source_part": "body",
+      "body_element_order": [
+        {
+          "tag": "h1",
+          "attributes": {}
+        },
+        {
+          "tag": "table",
+          "attributes": {}
+        }
+      ],
+      "headings": [
+        {
+          "level": 1,
+          "text": "School timetable"
+        }
+      ],
+      "paragraph_count": 0,
+      "list_count": 0,
+      "list_item_count": 0,
+      "link_count": 0,
+      "tables": [
+        {
+          "index": 1,
+          "caption": "Florence's weekly lesson timetable",
+          "source_row_count": 5,
+          "expanded_columns": 8,
+          "source_cell_count": 40,
+          "source_cells_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "recovered_row_groups": [
+            "tbody"
+          ],
+          "declared_row_groups": [],
+          "source_cell_rows": [
+            [
+              " ",
+              "Mon",
+              "Tues",
+              "Wed",
+              "Thurs",
+              "Fri",
+              "Sat",
+              "Sun"
+            ],
+            [
+              "1st period",
+              "English",
+              " ",
+              " ",
+              "German",
+              "Dutch",
+              " ",
+              " "
+            ],
+            [
+              "2nd period",
+              "English",
+              "English",
+              " ",
+              "German",
+              "Dutch",
+              " ",
+              " "
+            ],
+            [
+              "3rd period",
+              " ",
+              "German",
+              " ",
+              "German",
+              "Dutch",
+              " ",
+              " "
+            ],
+            [
+              "4th period",
+              " ",
+              "English",
+              " ",
+              "English",
+              "Dutch",
+              " ",
+              " "
+            ]
+          ],
+          "spans": [],
+          "cell_metadata": []
+        }
+      ],
+      "forms": [],
+      "controls": [],
+      "code": [],
+      "navigation_and_content_regions": [],
+      "images": [],
+      "excluded_source_objects": {
+        "script_elements": 0,
+        "style_elements": 1,
+        "comment_nodes": 0,
+        "template_elements": 0,
+        "source_hidden_elements": 0,
+        "svg_geometry_elements": 0,
+        "browser_created_controls": 0
+      }
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 2089,
+    "tables": 1,
+    "source_table_rows": 5,
+    "source_table_cells": 40,
+    "source_controls": 0,
+    "pre_blocks": 0,
+    "inline_code_elements": 0
+  },
+  "omissions": [
+    "Head metadata and comments do not contribute visible body text.",
+    "External stylesheets, computed style, browser layout and script execution were not inspected.",
+    "Embedded stylesheet source is excluded from visible content."
+  ],
+  "limitations": [
+    "No browser rendering or interactive state was inspected.",
+    "Counts and decoded source text describe the input, not adapter output or semantic acceptance."
+  ]
+}

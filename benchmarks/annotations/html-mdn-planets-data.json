@@ -1,0 +1,488 @@
+{
+  "schema_version": 1,
+  "document_id": "html-mdn-planets-data",
+  "source_sha256": "c6026ae2b296ecd13926b139d65bbe60aa20efeb542a8d7e0993651c780ea215",
+  "title": "Planets data",
+  "topics": [
+    "static HTML source features",
+    "caption",
+    "rowgroup-header",
+    "rowspan",
+    "colspan",
+    "superscript-data",
+    "unicode-degree-sign",
+    "external-links",
+    "empty-cells"
+  ],
+  "language": "en",
+  "annotation_scope": "full_body",
+  "review_status": "complete",
+  "evidence_method": "Original HTML was read in full. Selectolax 0.4.13 Lexbor inspected the recovered body, implicit table row groups and decoded source text on CPython 3.12.14. Manual review checked element order, whole tables, spans, controls, code and exclusions. No brewdoc renderer was run.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Recovered HTML body",
+      "source_part": "body",
+      "body_element_order": [
+        {
+          "tag": "h1",
+          "attributes": {}
+        },
+        {
+          "tag": "table",
+          "attributes": {}
+        }
+      ],
+      "headings": [
+        {
+          "level": 1,
+          "text": "Planets data"
+        }
+      ],
+      "paragraph_count": 0,
+      "list_count": 0,
+      "list_item_count": 0,
+      "link_count": 2,
+      "tables": [
+        {
+          "index": 1,
+          "caption": "Data about the planets of our solar system (Planetary facts taken from Nasa's Planetary Fact Sheet - Metric).",
+          "source_row_count": 10,
+          "expanded_columns": 12,
+          "source_cell_count": 106,
+          "source_cells_per_row": [
+            11,
+            11,
+            10,
+            10,
+            10,
+            12,
+            10,
+            11,
+            10,
+            11
+          ],
+          "recovered_row_groups": [
+            "thead",
+            "tbody"
+          ],
+          "declared_row_groups": [
+            "thead",
+            "tbody"
+          ],
+          "source_cell_rows": [
+            [
+              "",
+              "Name",
+              "Mass (1024kg)",
+              "Diameter (km)",
+              "Density (kg/m3)",
+              "Gravity (m/s2)",
+              "Length of day (hours)",
+              "Distance from Sun (106km)",
+              "Mean temperature (°C)",
+              "Number of moons",
+              "Notes"
+            ],
+            [
+              "Terrestrial planets",
+              "Mercury",
+              "0.330",
+              "4,879",
+              "5427",
+              "3.7",
+              "4222.6",
+              "57.9",
+              "167",
+              "0",
+              "Closest to the Sun"
+            ],
+            [
+              "Venus",
+              "4.87",
+              "12,104",
+              "5243",
+              "8.9",
+              "2802.0",
+              "108.2",
+              "464",
+              "0",
+              ""
+            ],
+            [
+              "Earth",
+              "5.97",
+              "12,756",
+              "5514",
+              "9.8",
+              "24.0",
+              "149.6",
+              "15",
+              "1",
+              "Our world"
+            ],
+            [
+              "Mars",
+              "0.642",
+              "6,792",
+              "3933",
+              "3.7",
+              "24.7",
+              "227.9",
+              "-65",
+              "2",
+              "The red planet"
+            ],
+            [
+              "Jovian planets",
+              "Gas giants",
+              "Jupiter",
+              "1898",
+              "142,984",
+              "1326",
+              "23.1",
+              "9.9",
+              "778.6",
+              "-110",
+              "67",
+              "The largest planet"
+            ],
+            [
+              "Saturn",
+              "568",
+              "120,536",
+              "687",
+              "9.0",
+              "10.7",
+              "1433.5",
+              "-140",
+              "62",
+              ""
+            ],
+            [
+              "Ice giants",
+              "Uranus",
+              "86.8",
+              "51,118",
+              "1271",
+              "8.7",
+              "17.2",
+              "2872.5",
+              "-195",
+              "27",
+              ""
+            ],
+            [
+              "Neptune",
+              "102",
+              "49,528",
+              "1638",
+              "11.0",
+              "16.1",
+              "4495.1",
+              "-200",
+              "14",
+              ""
+            ],
+            [
+              "Dwarf planets",
+              "Pluto",
+              "0.0146",
+              "2,370",
+              "2095",
+              "0.7",
+              "153.3",
+              "5906.4",
+              "-225",
+              "5",
+              "Declassified as a planet in 2006, but this remains controversial."
+            ]
+          ],
+          "spans": [
+            {
+              "source_row": 1,
+              "source_cell": 1,
+              "text": "",
+              "declared_rowspan": null,
+              "declared_colspan": "2"
+            },
+            {
+              "source_row": 2,
+              "source_cell": 1,
+              "text": "Terrestrial planets",
+              "declared_rowspan": "4",
+              "declared_colspan": "2"
+            },
+            {
+              "source_row": 6,
+              "source_cell": 1,
+              "text": "Jovian planets",
+              "declared_rowspan": "4",
+              "declared_colspan": null
+            },
+            {
+              "source_row": 6,
+              "source_cell": 2,
+              "text": "Gas giants",
+              "declared_rowspan": "2",
+              "declared_colspan": null
+            },
+            {
+              "source_row": 8,
+              "source_cell": 1,
+              "text": "Ice giants",
+              "declared_rowspan": "2",
+              "declared_colspan": null
+            },
+            {
+              "source_row": 10,
+              "source_cell": 1,
+              "text": "Dwarf planets",
+              "declared_rowspan": null,
+              "declared_colspan": "2"
+            }
+          ],
+          "cell_metadata": [
+            {
+              "source_row": 1,
+              "source_cell": 1,
+              "tag": "td",
+              "attributes": {
+                "colspan": "2"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 2,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 3,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 4,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 5,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 6,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 7,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 8,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 9,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 10,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 1,
+              "source_cell": 11,
+              "tag": "th",
+              "attributes": {
+                "scope": "col"
+              }
+            },
+            {
+              "source_row": 2,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "rowspan": "4",
+                "colspan": "2",
+                "scope": "rowgroup"
+              }
+            },
+            {
+              "source_row": 2,
+              "source_cell": 2,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 3,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 4,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 5,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 6,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "rowspan": "4",
+                "scope": "rowgroup"
+              }
+            },
+            {
+              "source_row": 6,
+              "source_cell": 2,
+              "tag": "th",
+              "attributes": {
+                "rowspan": "2",
+                "scope": "rowgroup"
+              }
+            },
+            {
+              "source_row": 6,
+              "source_cell": 3,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 7,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 8,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "rowspan": "2",
+                "scope": "rowgroup"
+              }
+            },
+            {
+              "source_row": 8,
+              "source_cell": 2,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 9,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 10,
+              "source_cell": 1,
+              "tag": "th",
+              "attributes": {
+                "colspan": "2",
+                "scope": "row"
+              }
+            },
+            {
+              "source_row": 10,
+              "source_cell": 2,
+              "tag": "th",
+              "attributes": {
+                "scope": "row"
+              }
+            }
+          ]
+        }
+      ],
+      "forms": [],
+      "controls": [],
+      "code": [],
+      "navigation_and_content_regions": [],
+      "images": [],
+      "excluded_source_objects": {
+        "script_elements": 0,
+        "style_elements": 0,
+        "comment_nodes": 0,
+        "template_elements": 0,
+        "source_hidden_elements": 0,
+        "svg_geometry_elements": 0,
+        "browser_created_controls": 0
+      }
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 4302,
+    "tables": 1,
+    "source_table_rows": 10,
+    "source_table_cells": 106,
+    "source_controls": 0,
+    "pre_blocks": 0,
+    "inline_code_elements": 0
+  },
+  "omissions": [
+    "Head metadata and comments do not contribute visible body text.",
+    "External stylesheets, computed style, browser layout and script execution were not inspected."
+  ],
+  "limitations": [
+    "No browser rendering or interactive state was inspected.",
+    "Counts and decoded source text describe the input, not adapter output or semantic acceptance."
+  ]
+}

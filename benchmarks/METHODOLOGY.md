@@ -2,10 +2,17 @@
 
 Run from the repository checkout with its prepared Python 3.12 environment.
 Use [corpus.json](corpus.json) and [capture_results.py](capture_results.py).
-Do not install or discover tools during measurement. The corpus contains 41
-inputs: 11 `core` documents and 30 `feature_probe` documents. Select all 41;
+Do not install or discover tools during measurement. The corpus contains 47
+inputs: 12 `core` documents and 35 `feature_probe` documents. Select all 47;
 report the groups separately. These inputs are also test fixtures, not a
 held-out evaluation set.
+
+A targeted HTML run selects the six `format: html` records and records that
+selection explicitly. Its 12 capture locations are a partial corpus run.
+Complete current runs have 94 locations. Historical runs retain their own
+frozen manifests, input counts and results; this expansion does not alter them.
+Coordinate quiet timing windows under the active task's resource protocol.
+Concurrent heavy checks cannot establish performance acceptance.
 
 ## Freeze the context
 
@@ -145,8 +152,8 @@ label them cold/warm measurements or infer a speed improvement from two values.
 
 ## Compare observations
 
-First check all 82 capture locations, helper exits, tool statuses and
-`capture_errors`. A command exit of zero does not override incomplete capture.
+For a complete current run, check all 94 capture locations, helper exits, tool
+statuses and `capture_errors`. A command exit of zero does not override incomplete capture.
 Verify hashes of saved artifacts before review. Keep scan refusals and other
 failures visible in the result table.
 
@@ -168,11 +175,20 @@ for these two runs, not content quality or correctness on other documents.
 ## Review source content and report results
 
 Review every input against its emitted Markdown or refusal. Use PDF page numbers, workbook sheet
-names and cell/range coordinates, DOCX main-story blocks and chapter labels, or PPTX slide numbers
+names and cell/range coordinates, DOCX main-story blocks and chapter labels, PPTX slide numbers
 and package objects. Check source text, table headers and values, reading order, empty areas, dates,
 merged regions, notes and pictures where relevant. Record exactly which source locations were
 inspected; sampled evidence does not establish complete fidelity across uninspected content.
 Do not invent expected Markdown or edit observed output to match a judgment.
+
+For HTML, use the body chapter, element order, full source table rows and spans,
+declared controls and labels, code text, navigation, images and footer evidence.
+Distinguish original source cells from expanded table dimensions. Check literal
+code and meaningful Unicode against the source, using the accepted format's
+documented layout fallbacks. Missing attributes stay absent; script-created
+controls, computed style and interaction state are outside static-body review.
+The [HTML annotation contract](annotations/README.md#html-body-records) records
+these limits. Corpus readiness does not establish adapter or runtime acceptance.
 
 Assign a separate quality judgment with a concrete rationale:
 
@@ -205,7 +221,7 @@ is the authoritative raw evidence and remains unchanged. A reviewed, portable
 bundle in `benchmarks/results/<run-id>/` is versioned on the `benchmark` branch;
 the [full-run registry](results/README.md) links its summary and actual outputs.
 
-Select a completed full run explicitly for sharing. It must account for all 41
+Select a completed full run explicitly for sharing. It must account for all 47
 inputs in every pass, including refusals and failures, and retain provenance,
 source identity, output-integrity checks and source-based quality review.
 Quality failures belong in the bundle; a green quality verdict is not required.
