@@ -856,7 +856,7 @@ def test_ascii_configured_cli_stdout_matches_api_and_utf8_file_bytes(tmp_path):
     assert (api_rc, api_line, api_markdown, out.read_bytes(), completed.returncode,
             completed.stdout, completed.stderr) == (
         0, expected_receipt(path, out, 1), expected, expected.encode("utf-8"), 0,
-        expected_stdout + b'\n' + expected.encode("utf-8"), b"",
+        expected_stdout + os.linesep.encode("ascii") + expected.encode("utf-8"), b"",
     ), "ASCII-configured CLI output must deliberately preserve exact ordered HTML UTF-8 bytes"
 
 
