@@ -1,6 +1,6 @@
 [project]
 name = "brewdoc"
-version = "0.1.0"
+version = "0.2.0"
 description = "Brew any document into LLM-ready Markdown: PDF tables, spreadsheets, docx - no ML, deterministic, with a JSON receipt"
 readme = "README.md"
 license = "MIT"
