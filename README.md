@@ -10,16 +10,15 @@ silent gap for "the document does not say so".
 
 | channel | command |
 |---|---|
-| pip | `pip install brewdoc` |
-| uvx | `uvx brewdoc file.pdf` |
-| uv tool | `uv tool install brewdoc` |
-| Homebrew | `brew install kochetkov-ma/brew/brewdoc` |
-| Docker | `RUN pip install brewdoc==0.1.0` |
+| pip | `pip install brewdoc==0.2.0` |
+| uvx | `uvx brewdoc==0.2.0 file.pdf` |
+| uv tool | `uv tool install brewdoc==0.2.0` |
+| Docker | `RUN pip install brewdoc==0.2.0` |
 
 Alternative, straight from git (no PyPI round-trip):
 
 ```
-uvx --from git+https://github.com/kochetkov-ma/brewdoc brewdoc file.pdf
+uvx --from git+https://github.com/kochetkov-ma/brewdoc@v0.2.0 brewdoc file.pdf
 ```
 
 Requires Python >= 3.12. Base runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
