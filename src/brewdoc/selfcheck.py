@@ -9,6 +9,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+import brewdoc.htmltext as htmltext
 from brewdoc.common import (UNIT_COUNTERS, _escape_markdown_text, cell_text, markdown_table,
                             new_tally, sanitise, sha256)
 from brewdoc.docx import render_doc
@@ -328,6 +329,33 @@ def self_check() -> int:
         rc, line, _ = run(Path(tmp, "absent.pdf"))
         want("a missing file names the path", (rc, line["reason"]),
              (EXIT_FAIL, "no such file: %s" % Path(tmp, "absent.pdf")))
+
+        html_path = Path(tmp, "fixture.html")
+        html_path.write_bytes('<title>Static HTML</title><p>café 東京</p><table><tr><th>Zone</th>'
+                              '<th>Area</th></tr><tr><td>North</td><td>12.5</td></tr></table>'.encode("utf-8"))
+        rc, line, html_md = run(html_path)
+        if htmltext._SUPPORTED_RUNTIME:
+            want("HTML's native parser is available on supported CPython",
+                 (rc, line["file_ok"], line["route"], line["unit_kind"], line["units"]),
+                 (EXIT_OK, True, "html", "chapter", 1))
+            if rc == EXIT_OK:
+                want("HTML preserves Unicode prose and complete table cells",
+                     chapter_lines(html_md, "Static HTML"),
+                     ["café 東京", "| Zone | Area |", "| --- | --- |", r"| North | 12\.5 |"])
+                want("HTML counts its chapter, table and prose",
+                     (line["units"], line["tables"], line["text_regions"], line["unit_keys"]),
+                     (1, 1, 1, ["chapter/000001"]))
+                html_out = Path(tmp, "html.md")
+                second_rc, second_line, second_md = run(html_path, out=html_out)
+                want("HTML writes deterministic UTF-8 without a BOM",
+                     (second_rc, second_line["file_ok"], second_md,
+                      html_out.read_bytes() if second_rc == EXIT_OK else None),
+                     (EXIT_OK, True, html_md, html_md.encode("utf-8")))
+        else:
+            want("an unsupported HTML runtime explicitly refuses its static route",
+                 (rc, line["file_ok"], line["route"], line["unit_kind"], line["units"],
+                  line["reason"], html_md),
+                 (EXIT_FAIL, False, "html", "chapter", 0, "HTML requires CPython 3.12-3.14", ""))
 
     for failure in failures:
         print("FAIL %s" % failure)

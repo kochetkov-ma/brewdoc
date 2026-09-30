@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "document_id": "html-mdn-document-structure",
+  "source_sha256": "8623d0ff8d0696128844a2315d8c23840cf839d52fab09fcd06eabb3e5e966ec",
+  "title": "My page title",
+  "topics": [
+    "static HTML source features",
+    "full-body-order",
+    "navigation",
+    "article-sections",
+    "aside",
+    "footer",
+    "search-input",
+    "submit-input",
+    "unicode-text"
+  ],
+  "language": "en",
+  "annotation_scope": "full_body",
+  "review_status": "complete",
+  "evidence_method": "Original HTML was read in full. Selectolax 0.4.13 Lexbor inspected the recovered body, implicit table row groups and decoded source text on CPython 3.12.14. Manual review checked element order, whole tables, spans, controls, code and exclusions. No brewdoc renderer was run.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Recovered HTML body",
+      "source_part": "body",
+      "body_element_order": [
+        {
+          "tag": "header",
+          "attributes": {}
+        },
+        {
+          "tag": "nav",
+          "attributes": {}
+        },
+        {
+          "tag": "main",
+          "attributes": {}
+        },
+        {
+          "tag": "footer",
+          "attributes": {}
+        }
+      ],
+      "headings": [
+        {
+          "level": 1,
+          "text": "Header"
+        },
+        {
+          "level": 2,
+          "text": "Article heading"
+        },
+        {
+          "level": 3,
+          "text": "Subsection"
+        },
+        {
+          "level": 3,
+          "text": "Another subsection"
+        },
+        {
+          "level": 2,
+          "text": "Related"
+        }
+      ],
+      "paragraph_count": 6,
+      "list_count": 2,
+      "list_item_count": 9,
+      "link_count": 9,
+      "tables": [],
+      "forms": [
+        {
+          "attributes": {}
+        }
+      ],
+      "controls": [
+        {
+          "tag": "input",
+          "attributes": {
+            "type": "search",
+            "name": "q",
+            "placeholder": "Search query"
+          },
+          "source_text": ""
+        },
+        {
+          "tag": "input",
+          "attributes": {
+            "type": "submit",
+            "value": "Go!"
+          },
+          "source_text": ""
+        }
+      ],
+      "code": [],
+      "navigation_and_content_regions": [
+        {
+          "tag": "header",
+          "attributes": {},
+          "heading_text": [
+            "Header"
+          ],
+          "link_count": 0
+        },
+        {
+          "tag": "nav",
+          "attributes": {},
+          "heading_text": [],
+          "link_count": 4
+        },
+        {
+          "tag": "article",
+          "attributes": {},
+          "heading_text": [
+            "Article heading",
+            "Subsection",
+            "Another subsection"
+          ],
+          "link_count": 0
+        },
+        {
+          "tag": "aside",
+          "attributes": {},
+          "heading_text": [
+            "Related"
+          ],
+          "link_count": 5
+        },
+        {
+          "tag": "footer",
+          "attributes": {},
+          "heading_text": [],
+          "link_count": 0
+        }
+      ],
+      "images": [],
+      "excluded_source_objects": {
+        "script_elements": 0,
+        "style_elements": 0,
+        "comment_nodes": 6,
+        "template_elements": 0,
+        "source_hidden_elements": 0,
+        "svg_geometry_elements": 0,
+        "browser_created_controls": 0
+      }
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 3525,
+    "tables": 0,
+    "source_table_rows": 0,
+    "source_table_cells": 0,
+    "source_controls": 2,
+    "pre_blocks": 0,
+    "inline_code_elements": 0
+  },
+  "omissions": [
+    "Head metadata and comments do not contribute visible body text.",
+    "External stylesheets, computed style, browser layout and script execution were not inspected."
+  ],
+  "limitations": [
+    "No browser rendering or interactive state was inspected.",
+    "Counts and decoded source text describe the input, not adapter output or semantic acceptance.",
+    "The article is an upstream teaching example with filler prose, not a production editorial page."
+  ]
+}

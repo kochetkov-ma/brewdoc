@@ -93,6 +93,96 @@
   "unit_kind": "chapter",
   "units": 1
  },
+ "html/apache-httpd-allowmethods.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 2,
+  "text_regions": 46,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "html/mdn-document-structure.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 0,
+  "text_regions": 23,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "html/mdn-first-form-styled.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 0,
+  "text_regions": 11,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "html/mdn-items-sold-headers.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 1,
+  "text_regions": 2,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "html/mdn-planets-data.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 1,
+  "text_regions": 2,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "html/mdn-timetable-caption.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 1,
+  "text_regions": 2,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
  "ods/calamine-any_sheets.ods": {
   "artifacts": [],
   "file_ok": true,

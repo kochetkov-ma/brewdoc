@@ -1,8 +1,8 @@
 # brewdoc
 
-Document to Markdown for agent systems: PDF, Word, PPTX presentations and spreadsheets in, one
-Markdown file plus a JSON receipt out. Small (~45 MB installed), fast (0.08 s import), no models,
-no OCR, no network, deterministic (same file, same bytes). The receipt says what was rendered,
+Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets and static
+HTML in, one Markdown file plus a JSON receipt out. No models, no OCR, no network,
+deterministic (same file, same bytes). The receipt says what was rendered,
 what was dropped and what the route structurally cannot carry, so an agent never mistakes a
 silent gap for "the document does not say so".
 
@@ -22,14 +22,24 @@ Alternative, straight from git (no PyPI round-trip):
 uvx --from git+https://github.com/kochetkov-ma/brewdoc brewdoc file.pdf
 ```
 
-Requires Python >= 3.12. Runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
-cryptography) and `python-calamine`.
+Requires Python >= 3.12. Base runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
+cryptography) and `python-calamine`. HTML requires CPython 3.12-3.14 and the native Lexbor
+parser from this exact conditional dependency:
+
+```text
+selectolax==0.4.13; python_version < '3.15' and platform_python_implementation == 'CPython'
+```
+
+Other runtimes retain the `.html` route and Python API but explicitly refuse HTML. On supported
+CPython, a missing or broken parser is an environment failure and `--self-check` exits 1.
+On an unsupported HTML runtime, self-check verifies HTML refusal and checks all other formats.
 
 ## Usage
 
 ```
 brewdoc file.pdf --out file.md
 brewdoc slides.pptx --out slides.md
+brewdoc page.html --out page.md
 brewdoc file.xlsx                # no --out: receipt line, then the Markdown, on stdout
 brewdoc file.xlsx --sheet Calc --sheet Inputs
 brewdoc file.xlsm --artifact formula/sheet/000002=formulas.json
@@ -44,7 +54,8 @@ output collision before writing.
 
 Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,
 Artifacts, Known omissions, Contents, then anchored content units. PDF keys are `page/000001`,
-workbook keys are `sheet/000001`, DOCX keys are `chapter/000001`, and PPTX keys are `slide/000001`.
+workbook keys are `sheet/000001`, DOCX keys are `chapter/000001`, PPTX keys are `slide/000001`,
+and HTML has one `chapter/000001`.
 Metadata contains deterministic source identity, selection, content hashes, conversion tallies, and
 artifact capabilities. It excludes paths, timestamps, permissions, host data, and unsupported author
 metadata.
@@ -70,9 +81,9 @@ One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omi
 | key | meaning |
 |---|---|
 | `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
-| `route` | which reader ran: `pdf`, `doc`, `presentation` or `sheet` |
+| `route` | which reader ran: `pdf`, `doc`, `presentation`, `sheet` or `html` |
 | `source` | the input file name, without its directory |
-| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
+| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX and HTML, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
 | `tables`, `text_regions`, `columns_split` | what else was rendered |
 | `receipt_schema` | the receipt key contract; `brewdoc.receipt/1` replaced the per-format `pages` and `sheets` counters |
 | `broken_ligature_words` | words with a ligature the font mapped to a stray code point, folded to ASCII, not repaired |
@@ -94,15 +105,31 @@ Exit code is non-zero on refusal; the receipt line is still printed.
 | `.docx` | stdlib zip + XML | paragraphs and tables |
 | `.pptx` | stdlib zip + XML | slides in declared order; text, tables, notes and picture metadata |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | selected sheets keep full-source ordinals; numbers as stored (`85.0`), dates as ISO days |
+| `.html` | selectolax Lexbor | full static body or fragment, complete tables and source-declared controls; CPython 3.12-3.14 |
 
 `.xlsx` and `.xlsm` expose original OOXML formulas as one deterministic JSON artifact per
 formula-bearing selected sheet. Markdown still contains cached values. `.xlsm` and `.xlsb` can expose
 one complete related `vbaProject.bin` as opaque bytes. brewdoc does not execute macros, decompile VBA,
 report source-module counts, evaluate formulas, or infer dependency graphs.
 
-The public Python API exposes presentation rendering and generic workbook artifact access:
+HTML reads local strict UTF-8, with an optional BOM. It preserves meaningful Unicode, navigation,
+main content, sidebars and footers in recovered DOM order. It never fetches links or resources,
+executes scripts, submits forms or infers interactive values. Links use a restricted scheme policy;
+form actions remain inert metadata. Inline code outside tables becomes a literal fenced block;
+surrounding emphasis and links remain balanced. Safe links in literal code and around code/images
+retain destination records without changing the source literals. Table-cell code uses labelled
+escaped text. Quotes and list items containing standalone child blocks use explicit nesting
+boundaries in place of visual Markdown
+containers. Plain list paragraphs retain their item marker and continuation indentation.
+See [HTML scope and limits](FORMATS.md#static-html).
+
+The public Python API exposes HTML and presentation rendering and generic workbook artifact access:
 
 ```python
+import brewdoc
+
+markdown, tally = brewdoc.render_html("page.html")
+code, receipt, markdown = brewdoc.run("page.html", out="page.md")
 markdown, tally = brewdoc.render_presentation("slides.pptx")
 refs = brewdoc.list_book_artifacts("book.xlsm", sheets=("Calc",))
 payload = brewdoc.read_book_artifact("book.xlsm", refs[0].key, sheets=("Calc",))
@@ -114,7 +141,7 @@ code, receipt, markdown = brewdoc.run(
 
 `artifact_outputs` maps artifact keys to paths. The CLI builds it from repeated `--artifact KEY=PATH`.
 
-Planned formats (all stdlib, zero new dependencies), deferred ones and the never-list: `FORMATS.md`.
+Planned formats, deferred ones and the never-list: `FORMATS.md`.
 A planned format is refused by name today. The adapter contract and the ordered checklist for
 adding one are in [`docs/architecture.md`](docs/architecture.md).
 
@@ -147,10 +174,15 @@ PDF regions, in the order tried:
 
 ## Determinism
 
-No timestamps, no set iteration, no dict ordering. Two renders of one file have the same sha256;
-`--self-check` pins it. Output is ASCII.
+No timestamps or unordered iteration. Two renders of one file have the same sha256;
+`--self-check` pins it. PDF, DOCX, PPTX and workbook output remains ASCII. HTML Markdown uses
+UTF-8 without BOM and LF newlines, with the same bytes in the API, file output and CLI stdout.
+Receipt JSON keeps ASCII escaping.
 
 ## Size and speed
+
+These measurements cover the existing PDF/workbook baseline before the HTML parser addition.
+They do not measure HTML conversion or the new installed footprint.
 
 | measure | value |
 |---|---|

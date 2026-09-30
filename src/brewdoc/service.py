@@ -8,6 +8,7 @@ from pathlib import Path
 
 from brewdoc.common import MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route, new_tally
 from brewdoc.docx import ROUTE as DOC_ROUTE
+from brewdoc.htmltext import ROUTE as HTML_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
 from brewdoc.pdf import ROUTE as PDF_ROUTE
 from brewdoc.pptx import ROUTE as PRESENTATION_ROUTE
@@ -29,7 +30,7 @@ def _route_map(*routes: Route) -> dict[str, Route]:
     return table
 
 
-ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE)
+ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE, HTML_ROUTE)
 SUFFIXES = " ".join(sorted(ROUTES))
 NO_ROUTE = Route("none", "none", (), None, ())
 
@@ -94,7 +95,8 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dic
         unknown = [key for key in keys if key not in listed]
         if unknown:
             raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
-        payloads = ((markdown.encode("ascii"),) if out is not None else ()) + _artifact_payloads(
+        payloads = ((markdown.encode("utf-8" if route.name == "html" else "ascii"),)
+                    if out is not None else ()) + _artifact_payloads(
             path, sheets, references, keys)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""

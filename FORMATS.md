@@ -1,7 +1,8 @@
 # Formats
 
-What brewdoc reads today, what is planned, what is deferred and what it will never do. Runtime
-dependencies stay at two (`pdfplumber`, `python-calamine`): every planned format is stdlib only.
+What brewdoc reads today, what is planned, what is deferred and what it will never do. Base runtime
+dependencies are `pdfplumber` and `python-calamine`. Static HTML adds one conditional native parser;
+other formats retain the two-dependency policy.
 
 ## Supported
 
@@ -11,6 +12,7 @@ dependencies stay at two (`pdfplumber`, `python-calamine`): every planned format
 | `.docx` | stdlib `zipfile` + `xml.etree` | paragraphs and tables in reading order; anchored chapters retain duplicate and empty headings |
 | `.pptx` | stdlib `zipfile` + `xml.etree` | slides in declared order; text, tables, speaker notes and picture metadata placeholders |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | exact sheet selection in caller order with full-source ordinal keys; cached values in Markdown |
+| `.html` | selectolax Lexbor | local static body or fragment in DOM order; one anchored chapter; CPython 3.12-3.14 only |
 
 All supported routes emit `brewdoc.markdown/2`: quoted source title, deterministic metadata,
 artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
@@ -18,10 +20,93 @@ PDF pages, selected empty sheets, heading-created empty DOCX chapters, and decla
 PPTX slides remain navigable.
 
 Every receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
-`sheet`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
+`sheet`, `html`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
 unit kind decides the content keys: `page/000001`, `chapter/000001`, `slide/000001`,
 `sheet/000001`. A suffix brewdoc does not read is refused with route `none` and unit kind `none`;
 every other refusal keeps its route's own name and unit kind, with zero units.
+
+## Static HTML
+
+HTML requires CPython 3.12-3.14 and this exact marked dependency:
+
+```text
+selectolax==0.4.13; python_version < '3.15' and platform_python_implementation == 'CPython'
+```
+
+Brewdoc's overall Python requirement remains `>=3.12`. The `.html` suffix and `render_html`
+API remain registered on other runtimes and explicitly refuse with route `html`, kind `chapter`,
+zero units, empty Markdown and no output writes. Self-check verifies this refusal and all old
+formats. A missing or broken native parser on supported CPython is an environment failure:
+HTML refuses and self-check exits 1. There is no alternate parser.
+
+Read the full recovered body or fragment, including navigation, main content, sidebars and footer.
+The first nonempty recovered head title labels `chapter/000001`; otherwise use `Untitled`.
+Only `.html` is accepted. Input must be strict UTF-8, optionally prefixed by a UTF-8 BOM.
+Charset declarations in the first 1,024 bytes after the BOM must name `utf-8` or `utf8`;
+malformed, unknown, conflicting or non-UTF-8 declarations refuse. Invalid bytes are not repaired.
+HTML preserves meaningful Unicode and emits UTF-8 without BOM, with LF newlines. Other routes
+retain ASCII output. HTML has no artifacts.
+
+Headings, prose, lists and emphasis retain recovered DOM order. Preformatted code preserves
+literal angle brackets, ampersands, newlines, tabs and repeated spaces in a fence longer than
+any source backtick run. Inline code outside tables uses the same fenced-block fallback at its
+reading-order position, omitting inline layout. Table-cell code uses `Code: text="..."` with
+escaped literal data, omitting monospace layout. Literal LF, tab and CR in cell code and quoted
+control metadata become `&#10;`, `&#9;` and `&#13;` after escaping source ampersands.
+Emphasis and safe links balance separately around each nonempty text segment across a fence.
+Code-only emphasis adds no delimiter paragraphs. A safe anchor enclosing only literal code or
+image placeholders retains its destination once as `[Link target](destination)` after that content.
+Ordinary text links and existing cell links around code/images get no duplicate fallback.
+Safe anchors consumed inside code/pre retain labelled records after the literal representation:
+`[Link target](destination); text="..."`. Records keep recovered source order in body paragraphs
+or the same table cell. Labels preserve Unicode, repeated spaces and decoded characters with
+the quoted literal escaping above, including escaped source quotes. Retained literal whitespace
+is data; an anchor without retained characters is empty. Hidden/excluded, unsafe/missing-target
+or empty anchors add no record.
+Each body target paragraph counts once in `text_regions`; cell target fragments add no regions
+or tables. Each consumed source anchor adds one record; separate anchors with identical URLs
+stay distinct. Nested code/pre do not duplicate those records.
+Quotes use matching `Quote (level N):` and `End quote (level N).` paragraphs around their
+children, preserving nested scopes and order without Markdown blockquote layout.
+
+Plain list items emit their marker once; later paragraphs use blank lines and continuation
+indentation. Items containing a standalone fence, table/caption, control record, image placeholder
+or quote use `List item (level N, marker "-"):` and `End list item (level N).` boundaries.
+Ordered markers retain their number. Affected ancestor items use the same scopes so all child
+blocks stay enclosed in DOM order. Plain nested items inside a labelled scope use indentation
+relative to that scope; unaffected lists keep normal Markdown layout. Each emitted paragraph,
+literal block, control or link-target record counts once, including list continuations.
+List/quote boundary labels and empty or delimiter-only fragments add no text regions.
+
+Tables keep captions and recovered row/cell order across head, body and foot sections. Spans
+expand into a rectangular grid with origin content once and empty continuations. Nested tables
+stay inside their parent cell as labelled row/column records with origin coordinates and spans.
+Controls preserve source-declared fields, values and boolean attribute presence in fixed-order
+records. Forms, labels, fieldsets, buttons, inputs, textarea/output, every select option and
+datalist suggestion, progress/meter and details/summary stay in source order. Closed details,
+unselected options and disabled controls remain present. Missing attributes are `unspecified`;
+supplied empty strings remain empty. Browser defaults and current user values are not inferred.
+Supplied password/file input values are redacted; hidden inputs are omitted explicitly.
+
+Only HTTP, HTTPS, mailto, relative and fragment link targets become links after normalized scheme
+checks. Other targets are inert text; form actions and overrides always remain inert metadata.
+Images preserve supplied alt/title and source category in a placeholder without pixels or fetching.
+Data, unsupported and missing image targets are omitted. Source Markdown/HTML is escaped;
+source IDs never become output anchors.
+
+Comments, head content, scripts, styles, templates and active embeds are excluded. Direct `hidden`,
+`aria-hidden="true"`, effective inline `display:none` or `visibility:hidden` exclude whole
+subtrees. Inline declarations respect supported values, order and `!important`; external and
+embedded stylesheets are not evaluated. Unknown nonexcluded elements retain useful children.
+SVG title/description/text, canvas fallback and body noscript text remain available. Omissions
+name graphical SVG, canvas pixels, MathML semantics, active media and dynamic browser content.
+This is static source conversion, not browser-complete extraction.
+
+Limits are inclusive; exceeding one refuses before writing output. MiB is 1,048,576 bytes:
+8 MiB raw input, depth 256 (recovered root at 1), 200,000 recovered elements including excluded
+subtrees, 1 MiB UTF-8 per decoded attribute, 32 MiB included decoded text before whitespace
+reduction, 100,000 total span-expanded table positions including nested tables, and 64 MiB final
+UTF-8 Markdown including the envelope. Postparse checks do not guarantee native-parser memory safety.
 
 ## Container documents
 
@@ -71,22 +156,22 @@ not change Markdown bytes.
 ## Planned
 
 Planned means not readable today: every suffix below is refused by name, and the receipt says so.
-Zero new dependencies, all stdlib. Order = implementation order, by value for agents.
+No further parser dependency is planned. Each format requires its own acceptance task.
+Order = implementation order, by value for agents.
 
 | # | in | mechanism | output |
 |---|---|---|---|
 | 1 | `.csv` `.tsv` | `csv` | one Markdown table |
-| 2 | `.html` | `html.parser` | headings, lists, tables |
-| 3 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
-| 4 | `.epub` | `zipfile` + XHTML chapters through the html path | one chapter per spine item |
-| 5 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
-| 6 | `.eml` | `email` | headers, text body, attachment names |
+| 2 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
+| 3 | `.epub` | `zipfile` + XHTML chapters; parser reuse requires separate acceptance | one chapter per spine item |
+| 4 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
+| 5 | `.eml` | `email` | headers, text body, attachment names |
 
 Image behavior for planned containers is not accepted yet. Never OCR.
 
-Nine planned suffixes share six adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
-`.md` with `.txt` each pair into one module, the other three rows take one each. Ten source
-modules today, sixteen at all planned formats. Each format is its own task and follows the ordered
+Eight planned suffixes share five adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
+`.md` with `.txt` each pair into one module, the other two rows take one each. Eleven source
+modules including HTML, sixteen at all planned formats. Each format is its own task and follows the ordered
 checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
 user approval.
 

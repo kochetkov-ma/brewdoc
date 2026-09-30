@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
-        description="Render a PDF, a Word document, a presentation or a spreadsheet as "
+        description="Render a PDF, a Word document, a presentation, a spreadsheet or static HTML as "
                     "deterministic, sanitised, LLM-readable "
                     "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
                     "a Markdown table, an unlined captioned table is cropped then read, other "
@@ -42,7 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "section per sheet, using only the --sheet names when given. A .docx becomes "
                     "one anchored '## Chapter N: \"<heading>\"' section per Word heading and "
                     "keeps its tables. A .pptx becomes one anchored "
-                    "'## Slide N: \"<title>\"' section per declared slide.",
+                    "'## Slide N: \"<title>\"' section per declared slide. Static .html becomes one "
+                    "chapter and requires CPython 3.12-3.14 with selectolax 0.4.13. Other runtimes "
+                    "explicitly refuse HTML; a missing or broken parser on supported CPython "
+                    "fails HTML conversion and self-check.",
         epilog="Both paths may be absolute or relative; a relative one is resolved against the "
                "current working directory, never against this script's location, and --out "
                "creates its parent directories. "
@@ -52,8 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
                "Without --out the Markdown follows that line on stdout."
                % SUFFIXES)
     parser.add_argument("document", nargs="?",
-                        help="the .pdf, .docx, .pptx or spreadsheet to render")
-    parser.add_argument("--out", help="write the Markdown here (ASCII); default stdout")
+                        help="the .pdf, .docx, .pptx, .html or spreadsheet to render")
+    parser.add_argument("--out", help="write Markdown here (HTML UTF-8, other formats ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
     parser.add_argument("--artifact", action="append",
@@ -82,7 +85,11 @@ def main(argv=None) -> int:
             args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
-        sys.stdout.write(markdown)
+        if line["route"] == "html" and hasattr(sys.stdout, "buffer"):
+            sys.stdout.flush()
+            sys.stdout.buffer.write(markdown.encode("utf-8"))
+        else:
+            sys.stdout.write(markdown)
     return rc
 
 

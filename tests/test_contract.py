@@ -13,7 +13,7 @@ import brewdoc
 from brewdoc import common, selfcheck, service
 from brewdoc.cli import main
 
-from test_fixtures import RECEIPTS, SUPPORTED, fixture_files, sources_rows
+from test_fixtures import HTML_SUPPORTED, RECEIPTS, SUPPORTED, fixture_files, sources_rows
 
 OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -190,8 +190,25 @@ def test_public_api_is_exactly_the_package_exports():
     assert exports == [
         "ArtifactRef", "BrewdocError", "CellFormula", "FormulaArtifact", "__version__",
         "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
-        "render_doc", "render_pdf", "render_presentation", "run", "self_check",
+        "render_doc", "render_html", "render_pdf", "render_presentation", "run", "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
+
+
+@pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+def test_public_html_wrapper_and_uppercase_suffix_keep_exact_utf8_output(tmp_path):
+    # GIVEN a synthetic Unicode source under an uppercase registered suffix
+    path, out = tmp_path / "document.HTML", tmp_path / "document.md"
+    path.write_bytes('<p>café 東京</p>'.encode("utf-8"))
+    assert out.exists() is False, "the API equivalence destination must start absent"
+    # WHEN the public wrapper and generic service render the same source
+    api_markdown, tally = brewdoc.render_html(path)
+    rc, line, markdown = brewdoc.run(path, out)
+    # THEN the wrapper, route, exact tally and output bytes describe the same Unicode chapter
+    assert (rc, line["route"], line["unit_kind"], line["units"], tally,
+            selfcheck.chapter_lines(api_markdown, "Untitled"), markdown, out.read_bytes()) == (
+        0, "html", "chapter", 1, {**zero_tally(), "chapters": 1, "text_regions": 1},
+        ["café 東京"], api_markdown, api_markdown.encode("utf-8"),
+    ), "render_html must share the registered case-insensitive route and lossless file output"
 
 
 def test_two_routes_claiming_one_suffix_are_refused_when_the_suffix_map_is_folded():
@@ -280,7 +297,7 @@ def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
         pytest.param(
             "brief.doc", lambda path: path.write_bytes(b"\xd0\xcf\x11\xe0"), "none",
             "unsupported suffix '.doc' in {path}: brewdoc reads "
-            ".docx .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
+            ".docx .html .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
         pytest.param("absent.pdf", lambda path: None, "pdf", "no such file: {path}",
                      id="missing-file"),
     ],

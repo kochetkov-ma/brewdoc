@@ -339,7 +339,7 @@ NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
 def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
                    unit_keys: tuple[str, ...], body: str, tally: dict) -> list[tuple[str, str]]:
     source, suffix = path.read_bytes(), path.suffix.lower()
-    body_bytes = body.encode("ascii")
+    body_bytes = body.encode("utf-8" if route == "html" else "ascii")
     rows = [
         ("Markdown schema", MARKDOWN_SCHEMA),
         ("Source name", '"%s"' % _escape_markdown_text(path.name)),

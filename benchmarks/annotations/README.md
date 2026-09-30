@@ -20,11 +20,13 @@ formats and local hashes retain their meanings. Added fields are:
 | `sha256`, `size_bytes` | Identity of the stored input bytes, independent of the current remote response. |
 | `annotation_path` | Repository-relative path to an existing annotation bound to the same input hash. |
 
-All 41 current inputs are `public`; none were generated for this corpus. The
+All 47 current inputs are `public`; none were generated for this corpus. The
 20 Calamine examples and 10 document or presentation examples are public
-upstream fixtures. Their `feature_probe` group is separate from provenance.
-The `core` group holds 11 original documents. All inputs already appear in the
-test suite, so neither group is held out.
+upstream fixtures. Five MDN HTML examples use
+`origin_kind: upstream_learning_example`. Their `feature_probe` group is
+separate from provenance.
+The `core` group holds 12 original documents, including the Apache HTML reference.
+All inputs already appear in the test suite, so neither group is held out.
 Private company documents and private source-derived test shapes are prohibited.
 
 A source match requires a completed HTTP 200 GET with both hash and size equal
@@ -41,10 +43,11 @@ Annotation `schema_version` is 1. Required document fields are `document_id`,
 `review_status`, `limitations`, and exactly one of `pages`, `sheets`, `chapters`
 or `slides`.
 `document_id` and `source_sha256` must match the manifest. Enumerate every
-page, sheet, main-story chapter or declared slide in source order, including
+page, sheet, main-story chapter, declared slide or HTML body in source order, including
 empty sheets, image-only pages, hidden slides and empty slides.
 
-`annotation_scope` is `all_pages`, `all_sheets`, `main_story` or `all_slides`.
+`annotation_scope` is `all_pages`, `all_sheets`, `main_story`, `all_slides` or
+`full_body` for HTML.
 `review_status` is `complete` or `partial`; state what was inspected and what
 remains uncertain.
 Completeness refers to the declared annotation work. It does not imply successful
@@ -108,6 +111,29 @@ must not silently claim exhaustive visual absence. Preserve limitations such
 as scanned text, unparsed chart parts, incomplete formula metadata and glyphs
 that cannot be identified reliably. Source excerpts and cell examples are
 locators for review, not authored expected conversion output.
+
+## HTML body records
+
+Each HTML annotation has one `chapters` entry for the recovered body or fragment,
+with `annotation_scope: full_body`. Preserve navigation, article, aside and footer
+order. Record whole tables with source row/cell counts, decoded cell text,
+spans, header attributes and expanded column count. Source counts and expanded
+dimensions are different facts; record implicit recovered row groups separately
+from declared wrappers.
+
+Controls retain their declared attributes and source text, including labels,
+form metadata and absent attributes. Literal code records preserve decoded data,
+newlines, tabs and meaningful spaces. Identify its source location in prose,
+preformatted content or table cells; these records do not prescribe Markdown
+layout. Images remain metadata; targets are not fetched.
+
+Record exclusions for head content, comments, scripts, styles, explicitly hidden
+subtrees and graphical SVG geometry. Preserve SVG title/desc/text and other
+source-declared fallback text when present. Do not infer external CSS, browser-created controls,
+interaction values or computed disabled state. Limitations state the inspection
+method and its uncertainty. These six sources do not cover every control,
+encoding refusal, malformed tree or resource boundary; synthetic unit cases
+remain separate. `complete` describes source inspection, not successful conversion.
 
 ## Future generated cases
 
