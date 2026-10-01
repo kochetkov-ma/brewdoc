@@ -4,12 +4,59 @@ from pathlib import Path
 import pytest
 
 import brewdoc
+from test_contract import NOT_APPLICABLE, schema_two, zero_tally
 
 
 TRANSITIONAL = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 STRICT = "http://purl.oclc.org/ooxml/wordprocessingml/main"
 PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
 OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+@pytest.mark.parametrize("namespace", [TRANSITIONAL, STRICT], ids=["transitional", "strict"])
+def test_docx_ignores_near_match_namespaces_inside_valid_word_body(tmp_path, namespace):
+    # GIVEN a valid Word body containing lookalike paragraphs and text namespaces
+    source = ('<n:p xmlns:n="%s/"><n:r><n:t>wrong paragraph</n:t></n:r></n:p>' % namespace
+              + '<w:p><w:r><w:t>kept</w:t><n:t xmlns:n="%s/">wrong text</n:t>' % namespace
+              + '<w:T>wrong case</w:T><t>unqualified</t></w:r></w:p>')
+    path = docx(tmp_path / "namespaces.docx", source, namespace)
+    assert path.is_file() is True, "namespace coverage must use a readable synthetic package"
+    # WHEN the public adapter follows exact expanded WordprocessingML names
+    markdown, counts = brewdoc.render_doc(path)
+    # THEN only exact namespace and local-name matches become rendered text
+    assert (body(markdown), counts) == (
+        '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\nkept\n',
+        {**zero_tally(), "chapters": 1, "text_regions": 1},
+    ), "namespace suffixes, unqualified tags and different local-name case must stay excluded"
+
+
+def test_empty_docx_body_keeps_one_empty_chapter_and_exact_success_receipt(tmp_path):
+    # GIVEN an empty main-story body with no heading or paragraph
+    path = docx(tmp_path / "empty.docx", "")
+    out = tmp_path / "empty.md"
+    omissions = ["images, charts and the text drawn inside them",
+                 "tracked changes, comments, footnotes, headers and footers",
+                 "a table's own formatting - only its cells, row by row"]
+    expected = schema_two(
+        path, '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n',
+        **NOT_APPLICABLE, name="empty\\.docx", suffix=".docx", route="doc", unit="chapter",
+        count=1, keys="chapter/000001", pages=0, sheets=0, chapters=1, tables=0, text_regions=0,
+        omissions="\n".join("- " + item for item in omissions).replace(" - only", " \\- only"),
+        contents='- [Chapter 1: "Body"](#brewdoc-chapter-000001)')
+    receipt = {"file_ok": True, "route": "doc", "source": "empty.docx", "out": str(out),
+               "reason": "doc rendered: 1 chapters, 0 tables, 0 text regions, 0 column splits",
+               "receipt_schema": "brewdoc.receipt/1", "unit_kind": "chapter", "units": 1,
+               "tables": 0, "text_regions": 0, "columns_split": 0, "broken_ligature_words": 0,
+               "dropped": zero_tally()["dropped"], "not_carried": omissions, "artifacts": [],
+               "markdown_schema": "brewdoc.markdown/2", "unit_keys": ["chapter/000001"]}
+    assert out.exists() is False, "the empty-document output must start absent"
+    # WHEN both adapter and service render the empty document
+    rendered = brewdoc.render_doc(path)
+    result = brewdoc.run(path, out)
+    # THEN the empty Body chapter is navigable and counted without a text region
+    assert (rendered, result, out.read_bytes()) == (
+        (expected, {**zero_tally(), "chapters": 1}), (0, receipt, expected), expected.encode("ascii"),
+    ), "empty DOCX must preserve complete metadata, body hashes, receipt and output bytes"
 
 
 def package(path: Path, members: dict[str, str | bytes]) -> Path:

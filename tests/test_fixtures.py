@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from brewdoc import common, service
+from brewdoc import service
 
 # Every test here opens a real document, so the whole module stays out of the fast gate.
 pytestmark = pytest.mark.corpus
@@ -47,6 +47,7 @@ HTML_FIXTURES = fixture_files((".html",))
 
 
 def snapshot(rc: int, line: dict) -> dict:
+    """Keep selected receipt fields; successful snapshots add navigation and artifacts."""
     keys = SNAPSHOT_KEYS[line["file_ok"]]
     return {"rc": rc, "file_ok": line["file_ok"], **{key: line[key] for key in keys}}
 
@@ -62,13 +63,14 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, tmp_
     # GIVEN a real document of a supported format and its recorded receipt
     path = FIXTURES / rel
     out = tmp_path / (path.name + ".md")
+    assert out.exists() is False, "the legacy destination must start absent"
     # WHEN it is rendered twice
     rc, line, first = service.run(path, out)
     second = service.run(path)[2]
-    # THEN it exits 0 with exactly the recorded receipt, and both renders share one sha256
+    # THEN the selected receipt fields match and both renders preserve exact ASCII bytes
     assert snapshot(rc, line) == RECEIPTS[rel], "receipt drifted for %s: %s" % (rel, line["reason"])
-    assert common.sha256(first) == common.sha256(second), "the render of %s is not deterministic" % rel
-    assert out.read_text(encoding="ascii") == first, "--out must hold the same bytes run() returns"
+    assert (second.encode("ascii"), out.read_bytes()) == (first.encode("ascii"), first.encode("ascii")), (
+        "both renders and --out must preserve identical ASCII bytes for %s" % rel)
 
 
 @pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
@@ -120,6 +122,8 @@ def test_the_scanned_patent_is_refused_by_name():
 def test_every_planned_format_fixture_is_refused_by_suffix_today():
     # GIVEN every real document of a format the reader plans but does not read yet
     planned = fixture_files(PLANNED)
+    assert {Path(rel).suffix.lower() for rel in planned} == set(PLANNED), (
+        "the planned corpus must cover all eight refused suffixes")
     # WHEN each one is read
     refused = {rel: refusal(rel) for rel in planned}
     # THEN one table holds every refusal, so a new supported suffix cannot churn per-file cases
@@ -140,8 +144,11 @@ def test_every_fixture_has_a_sources_row_with_its_sha256_and_size():
     # GIVEN the files on disk and the provenance table
     on_disk = {rel: (hashlib.sha256((FIXTURES / rel).read_bytes()).hexdigest(),
                      (FIXTURES / rel).stat().st_size) for rel in fixture_files()}
+    rows = sources_rows()
+    paths = [row["path"] for row in rows]
+    assert len(paths) == len(set(paths)), "each fixture path must have exactly one provenance row"
     # WHEN the table is read back
-    recorded = {row["path"]: (row["sha256"], int(row["size"])) for row in sources_rows()}
+    recorded = {row["path"]: (row["sha256"], int(row["size"])) for row in rows}
     # THEN both sides hold the same paths, hashes and sizes
     assert recorded == on_disk, "SOURCES.md must name every fixture with its current sha256 and size"
 

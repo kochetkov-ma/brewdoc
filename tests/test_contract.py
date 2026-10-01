@@ -1,5 +1,7 @@
+import copy
 import hashlib
 import importlib.metadata
+import inspect
 import json
 import os
 import subprocess
@@ -116,6 +118,15 @@ def zero_tally() -> dict:
                 "non_ascii_replaced": 0}}
 
 
+def nonzero_tally() -> dict:
+    """Give every counter a distinct starting value to expose accidental resets."""
+    return {"pages": 1, "sheets": 2, "chapters": 3, "slides": 4, "tables": 5,
+            "text_regions": 6, "columns_split": 7, "broken_ligature_words": 8, "dropped": {
+                "control_chars": 9, "soft_hyphens": 10, "nbsp": 11, "pua_glyphs": 12,
+                "cid_survivors": 13, "ligatures": 14, "running_heads": 15, "page_numbers": 16,
+                "non_ascii_replaced": 17}}
+
+
 def text_op(x: int, y: int, text: str) -> str:
     """Return one 10 pt text-showing operator at (x, y)."""
     return "BT /F1 10 Tf 1 0 0 1 %s %s Tm (%s) Tj ET\n" % (x, y, text)
@@ -192,6 +203,36 @@ def test_public_api_is_exactly_the_package_exports():
         "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
         "render_doc", "render_html", "render_pdf", "render_presentation", "run", "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("run", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                 ("out", inspect.Parameter.POSITIONAL_OR_KEYWORD, None),
+                 ("sheets", inspect.Parameter.KEYWORD_ONLY, None),
+                 ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None))),
+        *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
+          for name in ("render_pdf", "render_doc", "render_presentation", "render_html")),
+        *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                  ("sheets", inspect.Parameter.KEYWORD_ONLY, None)))
+          for name in ("render_book", "list_book_artifacts", "read_formulas")),
+        ("read_book_artifact", (
+            ("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+            ("key", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+            ("sheets", inspect.Parameter.KEYWORD_ONLY, None))),
+        ("self_check", ()),
+    ],
+)
+def test_public_functions_preserve_positional_and_keyword_call_contracts(name, expected):
+    # GIVEN an exported callable whose parameter names, kinds and defaults are public
+    function = getattr(brewdoc, name)
+    assert name in brewdoc.__all__, "the compatibility check must cover a declared export"
+    # WHEN its Python call signature is inspected
+    parameters = tuple((item.name, item.kind, item.default)
+                       for item in inspect.signature(function).parameters.values())
+    # THEN positional callers and optional keyword arguments retain their exact contract
+    assert parameters == expected, "public parameter kinds and defaults must remain compatible"
 
 
 @pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
@@ -339,6 +380,106 @@ def test_the_sanitiser_folds_to_ascii_and_counts_every_loss(raw, text, broken, d
     ), "a loss is counted and named, never silent or guessed back"
 
 
+@pytest.mark.parametrize("keep_layout", [False, True], ids=["normal", "fixed-layout"])
+@pytest.mark.parametrize(
+    ("raw", "normal", "fixed", "cid_count"),
+    [
+        pytest.param("", "", "", 0, id="empty"),
+        pytest.param("(cid:190)", "", "", 1, id="cid-only"),
+        pytest.param("(cid:190)(cid:2)", "", "", 2, id="multiple-cid-only"),
+        pytest.param("a  (cid:190)(cid:2)  b", "a b", "a    b", 2, id="multiple-in-text"),
+        pytest.param("a(cid:abc)(cid:190b", "a(cid:abc)(cid:190b", "a(cid:abc)(cid:190b",
+                     0, id="unmatched"),
+    ],
+)
+def test_sanitiser_cid_boundaries_preserve_all_existing_counts(
+        raw, normal, fixed, cid_count, keep_layout):
+    # GIVEN a complete tally with nonzero counts, including earlier CID losses
+    tally = nonzero_tally()
+    expected = {**nonzero_tally(), "dropped": {**nonzero_tally()["dropped"],
+                                             "cid_survivors": 13 + cid_count}}
+    # WHEN empty or marker-bearing text is sanitised in the requested layout mode
+    actual = common.sanitise(raw, tally, keep_layout=keep_layout)
+    # THEN only complete CID markers affect counts, and layout handling remains exact
+    assert (actual, tally) == ((normal, fixed)[keep_layout], expected), (
+        "empty and CID-only paths must preserve every counter and the selected whitespace policy"
+    )
+
+
+@pytest.mark.parametrize("keep_layout", [False, True], ids=["normal", "fixed-layout"])
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        pytest.param(None, "expected string or bytes-like object, got 'NoneType'", id="none"),
+        pytest.param(b"", "cannot use a string pattern on a bytes-like object", id="bytes"),
+        pytest.param(0, "expected string or bytes-like object, got 'int'", id="integer"),
+    ],
+)
+def test_sanitiser_invalid_text_raises_before_changing_counts(raw, message, keep_layout):
+    # GIVEN ordinary invalid text and an otherwise complete tally
+    tally = nonzero_tally()
+    # WHEN the annotated text domain is violated
+    with pytest.raises(TypeError) as raised:
+        common.sanitise(raw, tally, keep_layout=keep_layout)
+    # THEN the original exception and all existing counts survive unchanged
+    assert (type(raised.value), str(raised.value), tally) == (TypeError, message, nonzero_tally()), (
+        "invalid text must fail before either word or CID counts change"
+    )
+
+
+@pytest.mark.parametrize("keep_layout", [False, True], ids=["normal", "fixed-layout"])
+@pytest.mark.parametrize("missing", ["dropped", "broken_ligature_words"])
+def test_sanitiser_missing_top_level_counter_fails_without_mutation(missing, keep_layout):
+    # GIVEN an ordinary tally missing one required top-level counter
+    tally = nonzero_tally()
+    tally.pop(missing)
+    expected = copy.deepcopy(tally)
+    # WHEN even empty text is passed with an incomplete tally
+    with pytest.raises(KeyError) as raised:
+        common.sanitise("", tally, keep_layout=keep_layout)
+    # THEN the missing key is reported before any count changes
+    assert (type(raised.value), str(raised.value), tally) == (KeyError, f"'{missing}'", expected), (
+        "missing top-level counters must preserve the original dictionary state"
+    )
+
+
+@pytest.mark.parametrize("keep_layout", [False, True], ids=["normal", "fixed-layout"])
+def test_sanitiser_missing_cid_counter_retains_the_prior_word_increment(keep_layout):
+    # GIVEN a complete tally except for the CID counter
+    tally = nonzero_tally()
+    tally["dropped"].pop("cid_survivors")
+    expected = copy.deepcopy(tally)
+    expected["broken_ligature_words"] = 9
+    # WHEN a broken word is counted before the missing CID counter is accessed
+    with pytest.raises(KeyError) as raised:
+        common.sanitise("dišerent(cid:190)", tally, keep_layout=keep_layout)
+    # THEN the KeyError preserves the already completed word count
+    assert (type(raised.value), str(raised.value), tally) == (KeyError, "'cid_survivors'", expected), (
+        "counter validation must preserve the established word-before-CID update order"
+    )
+
+
+@pytest.mark.parametrize("keep_layout", [False, True], ids=["normal", "fixed-layout"])
+@pytest.mark.parametrize(
+    ("container", "counter", "expected_broken"),
+    [("top", "broken_ligature_words", "invalid"), ("dropped", "cid_survivors", 9)],
+)
+def test_sanitiser_nonnumeric_counter_retains_exact_partial_state(
+        container, counter, expected_broken, keep_layout):
+    # GIVEN an ordinary dictionary containing one string counter
+    tally = nonzero_tally()
+    {"top": tally, "dropped": tally["dropped"]}[container][counter] = "invalid"
+    expected = copy.deepcopy(tally)
+    expected["broken_ligature_words"] = expected_broken
+    # WHEN the counter is incremented for text carrying both loss classes
+    with pytest.raises(TypeError) as raised:
+        common.sanitise("dišerent(cid:190)", tally, keep_layout=keep_layout)
+    # THEN the exception and completed earlier increments are unchanged
+    assert (type(raised.value), str(raised.value), tally) == (
+        TypeError, 'can only concatenate str (not "int") to str', expected,
+    ), "invalid counters must fail at their original update without resetting other state"
+
+
 def test_running_heads_and_page_numbers_are_dropped_and_counted(tmp_path):
     # GIVEN three pages sharing one running head and carrying their own page numbers
     lines = "".join(text_op(72, 700 - 14 * line, "body line %d of this page" % line)
@@ -379,6 +520,46 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
         0, "usage: brewdoc [-h] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
            "[--self-check] [document]",
     ), "the CLI surface must expose repeatable sheet and artifact requests"
+
+
+def test_cli_without_a_document_returns_usage_two_on_stdout(monkeypatch, capsys):
+    # GIVEN a wide, colourless terminal and no document or self-check request
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("PYTHON_COLORS", "0")
+    # WHEN the CLI entry is invoked without arguments
+    code = main([])
+    captured = capsys.readouterr()
+    # THEN usage is the entire stdout, stderr is empty and the return value is two
+    assert (code, captured.out, captured.err) == (
+        2, "usage: brewdoc [-h] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
+           "[--self-check] [document]\n", "",
+    ), "an omitted document must keep the non-raising stdout usage contract"
+
+
+def test_unexpected_route_error_returns_the_full_refusal_and_preserves_output(tmp_path, monkeypatch):
+    # GIVEN a readable PDF and an existing destination that a failing route must not publish
+    path = pdf(tmp_path / "document.pdf", text_op(72, 700, "hello"))
+    out = tmp_path / "document.md"
+    out.write_bytes(b"previous Markdown\n")
+
+    def fail_render(_path, _sheets):
+        """Simulate an unexpected parser exception outside the BrewdocError wrapper."""
+        raise ValueError("synthetic parser failure")
+
+    monkeypatch.setitem(service.ROUTES, ".pdf", common.Route(
+        "pdf", "page", (".pdf",), fail_render, tuple(PDF_NOT_CARRIED)))
+    # WHEN the generic service reaches the failing route
+    result = brewdoc.run(path, out)
+    # THEN the defensive envelope is complete and the earlier destination is untouched
+    assert (result, out.read_bytes(), sorted(item.name for item in tmp_path.iterdir())) == (
+        (1, {"file_ok": False, "route": "pdf",
+             "reason": f"pdf unreadable: {path}: ValueError: synthetic parser failure",
+             "source": "document.pdf", "out": None, "receipt_schema": "brewdoc.receipt/1",
+             "unit_kind": "page", "units": 0, "tables": 0, "text_regions": 0,
+             "columns_split": 0, "dropped": zero_tally()["dropped"],
+             "broken_ligature_words": 0, "not_carried": PDF_NOT_CARRIED}, ""),
+        b"previous Markdown\n", ["document.md", "document.pdf"],
+    ), "unexpected route errors must return a full failure receipt before any output transaction"
 
 
 @pytest.mark.parametrize(

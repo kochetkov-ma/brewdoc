@@ -3,10 +3,12 @@
 Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets and static
 HTML in, one Markdown file plus a JSON receipt out. No models, no OCR, no network,
 deterministic (same file, same bytes). The receipt says what was rendered,
-what was dropped and what the route structurally cannot carry, so an agent never mistakes a
-silent gap for "the document does not say so".
+what was dropped and what the route structurally cannot carry.
 
 ## Install
+
+PyPI publication of 0.2.0 is pending. The commands below apply once it is published.
+For installation now, use the exact Git tag command below the table.
 
 | channel | command |
 |---|---|
@@ -15,7 +17,7 @@ silent gap for "the document does not say so".
 | uv tool | `uv tool install brewdoc==0.2.0` |
 | Docker | `RUN pip install brewdoc==0.2.0` |
 
-Alternative, straight from git (no PyPI round-trip):
+Install from the exact Git tag:
 
 ```
 uvx --from git+https://github.com/kochetkov-ma/brewdoc@v0.2.0 brewdoc file.pdf
@@ -59,7 +61,7 @@ Metadata contains deterministic source identity, selection, content hashes, conv
 artifact capabilities. It excludes paths, timestamps, permissions, host data, and unsupported author
 metadata.
 
-One JSON receipt line always goes to stdout first (wrapped here, `unit_keys` omitted):
+For a conversion request, one JSON receipt line goes to stdout first (wrapped here, `unit_keys` omitted):
 
 ```json
 {"artifacts": [], "broken_ligature_words": 0, "columns_split": 1,
@@ -149,7 +151,7 @@ PDF regions, in the order tried:
 | region looks like | rendered as |
 |---|---|
 | ruled on all sides | Markdown table from the drawn ruling |
-| ruling unfinished (cells never closed) | re-read on the grid the ruling implies, kept only when it carries more text than the drawn ruling did |
+| ruling unfinished (cells never closed) | source baselines recovered as logical rows on the inferred structural grid |
 | ruled across only (head and foot rules) | column grid from the rule segment ends |
 | unruled, tabular band | layout-preserved text |
 | unruled, captioned `Table N` | the band is bounded first (caption to next blank band), then read as a table |

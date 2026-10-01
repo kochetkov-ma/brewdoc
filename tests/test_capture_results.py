@@ -56,6 +56,9 @@ def test_success_retains_binary_streams_command_and_artifact_hashes(capture_args
     assert 0 <= result["elapsed_seconds"] < 10, "elapsed time must measure the bounded command"
     assert result["stdout"] == {"path": "stdout.bin", "sha256": hashlib.sha256(b"out\x00\xff").hexdigest(),
                                 "size_bytes": 5}, "stdout hashes must cover undecoded bytes"
+    assert (result["stderr"], result["capture_errors"]) == (
+        {"path": "stderr.bin", "sha256": hashlib.sha256(b"err\xfe").hexdigest(), "size_bytes": 4}, [],
+    ), "stderr metadata must cover every binary byte and success must have no capture errors"
     assert (tmp_path / "captured run" / "stdout.bin").read_bytes() == b"out\x00\xff", "stdout bytes must survive unchanged"
     assert (tmp_path / "captured run" / "stderr.bin").read_bytes() == b"err\xfe", "stderr bytes must survive unchanged"
 

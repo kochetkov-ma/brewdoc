@@ -11,11 +11,45 @@ import brewdoc
 from brewdoc import common
 from brewdoc.cli import main
 from brewdoc.pptx import render_presentation
+from test_contract import NOT_APPLICABLE, schema_two
 
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+@pytest.mark.parametrize("main_xml", [
+    pytest.param('<p:presentation xmlns:p="%s"><p:sldIdLst/></p:presentation>' % P,
+                 id="empty-slide-list"),
+    pytest.param('<p:presentation xmlns:p="%s"/>' % P, id="absent-slide-list"),
+])
+def test_empty_presentation_keeps_exact_zero_unit_document_and_success_receipt(tmp_path, main_xml):
+    # GIVEN a presentation declaring no slides, with no slide parts in its package
+    parts = base_parts([])
+    parts["deck/presentation.xml"] = main_xml
+    path = pptx(tmp_path / "empty.pptx", parts)
+    out = tmp_path / "empty.md"
+    omissions = ["charts, SmartArt and embedded objects", "image pixels, audio and video",
+                 "animations, transitions, layout and master text, styling and visual positioning"]
+    expected = schema_two(path, "\n", **NOT_APPLICABLE, name="empty\\.pptx", suffix=".pptx",
+                          route="presentation", unit="slide", count=0, keys="none", pages=0,
+                          sheets=0, chapters=0, tables=0, text_regions=0,
+                          omissions="\n".join("- " + item for item in omissions), contents="").rstrip() + "\n"
+    receipt = {"file_ok": True, "route": "presentation", "source": "empty.pptx", "out": str(out),
+               "reason": "presentation rendered: 0 slides, 0 tables, 0 text regions, 0 column splits",
+               "receipt_schema": "brewdoc.receipt/1", "unit_kind": "slide", "units": 0,
+               "tables": 0, "text_regions": 0, "columns_split": 0, "broken_ligature_words": 0,
+               "dropped": zero_tally()["dropped"], "not_carried": omissions, "artifacts": [],
+               "markdown_schema": "brewdoc.markdown/2", "unit_keys": []}
+    assert out.exists() is False, "the zero-slide output must start absent"
+    # WHEN the adapter and service render the declared empty presentation
+    rendered = render_presentation(path)
+    result = brewdoc.run(path, out)
+    # THEN zero slides remain distinct from one empty slide and still succeed
+    assert (rendered, result, out.read_bytes()) == (
+        (expected, zero_tally()), (0, receipt, expected), expected.encode("ascii"),
+    ), "empty presentations must preserve complete zero-unit schema, receipt and file bytes"
 
 
 def relationship(relation_id: str, kind: str, target: str, mode: str = "") -> str:

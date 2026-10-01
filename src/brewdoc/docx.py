@@ -17,7 +17,7 @@ HEADING_STYLE_RE = re.compile(r"(?:Heading[1-9]|Title)")
 
 
 def _word_tag(element, local_name: str) -> bool:
-    return any(element.tag == namespace + local_name for namespace in W_NAMESPACES)
+    return element.tag == W + local_name or element.tag == W_STRICT + local_name
 
 
 def _word_child(element, local_name: str):
@@ -30,7 +30,8 @@ def _word_value(element) -> str | None:
 
 
 def _doc_lines(node, tally: dict) -> list[str]:
-    # Breaks and tabs are siblings of text; tracked text and references use other tags.
+    """Read descendant Word text with tabs as spaces and breaks as lines.
+    Sanitise through the shared tally and omit empty lines."""
     lines, current = [], []
     for element in node.iter():
         if _word_tag(element, "t"):
@@ -63,6 +64,7 @@ def _doc_style(node) -> str:
 
 
 def _doc_span(cell) -> int:
+    """Use at least one column; missing or unusable grid spans fall back to one."""
     properties = _word_child(cell, "tcPr")
     span = _word_child(properties, "gridSpan") if properties is not None else None
     try:
@@ -72,6 +74,7 @@ def _doc_span(cell) -> int:
 
 
 def _doc_rows(table, tally: dict) -> list[list[str]]:
+    """Keep direct Word rows/cells in order; flatten nested text, pad spans and omit empty rows."""
     rows = []
     for row in table:
         if not _word_tag(row, "tr"):
@@ -88,6 +91,7 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
 
 
 def _render_doc(path: Path, _sheets=None) -> Rendered:
+    """Render body paragraphs and tables as ordered heading chapters; close the ZIP before assembly."""
     tally = new_tally()
     with reading(path, "document"), zipfile.ZipFile(path) as package:
         part = _opc_main_part(package)

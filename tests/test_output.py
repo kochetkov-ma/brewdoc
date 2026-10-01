@@ -2,6 +2,7 @@ import itertools
 import json
 import os
 import stat
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,56 @@ def test_invalid_artifact_requests_fail_before_any_write(
     assert (code, capsys.readouterr().out, tree_state(tmp_path)) == (
         1, json.dumps(refused(reason), ensure_ascii=True, sort_keys=True) + "\n", before,
     ), "invalid artifact requests must be refused before any write"
+
+
+@pytest.mark.parametrize(
+    ("artifact_outputs", "reason"),
+    [
+        pytest.param([], "artifact outputs must map keys to paths", id="not-a-mapping"),
+        pytest.param({"": "a.json"}, "malformed artifact assignment: ('', 'a.json')", id="empty-key"),
+        pytest.param({1: "a.json"}, "malformed artifact assignment: (1, 'a.json')", id="integer-key"),
+        pytest.param({"formula/sheet/000001": ""},
+                     "malformed artifact assignment: ('formula/sheet/000001', '')", id="empty-path"),
+        pytest.param({"formula/sheet/000001": 1},
+                     "malformed artifact assignment: ('formula/sheet/000001', 1)", id="integer-path"),
+    ],
+)
+def test_api_artifact_mapping_validation_refuses_before_any_write(tmp_path, artifact_outputs, reason):
+    # GIVEN a valid workbook and an existing output that invalid assignments must not replace
+    path = formula_book(tmp_path / "book.xlsx")
+    out = tmp_path / "book.md"
+    out.write_bytes(b"previous Markdown\n")
+    before = tree_state(tmp_path)
+    # WHEN the API validates a non-mapping or malformed key/path pair
+    result = brewdoc.run(path, out, artifact_outputs=artifact_outputs)
+    # THEN its full refusal and all previous bytes and modes remain unchanged
+    assert (result, tree_state(tmp_path)) == ((1, refused(reason), ""), before), (
+        "API artifact validation must precede output staging and preserve existing files"
+    )
+
+
+def test_canonically_equivalent_artifact_paths_collide_before_any_write(tmp_path):
+    # GIVEN unequal filenames whose composed and decomposed forms have the same NFC spelling
+    composed, decomposed = "caf\u00e9.json", "cafe\u0301.json"
+    assert (composed == decomposed, unicodedata.normalize("NFC", composed),
+            unicodedata.normalize("NFC", decomposed)) == (False, "café.json", "café.json"), (
+        "the destinations must differ before normalization and coincide after NFC"
+    )
+    path = formula_book(tmp_path / "book.xlsx")
+    out = tmp_path / "book.md"
+    before = tree_state(tmp_path)
+    assert (out.exists(), (tmp_path / composed).exists(), (tmp_path / decomposed).exists()) == (
+        False, False, False,
+    ), "collision validation must start with all output destinations absent"
+    # WHEN two different artifact keys request those absent destinations
+    result = brewdoc.run(path, out, artifact_outputs={
+        FORMULA_KEYS[0]: tmp_path / composed, FORMULA_KEYS[1]: tmp_path / decomposed,
+    })
+    # THEN the full collision receipt is returned without files or stages
+    assert (result, tree_state(tmp_path)) == (
+        (1, refused("artifact outputs collide: formula/sheet/000001 and formula/sheet/000002"), ""),
+        before,
+    ), "canonical Unicode aliases must be rejected before either artifact is written"
 
 
 @pytest.mark.parametrize(

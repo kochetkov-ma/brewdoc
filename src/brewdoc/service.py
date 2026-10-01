@@ -42,6 +42,8 @@ def _route(path: Path) -> Route:
 def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = None,
           out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
           selected_sheets=None) -> dict:
+    """Copy loss counters into a receipt; success adds Markdown schema, unit keys and artifacts.
+    Include selected sheets only on success when a selection was supplied."""
     tally = tally or new_tally()
     line = {"file_ok": file_ok, "route": route.name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
