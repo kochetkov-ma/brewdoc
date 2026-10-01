@@ -15,7 +15,7 @@ concurrency:
 jobs:
   latency:
     name: isolated elapsed comparison (Linux, Python 3.12)
-    if: github.event_name == 'pull_request' && github.head_ref == 'perf/full-performance-review' && github.run_attempt == '1'
+    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.head_ref == 'perf/full-performance-review' && github.run_attempt == '1'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
