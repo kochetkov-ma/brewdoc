@@ -2,7 +2,9 @@ import hashlib
 import json
 import re
 import zipfile
+from copy import deepcopy
 from dataclasses import FrozenInstanceError
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,8 @@ import pytest
 import brewdoc
 from brewdoc import common
 from brewdoc.cli import main
+from brewdoc.sheets import _sheet_grid
+from test_contract import schema_two
 
 FIXTURES = Path(__file__).parent / "fixtures"
 VBA_RELATIONSHIP = "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
@@ -29,6 +33,33 @@ INPUTS = '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Inputs"\n\n| 1.0 |\n| 
 CALC_TABLE = "| 3.0 | 2.0 |  |\n| --- | --- | --- |\n|  | 4.0 |  |\n|  |  | 1.0 |\n"
 CALC = '<a id="brewdoc-sheet-000002"></a>\n## Sheet 2: "Calc"\n\n' + CALC_TABLE
 EMPTY = '<a id="brewdoc-sheet-000003"></a>\n## Sheet 3: "Empty"\n'
+
+
+@pytest.mark.parametrize("rows,expected,losses", [
+    pytest.param([[None, True, False, 42, 1.25, -0.0, date(2024, 2, 29),
+                   datetime(2024, 2, 29, 23, 45), time(1, 2, 3), timedelta(days=1, seconds=2),
+                   "café\n東京|\x01", "(cid:2)"]],
+                 [["", "true", "false", "42", "1.25", "-0.0", "2024-02-29", "2024-02-29",
+                   "01:02:03", "1 day, 0:00:02", "cafe ??|"]],
+                 {"control_chars": 1, "cid_survivors": 1, "non_ascii_replaced": 2}, id="typed-cells"),
+    pytest.param([["left", None, ""], [], [7], ["", "right", "\x01"]],
+                 [["left", ""], [], ["7"], ["", "right"]],
+                 {"control_chars": 1}, id="ragged-interior-blanks-and-sanitized-width"),
+    pytest.param([[None, "", "(cid:7)", "\x01", "\u00ad"]], [],
+                 {"cid_survivors": 1, "control_chars": 1, "soft_hyphens": 1}, id="all-sanitized-empty"),
+])
+def test_sheet_projection_preserves_typed_cells_losses_and_caller_rows(rows, expected, losses):
+    # GIVEN caller-owned rows and a fresh complete loss tally
+    rows = deepcopy(rows)
+    original = deepcopy(rows)
+    counts = common.new_tally()
+    expected_tally = {**tally(0, 0), "dropped": {**DROPPED, **losses}}
+    assert counts == tally(0, 0), "projection must start with every counter at zero"
+    # WHEN cached values are normalized and trailing empty columns are trimmed
+    actual = _sheet_grid(rows, counts)
+    # THEN full cell values, ragged lengths, losses and raw input remain exact
+    assert (actual, counts, rows) == (expected, expected_tally, original), (
+        "projection must count even discarded cells and leave every caller row unchanged")
 
 
 def exact(message: str) -> str:
@@ -288,6 +319,110 @@ def test_invalid_sheet_selection_fails_before_any_sheet_read(tmp_path, selection
     # THEN the selection error wins over the broken sheet read
     with pytest.raises(brewdoc.BrewdocError, match=exact(reason)):
         brewdoc.render_book(path, sheets=selection)
+
+
+@pytest.mark.parametrize("call", [
+    lambda path: brewdoc.render_book(path, sheets=("Inputs", 1)),
+    lambda path: brewdoc.list_book_artifacts(path, sheets=("Inputs", 1)),
+    lambda path: brewdoc.read_book_artifact(path, FORMULA_KEYS[1], sheets=("Inputs", 1)),
+    lambda path: brewdoc.read_formulas(path, sheets=("Inputs", 1)),
+], ids=["render_book", "list_book_artifacts", "read_book_artifact", "read_formulas"])
+def test_mixed_sheet_name_types_refuse_before_malformed_selected_sheet(tmp_path, call):
+    # GIVEN a malformed worksheet behind an otherwise readable workbook directory
+    path = formula_book(tmp_path / "book.xlsx", malformed_sheet=True)
+    with pytest.raises(brewdoc.BrewdocError, match=exact(
+            "cannot parse OOXML part xl/worksheets/sheet2.xml: no element found: line 1, column 22")):
+        brewdoc.read_formulas(path, sheets=("Calc",))
+    # WHEN a raising public consumer receives both a name and an integer
+    # THEN selection validation wins before reading the malformed worksheet
+    with pytest.raises(brewdoc.BrewdocError, match=exact("sheet selection names must be strings")):
+        call(path)
+
+
+def test_run_reports_mixed_sheet_name_types_before_malformed_sheet(tmp_path):
+    # GIVEN a malformed worksheet and an output destination that starts absent
+    path = formula_book(tmp_path / "book.xlsx", malformed_sheet=True)
+    out = tmp_path / "book.md"
+    assert out.exists() is False, "selection refusal must start with no output file"
+    # WHEN the service receives a mixed-type selection
+    result = brewdoc.run(path, out, sheets=("Inputs", 1))
+    # THEN the complete refusal receipt names the selection and publishes no bytes
+    assert (result, out.exists()) == (
+        (1, refused("sheet selection names must be strings"), ""), False,
+    ), "mixed sheet names must refuse atomically before sheet parsing"
+
+
+def test_combined_formula_vba_outputs_keep_sheet_and_artifact_request_orders(tmp_path):
+    # GIVEN five formulas and an independently declared opaque VBA project in one XLSM
+    path = formula_book(tmp_path / "book.xlsm")
+    rewrite_member(path, "xl/_rels/workbook.xml.rels", b"</Relationships>",
+                   (vba_relationship("vbaProject.bin") + "</Relationships>").encode("ascii"))
+    project = b"opaque synthetic VBA\x00\xff"
+    with zipfile.ZipFile(path, "a") as package:
+        package.writestr("xl/vbaProject.bin", project)
+    with zipfile.ZipFile(path) as package:
+        assert package.read("xl/vbaProject.bin") == project, "the source project bytes must be exact"
+    project_hash = hashlib.sha256(project).hexdigest()
+    source = {"bytes": path.stat().st_size, "name": "book.xlsm",
+              "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "suffix": ".xlsm"}
+    formulas = [
+        {"attributes": {}, "cell": "A1", "formula": "SUM(Inputs!A1:A2)", "sheet": "Calc"},
+        {"attributes": {"ref": "B1:B2", "si": "7", "t": "shared"}, "cell": "B1",
+         "formula": "Inputs!A1*2", "sheet": "Calc"},
+        {"attributes": {"si": "7", "t": "shared"}, "cell": "B2", "formula": "", "sheet": "Calc"},
+        {"attributes": {"aca": "1", "bx": "0"}, "cell": "C3",
+         "formula": 'IF(A1<4,"café","")', "sheet": "Calc"},
+    ]
+    calc_payload = (json.dumps({"formulas": formulas, "schema": "brewdoc.formulas/1",
+                               "sheet": {"key": "sheet/000002", "name": "Calc", "ordinal": 2},
+                               "source": source}, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
+    inputs_payload = (json.dumps({
+        "formulas": [{"attributes": {}, "cell": "A3", "formula": "SUM(A1:A2)", "sheet": "Inputs"}],
+        "schema": "brewdoc.formulas/1", "sheet": {"key": "sheet/000001", "name": "Inputs", "ordinal": 1},
+        "source": source}, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii")
+    out, vba_out = tmp_path / "book.md", tmp_path / "project.bin"
+    inputs_out, calc_out = tmp_path / "inputs.json", tmp_path / "calc.json"
+    expected = schema_two(
+        path, CALC + "\n" + INPUTS, formula="available", formula_count=5, vba="available", vba_count=1,
+        name="book\\.xlsm", suffix=".xlsm", route="sheet", unit="sheet", count=2,
+        keys="sheet/000002, sheet/000001", pages=0, sheets=2, chapters=0, tables=2, text_regions=0,
+        omissions="\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]).replace(" - only", " \\- only"),
+        contents='- [Sheet 2: "Calc"](#brewdoc-sheet-000002)\n- [Sheet 1: "Inputs"](#brewdoc-sheet-000001)')
+    expected = expected.replace("| Source unit count | 2 |", "| Source unit count | 3 |")
+    expected = expected.replace("| VBA source module capability | available |",
+                                "| VBA source module capability | unavailable |")
+    expected = expected.replace("| VBA source module count | 1 |", "| VBA source module count | unknown |")
+    artifact_table = (
+        "| Key | Kind | Availability | Count | Location | Media type | Bytes | SHA-256 |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        "| formula/sheet/000002 | formula | available | 4 | [sheet/000002](#brewdoc-sheet-000002) | "
+        "application/json | not applicable | not applicable |\n"
+        "| formula/sheet/000001 | formula | available | 1 | [sheet/000001](#brewdoc-sheet-000001) | "
+        "application/json | not applicable | not applicable |\n"
+        "| vba/project/000001 | vba-project | available | 1 | [metadata](#brewdoc-metadata) | "
+        "application/vnd.ms-office.vbaProject | %d | %s |" % (len(project), project_hash))
+    expected = expected.replace("## Artifacts\n\nNone.", "## Artifacts\n\n" + artifact_table)
+    receipt = {**SHEET_RECEIPT, "source": "book.xlsm", "file_ok": True, "out": str(out),
+               "reason": "sheet rendered: 2 sheets, 2 tables, 0 text regions, 0 column splits",
+               "units": 2, "tables": 2, "markdown_schema": "brewdoc.markdown/2",
+               "selected_sheets": ["Calc", "Inputs"], "unit_keys": ["sheet/000002", "sheet/000001"],
+               "artifacts": [formula_row(2, 4, calc_out), formula_row(1, 1, inputs_out),
+                             {"availability": "available", "byte_size": len(project), "count": 1,
+                              "key": VBA_KEY, "kind": "vba-project", "location": "#brewdoc-metadata",
+                              "media_type": "application/vnd.ms-office.vbaProject", "out": str(vba_out),
+                              "sha256": project_hash}]}
+    # WHEN sheet order is reversed and artifact requests use a different key order
+    references = brewdoc.list_book_artifacts(path, sheets=("Calc", "Inputs"))
+    rendered = brewdoc.render_book(path, sheets=("Calc", "Inputs"))
+    result = brewdoc.run(path, out, sheets=("Calc", "Inputs"),
+                         artifact_outputs={VBA_KEY: vba_out, FORMULA_KEYS[0]: inputs_out,
+                                           FORMULA_KEYS[1]: calc_out})
+    # THEN all outputs preserve sheet order, source ordinals and exact passive project bytes
+    assert (references, rendered, result, out.read_bytes(), vba_out.read_bytes(),
+            inputs_out.read_bytes(), calc_out.read_bytes()) == (
+        (formula_ref(2, 4), formula_ref(1, 1), vba_ref(project)), (expected, tally(2, 2)),
+        (0, receipt, expected), expected.encode("ascii"), project, inputs_payload, calc_payload,
+    ), "combined artifacts must preserve full receipt, inventory order and independently defined payloads"
 
 
 @pytest.mark.parametrize("selection", [5, "Calc", b"Calc"], ids=["int", "str", "bytes"])

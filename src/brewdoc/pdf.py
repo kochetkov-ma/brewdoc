@@ -56,7 +56,6 @@ for _glyph_stem, _glyph_token in (("parenleft", "("), ("parenright", ")"),
         PDF_FONT_GLYPHS[_glyph_stem + _glyph_size] = _glyph_token
 
 
-# --- PDF: regions -----------------------------------------------------------------------------
 def _line_chars(line) -> list:
     return sorted((c for c in line["chars"] if c["text"].strip()), key=lambda c: c["x0"])
 
@@ -159,7 +158,7 @@ def _prose_gutters(band, width: float) -> list[float]:
 
 
 def _crop(page, x0, top, x1, bottom):
-    # pdfplumber refuses a box even a hair outside the page.
+    """Clamp to parent bounds and refuse crops with either span below MIN_REGION."""
     px0, ptop, px1, pbottom = page.bbox
     box = (max(x0, px0), max(top, ptop), min(x1, px1), min(bottom, pbottom))
     if box[2] - box[0] < MIN_REGION or box[3] - box[1] < MIN_REGION:
@@ -181,6 +180,7 @@ def _bands(lines) -> list[list]:
 
 
 def _tabular_run(flags: list[bool]) -> tuple[int, int]:
+    """Return the longest half-open true run, retaining the earliest run when lengths tie."""
     best, start, index = (0, 0), 0, 0
     while index < len(flags):
         if not flags[index]:
@@ -236,6 +236,7 @@ def _caption_table(page, band, start: int, end: int, tally: dict) -> list[list] 
 
 def _band_blocks(page, band, flags: list[bool], tally: dict, margins: list[str],
                  columns: list[float] | None, source=None) -> list[tuple]:
+    """Route a band by supported table structure, updating tally and margin candidates."""
     source = source if source is not None else page
     blocks = []
     tally["text_regions"] += 1
@@ -269,6 +270,7 @@ def _band_blocks(page, band, flags: list[bool], tally: dict, margins: list[str],
 
 def _text_region(page, crop, tally: dict, margins: list[str], wide_table: bool,
                  columns: list[float] | None = None, split: bool = True) -> list[tuple]:
+    """Render bands in column order while preserving the prepared crop's object exclusions."""
     # Bands first, then a gutter search inside each: a two-column half usually sits under a
     # full-width abstract or table, and a whole-page histogram sees the two mixed.
     lines = sorted(crop.extract_text_lines(), key=lambda line: (line["top"], line["x0"]))
@@ -277,7 +279,6 @@ def _text_region(page, crop, tally: dict, margins: list[str], wide_table: bool,
     unit, blocks = space_unit(lines), []
     for band in _bands(lines):
         flags = [is_tabular(line, unit) for line in band]
-        start, end = _tabular_run(flags)
         # A wide unlined table's column whitespace looks like a gutter; alignment across the
         # band tells them apart.
         tabular = aligned_columns(band, unit) >= MIN_SHARED_COLUMNS
@@ -628,7 +629,6 @@ def _math_block(chars, bars, tally: dict) -> list[str]:
     return ["```", *(text for _, text in sorted(out, key=lambda item: item[0])), "```"]
 
 
-# --- PDF: ruling the producer never finished --------------------------------------------------
 def _snap(values) -> list[float]:
     # Single-linkage on consecutive values: a separator drawn as overlapping segments stays one.
     clusters: list[list[float]] = []
@@ -648,13 +648,13 @@ def _ruled_region(page, bbox) -> list:
     buckets = {}
 
     def cells(box, padding=0):
-        """List spatial buckets intersecting a segment's optional tolerance envelope."""
+        """Yield spatial buckets intersecting a segment's optional tolerance envelope."""
         return ((x, y) for x in range(int((box[0] - padding) // cell_size), int((box[2] + padding) // cell_size) + 1)
                 for y in range(int((box[1] - padding) // cell_size), int((box[3] + padding) // cell_size) + 1))
 
     for index, box in enumerate(boxes):
         for cell in cells(box):
-            buckets.setdefault(cell, []).append(index)
+            buckets.setdefault(cell, set()).add(index)
 
     def touches(first, second):
         return (first[0] <= second[2] + RULE_SNAP and second[0] <= first[2] + RULE_SNAP
@@ -662,12 +662,17 @@ def _ruled_region(page, bbox) -> list:
 
     taken = {index for index, box in enumerate(boxes) if touches(box, bbox)}
     pending = list(sorted(taken))
+    for index in taken:
+        for cell in cells(boxes[index]):
+            buckets[cell].discard(index)
     while pending:
         current = pending.pop()
         nearby = {index for cell in cells(boxes[current], RULE_SNAP) for index in buckets.get(cell, ())}
-        for index in sorted(nearby - taken):
+        for index in sorted(nearby):
             if touches(boxes[current], boxes[index]):
                 taken.add(index)
+                for cell in cells(boxes[index]):
+                    buckets[cell].discard(index)
                 pending.append(index)
     return [edges[index] for index in sorted(taken)]
 
@@ -685,8 +690,7 @@ def _implied_grid(edges) -> tuple[list[float], list[float]]:
 
 
 def _fold_subscripts(source, box, text: str, chars=None) -> str:
-    # Centre-based ownership keeps a glyph crossing a rule in one cell.
-    # Subscript tolerance must not reach the next body line.
+    """Fold center-owned script glyphs only when their tolerance cannot reach the next body line."""
     x0, top, x1, bottom = box
     chars = source.chars if chars is None else chars
     chars = [char for char in chars
@@ -742,6 +746,7 @@ def _row_cells(source, row, raw: list) -> list[str]:
 
 
 def _table_cells(source, table, xs: list[float] | None = None) -> list[list[str]]:
+    """Read source cells and rebuild crossing words when inferred column bounds are supplied."""
     raw = table.extract()
     lines = source.extract_text_lines() if xs else []
     words = source.extract_words() if xs else []
@@ -997,6 +1002,7 @@ def _rule_rows(band, xs: list[float], opening: float) -> tuple[int, int]:
 
 
 def _rule_table(page, band, columns: tuple[list[float], float, float]):
+    """Read bands adjoining a rule grid, preserving merged words and source-word bounds."""
     # Must adjoin the ruling: short prose lines fit any grid. Outer boundaries come from the
     # words, since pdfplumber drops a column whose boundary lies beyond the last word.
     grid, opening, closing = columns
@@ -1153,6 +1159,7 @@ def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
 
 
 def _render_pdf(path: Path, _sheets=None) -> Rendered:
+    """Release page caches and PDF resources; assemble global furniture and refuse nonempty textless PDFs."""
     tally = new_tally()
     pages, margins, empty = [], [], 0
     with reading(path, "pdf"), pdfplumber.open(path) as pdf:

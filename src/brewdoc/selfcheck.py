@@ -103,6 +103,7 @@ SHEET_ROWS = [["Zone", "Area", "Sown"], ["North", 12.5, "2026-07-18"], ["South",
 
 
 def _synthetic_xlsx(path: Path) -> None:
+    """Write the fixed Zones workbook with cached text and float values for the self-check."""
     def cell(column: str, row: int, value):
         reference = "%s%d" % (column, row)
         if isinstance(value, float):

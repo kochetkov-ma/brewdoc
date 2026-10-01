@@ -149,8 +149,11 @@ def _hidden(node) -> bool:
     if (node.tag in _EXCLUDED or "hidden" in attributes
             or (attributes.get("aria-hidden") or "").strip().lower() == "true"):
         return True
+    style = attributes.get("style")
+    if not style:
+        return False
     effective = {}
-    for declaration in (attributes.get("style") or "").split(";"):
+    for declaration in style.split(";"):
         name, separator, value = declaration.partition(":")
         name, value = name.strip().lower(), value.strip().lower()
         if not separator or name not in ("display", "visibility"):

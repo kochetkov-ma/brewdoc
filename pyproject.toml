@@ -37,7 +37,7 @@ brewdoc = "brewdoc.cli:main"
 dev = ["pytest==9.1.1", "pytest-randomly==5.0.0", "pytest-xdist==3.8.0"]
 
 [build-system]
-requires = ["hatchling==1.32.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -68,7 +68,7 @@ build-constraint-dependencies = [
     "pathspec==1.1.1",
     "pluggy==1.6.0",
     "tomlkit==0.15.1",
-    "trove-classifiers==2026.6.1.19",
+    "trove-classifiers==2026.9.21.13",
 ]
 
 [tool.pytest.ini_options]

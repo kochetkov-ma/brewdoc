@@ -1,6 +1,7 @@
 """Synthetic regressions for PDF record boundaries, prose and technical notation."""
 
 import re
+from types import SimpleNamespace
 
 import pdfplumber
 import pytest
@@ -8,6 +9,30 @@ import pytest
 from brewdoc import common, pdf, selfcheck, service
 
 FONT_NAME = "BDTEST+CMEX10"
+
+
+@pytest.mark.parametrize("boxes,bbox,indices", [
+    pytest.param([(23, 0, 40, 0), (10, 0, 20, 0), (0, 0, 7, 0),
+                  (0, 100, 20, 100), (23, 0, 40, 0)],
+                 (0, 0, 1, 1), [0, 1, 2, 4], id="transitive-source-order-and-equal-edges"),
+    pytest.param([(13, 0, 20, 0), (0, 0, 10, 0)],
+                 (0, 0, 1, 1), [0, 1], id="horizontal-inclusive-tolerance"),
+    pytest.param([(0, 13, 0, 20), (0, 0, 0, 10)],
+                 (0, 0, 1, 1), [0, 1], id="vertical-inclusive-tolerance"),
+    pytest.param([(13.001, 0, 20, 0), (0, 0, 10, 0)],
+                 (0, 0, 1, 1), [1], id="outside-tolerance-stays-disconnected"),
+])
+def test_connected_rules_keep_transitive_edges_in_source_order(boxes, bbox, indices):
+    # GIVEN synthetic source edges with literal connectivity and a disconnected footer
+    edges = [dict(zip(("x0", "top", "x1", "bottom"), box)) for box in boxes]
+    page = SimpleNamespace(edges=edges, width=384)
+    assert pdf.RULE_SNAP == 3.0, "the geometry cases require the current three-point tolerance"
+    # WHEN rule discovery follows every edge reachable from the source region
+    actual = pdf._ruled_region(page, bbox)
+    # THEN equal edges keep distinct source identities and disconnected edges stay out
+    assert (actual, [id(edge) for edge in actual]) == (
+        [edges[index] for index in indices], [id(edges[index]) for index in indices],
+    ), "connected rules must preserve exact source objects and source-index order"
 
 
 def text_op(x, y, text):

@@ -62,6 +62,35 @@ def expected_receipt(path, out, regions, *, tables=0):
 
 
 @supported_html
+@pytest.mark.parametrize("source,content,regions", [
+    pytest.param('<p>café 東京</p>', "café 東京\n", 1, id="absent-style"),
+    pytest.param('<p style>café 東京</p>', "café 東京\n", 1, id="valueless-style"),
+    pytest.param('<p style="">café 東京</p>', "café 東京\n", 1, id="empty-style"),
+    pytest.param('<p hidden style="">secret</p><p>café 東京</p>', "café 東京\n", 1,
+                 id="hidden-before-empty-style"),
+    pytest.param('<p aria-hidden="true" style="">secret</p><p>café 東京</p>', "café 東京\n", 1,
+                 id="aria-hidden-before-empty-style"),
+    pytest.param('<p aria-hidden="false" style="">café 東京</p>', "café 東京\n", 1,
+                 id="aria-false-visible"),
+    pytest.param('<script>secret</script><p>café 東京</p>', "café 東京\n", 1,
+                 id="excluded-tag-before-absent-style"),
+])
+def test_empty_style_guards_preserve_visibility_utf8_and_complete_receipt(
+        tmp_path, source, content, regions):
+    # GIVEN Unicode paragraphs with absent or empty styles and explicit hiding guards
+    path, out = tmp_path / "sample.html", tmp_path / "document.md"
+    path.write_bytes(source.encode("utf-8"))
+    expected = expected_document(path, content, regions)
+    assert out.exists() is False, "visibility output must start absent"
+    # WHEN the service renders the document and publishes its UTF-8 output
+    result = service.run(path, out)
+    # THEN hiding guards dominate the no-style path without altering Unicode or counters
+    assert (result, out.read_bytes()) == (
+        (0, expected_receipt(path, out, regions), expected), expected.encode("utf-8"),
+    ), "empty styles must retain exact visible content, full receipt and UTF-8 file bytes"
+
+
+@supported_html
 @pytest.mark.parametrize(
     ("source", "expected"),
     [

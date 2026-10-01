@@ -57,7 +57,8 @@ class FormulaArtifact:
 
 
 def _sheet_grid(rows, tally: dict) -> list[list[str]]:
-    # calamine trims trailing empty rows but not trailing empty columns; interior empty rows stay.
+    """Trim trailing empty columns of nonempty grids; preserve leading/interior blanks and ragged rows.
+    Sanitise every input cell into the shared tally, including cells later trimmed."""
     grid = [[sanitise(cell_text(cell), tally) for cell in row] for row in rows]
     width = max((index + 1 for row in grid for index, cell in enumerate(row) if cell), default=0)
     return [row[:width] for row in grid] if width else []
@@ -111,8 +112,8 @@ def _render_book(path: Path, sheets) -> Rendered:
         source_units = len(book.sheet_names)
         units = []
         for ordinal, name in selected:
-            raw = book.get_sheet_by_name(name).to_python(skip_empty_area=False)
-            rows = _sheet_grid(raw, tally)
+            rows = _sheet_grid(
+                book.get_sheet_by_name(name).to_python(skip_empty_area=False), tally)
             if rows:
                 tally["tables"] += 1
             units.append((ordinal, name, [("table", rows)] if rows else []))

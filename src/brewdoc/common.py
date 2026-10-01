@@ -159,6 +159,8 @@ def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
     tally["broken_ligature_words"] += len(BROKEN_WORD_RE.findall(text))
     drop["cid_survivors"] += len(CID_RE.findall(text))
     text = CID_RE.sub("", text)
+    if not text:
+        return text
     out = []
     for ch in text:
         if ch in LIGATURES:
@@ -200,7 +202,8 @@ def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
 
 
 def cell_text(value) -> str:
-    """One cell as text; calamine returns '' for an empty cell and a float for every number."""
+    """Keep float representations, lowercase booleans and ISO date days; None is empty.
+    Keep time and duration strings; stringify other values, replace LF with spaces and trim outer whitespace."""
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -236,6 +239,7 @@ def head_key(text: str) -> str:
 
 def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
                     tally: dict) -> list[str]:
+    """Drop page numbers before running heads; increment each removed line's loss counter."""
     kept = []
     for line in lines:
         text = line.strip()
@@ -338,6 +342,8 @@ NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
 
 def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
                    unit_keys: tuple[str, ...], body: str, tally: dict) -> list[tuple[str, str]]:
+    """Hash raw source and rendered body separately with final unit and loss counts.
+    Encode HTML bodies as UTF-8 and other routes as ASCII."""
     source, suffix = path.read_bytes(), path.suffix.lower()
     body_bytes = body.encode("utf-8" if route == "html" else "ascii")
     rows = [
@@ -366,6 +372,8 @@ def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
 
 
 def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
+    """Describe artifacts in supplied order without reading payloads; mark an empty inventory explicitly.
+    Keep unknown counts distinct from byte metadata that does not apply."""
     if not artifacts:
         return ["None."]
     rows = [["Key", "Kind", "Availability", "Count", "Location", "Media type", "Bytes",

@@ -72,11 +72,12 @@ outputs. Prepare brewdoc using the project's development setup, then choose a
 new result directory:
 
 ```sh
+tool_version=$(.venv/bin/python -c 'import brewdoc; print(brewdoc.__version__)')
 .venv/bin/python benchmarks/capture_results.py \
   --input tests/fixtures/xlsx/calamine-date.xlsx \
   --output-dir /tmp/brewdoc-date-run-001 \
-  --tool brewdoc --tool-version 0.1.0 --timeout 60 \
-  -- .venv/bin/brewdoc '{input}' --out '{output_dir}/document.md'
+  --tool brewdoc --tool-version "$tool_version" --timeout 60 \
+  -- .venv/bin/python -m brewdoc.cli '{input}' --out '{output_dir}/document.md'
 ```
 
 The result directory must not exist. Choose another name for each run.
