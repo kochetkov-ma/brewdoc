@@ -5,23 +5,119 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  latency:
+    name: isolated elapsed comparison (Linux, Python 3.12)
+    if: github.event_name == 'pull_request' && github.head_ref == 'perf/full-performance-review' && github.run_attempt == '1'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12"
+          enable-cache: false
+      - run: uv sync --locked --group dev --no-install-project
+      - name: Compare sealed sources in one locked runtime
+        timeout-minutes: 40
+        env:
+          BREWDOC_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: uv run --no-sync python benchmarks/compare_latency.py compare --baseline-ref dc1f0c7fdedeec024840127ed989e1f58416762a --output "${{ runner.temp }}/isolated-latency"
+      - name: Preserve complete or partial elapsed evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: isolated-latency-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/isolated-latency/
+          if-no-files-found: warn
+          retention-days: 7
+
+  package:
+    name: package (Python 3.12)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        id: uv
+        with:
+          version: "0.12.21"
+          python-version: "3.12"
+          cache-suffix: uv-0.12.21-ci-build
+      - run: uv lock --check
+      - run: uv build --no-sources --no-create-gitignore --out-dir dist --verbose
+      - name: Record package identity and installation constraints
+        env:
+          BREWDOC_CACHE_HIT: ${{ steps.uv.outputs.cache-hit }}
+          BREWDOC_CACHE_KEY: ${{ steps.uv.outputs.cache-key }}
+        run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py prepare
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ci-dist
+          path: |
+            dist/
+            ci-package/
+          if-no-files-found: error
+          retention-days: 7
+
   test:
+    name: test (${{ matrix.platform }}, Python 3.12)
+    needs: package
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-26, windows-2025]
-        python: ["3.12"]
+        include:
+          - platform: Linux
+            os: ubuntu-26.04
+          - platform: macOS
+            os: macos-26
+          - platform: Windows
+            os: windows-2025
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: astral-sh/setup-uv@v10.1.0
         with:
-          version: "0.12.13"
-          python-version: ${{ matrix.python }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        id: uv
+        with:
+          version: "0.12.21"
+          python-version: "3.12"
+          cache-suffix: uv-0.12.21-ci-test
       - run: uv sync --locked --group dev
-      - run: uv run --locked pytest -q --strict-markers -m "not corpus"
+      - name: Run all source tests, including corpus
+        run: uv run --locked pytest -q --strict-markers -n 4 --randomly-seed=0 --junitxml=ci-results.xml
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: ci-dist
+          path: ${{ runner.temp }}/ci-dist
+          digest-mismatch: error
+      - name: Check independent wheel and sdist installations
+        env:
+          BREWDOC_CACHE_HIT: ${{ steps.uv.outputs.cache-hit }}
+          BREWDOC_CACHE_KEY: ${{ steps.uv.outputs.cache-key }}
+        run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py verify --bundle "${{ runner.temp }}/ci-dist"
+      - name: Preserve test and installed-package evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ci-results-${{ matrix.platform }}
+          path: |
+            ci-results.xml
+            ${{ runner.temp }}/ci-dist/ci-package/verification-*.json
+          if-no-files-found: warn
+          retention-days: 7
