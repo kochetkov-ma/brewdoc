@@ -310,9 +310,10 @@ def test_deep_private_json_is_refused_without_raw_recursion_error():
 
 
 @pytest.mark.skipif(sys.platform != 'linux', reason='Intentional native fault delivery runs in Linux isolation.')
-@pytest.mark.parametrize('number', [signal.SIGSEGV, signal.SIGBUS, signal.SIGABRT, signal.SIGILL, signal.SIGFPE])
-def test_native_fault_handler_exits_child_normally_without_unhandled_signal(number):
+@pytest.mark.parametrize('signal_name', ['SIGSEGV', 'SIGBUS', 'SIGABRT', 'SIGILL', 'SIGFPE'])
+def test_native_fault_handler_exits_child_normally_without_unhandled_signal(signal_name):
     # GIVEN the verified child-only alternate-stack native handler.
+    number = getattr(signal, signal_name)
     script = '''import ctypes
 from brewdoc import htmljs
 htmljs._CHILD_ONLY=True
