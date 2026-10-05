@@ -64,8 +64,8 @@ Markdown artifact table. Both options are workbook-only. brewdoc validates every
 output collision before writing.
 
 URL mode accepts one public HTTP(S) HTML page with strict UTF-8 decoding. It uses
-GET, verified TLS and default ports only; private destinations, credentials,
-proxy environment settings and HTTPS downgrades are refused. Each redirect and
+GET, verified TLS and default ports only. Private destinations, URL credentials
+and HTTPS downgrades are refused; proxy environment settings are ignored. Each redirect and
 resource is validated. Static capture has a 30-second deadline, at most five
 redirects and an 8 MiB body limit. No login, cookie profile or bot bypass is offered.
 

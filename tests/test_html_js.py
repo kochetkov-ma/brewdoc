@@ -70,8 +70,9 @@ def test_caught_or_runaway_resource_exhaustion_still_refuses(script):
     # GIVEN script work that exhausts one hard structural or execution bound.
     source = '<html><body><p>article</p><script>' + script + '</script></body></html>'
     # WHEN the page tries to catch errors or retain useful initial text.
+    # Keep soft capture beyond the hard deadline so slow timers cannot return partial.
     with pytest.raises(BrewdocError, match='resource|crash'):
-        render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=2)
+        render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=12)
     # THEN exhaustion still prevents publication of a partial snapshot.
 
 
