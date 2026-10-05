@@ -1,8 +1,9 @@
 # brewdoc
 
 Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets and static
-HTML in, one Markdown file plus a JSON receipt out. No models, no OCR, no network,
-deterministic (same file, same bytes). The receipt says what was rendered,
+HTML in, one Markdown file plus a JSON receipt out. No models or OCR. Local conversion
+is offline and deterministic (same file, same bytes). Explicit `--url` acquires a page.
+The receipt says what was rendered,
 what was dropped and what the route structurally cannot carry.
 
 ## Install
@@ -35,12 +36,21 @@ Other runtimes retain the `.html` route and Python API but explicitly refuse HTM
 CPython, a missing or broken parser is an environment failure and `--self-check` exits 1.
 On an unsupported HTML runtime, self-check verifies HTML refusal and checks all other formats.
 
+URL JavaScript uses the optional `brewdoc[render-js]` extra: QuickJS-ng 0.17.0.1
+and bundled LinkeDOM 0.18.13. From this source checkout, install the locked extra
+with `uv sync --locked --extra render-js`. Run it with
+`uv run --locked --extra render-js brewdoc --url URL --render-js`.
+No Node, browser engine or invocation-time component download is used. The existing published/tagged version commands above
+do not install this unreleased URL feature.
+
 ## Usage
 
 ```
 brewdoc file.pdf --out file.md
 brewdoc slides.pptx --out slides.md
 brewdoc page.html --out page.md
+brewdoc --url https://example.com/article --out article.md
+brewdoc --url https://example.com/article --render-js --out article.md
 brewdoc file.xlsx                # no --out: receipt line, then the Markdown, on stdout
 brewdoc file.xlsx --sheet Calc --sheet Inputs
 brewdoc file.xlsm --artifact formula/sheet/000002=formulas.json
@@ -52,6 +62,33 @@ brewdoc --self-check             # renders synthetic fixtures twice, compares sh
 keeping each sheet's full-workbook ordinal. `--artifact` is also repeatable. Use keys listed in the
 Markdown artifact table. Both options are workbook-only. brewdoc validates every request and
 output collision before writing.
+
+URL mode accepts one public HTTP(S) HTML page with strict UTF-8 decoding. It uses
+GET, verified TLS and default ports only. Private destinations, URL credentials
+and HTTPS downgrades are refused; proxy environment settings are ignored. Each redirect and
+resource is validated. Static capture has a 30-second deadline, at most five
+redirects and an 8 MiB body limit. No login, cookie profile or bot bypass is offered.
+
+`--render-js` runs a finite DOM/script subset in a bounded child process. It supports
+DOM mutations, bounded jobs/timers and guarded GET requests; supported module loading
+uses the native engine. It does not provide browser layout, iframe execution,
+workers, WebSockets, media or browser-wide compatibility. Native JS requires a
+verified QuickJS public ABI on macOS ARM64 or 64-bit glibc Linux (x86_64/aarch64).
+Windows, macOS Intel, musl Linux and 32-bit systems refuse JS. Missing components or unsupported
+runtimes refuse before fetching; requested JS never silently falls back to static.
+See [URL acquisition limits](FORMATS.md#url-acquisition).
+
+URL receipts use `brewdoc.receipt/2` with redacted acquisition provenance and the
+frozen snapshot identity. A useful partial DOM may succeed with
+`acquisition.capture_status=partial`; exit 0 confirms conversion, not script
+completion or article fidelity. Hard network, policy, execution or resource failure
+exits 1 and preserves an existing output file. Live acquisition can change;
+conversion of the same frozen snapshot remains deterministic. No 90% coverage or
+global JavaScript compatibility is claimed.
+
+Combining `--url` with a local path or `--self-check`, or using `--render-js` without
+`--url`, exits 2 before acquisition. URL requests with `--sheet` or `--artifact`
+exit 1 with an HTML refusal receipt before HTTP.
 
 Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,
 Artifacts, Known omissions, Contents, then anchored content units. PDF keys are `page/000001`,
@@ -83,7 +120,7 @@ For a conversion request, one JSON receipt line goes to stdout first (wrapped he
 |---|---|
 | `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
 | `route` | which reader ran: `pdf`, `doc`, `presentation`, `sheet` or `html` |
-| `source` | the input file name, without its directory |
+| `source` | the local filename, or the redacted requested URL in URL mode |
 | `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX and HTML, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
 | `tables`, `text_regions`, `columns_split` | what else was rendered |
 | `receipt_schema` | the receipt key contract; `brewdoc.receipt/1` replaced the per-format `pages` and `sheets` counters |

@@ -517,7 +517,7 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
     usage = capsys.readouterr().out.partition("\n")[0]
     # THEN it exits 0 and usage lists exactly the documented options
     assert (raised.value.code, usage) == (
-        0, "usage: brewdoc [-h] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
+        0, "usage: brewdoc [-h] [--url URL] [--render-js] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
            "[--self-check] [document]",
     ), "the CLI surface must expose repeatable sheet and artifact requests"
 
@@ -531,7 +531,7 @@ def test_cli_without_a_document_returns_usage_two_on_stdout(monkeypatch, capsys)
     captured = capsys.readouterr()
     # THEN usage is the entire stdout, stderr is empty and the return value is two
     assert (code, captured.out, captured.err) == (
-        2, "usage: brewdoc [-h] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
+        2, "usage: brewdoc [-h] [--url URL] [--render-js] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
            "[--self-check] [document]\n", "",
     ), "an omitted document must keep the non-raising stdout usage contract"
 

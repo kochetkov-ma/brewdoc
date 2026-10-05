@@ -1,4 +1,4 @@
-"""Console entry point: `brewdoc <document> [--out FILE]` or `brewdoc --self-check`."""
+"""Console entry for local documents, explicit URL acquisition and self-check."""
 
 from __future__ import annotations
 
@@ -56,6 +56,9 @@ def build_parser() -> argparse.ArgumentParser:
                % SUFFIXES)
     parser.add_argument("document", nargs="?",
                         help="the .pdf, .docx, .pptx, .html or spreadsheet to render")
+    parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
+    parser.add_argument("--render-js", action="store_true",
+                        help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
     parser.add_argument("--out", help="write Markdown here (HTML UTF-8, other formats ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
@@ -70,19 +73,30 @@ def main(argv=None) -> int:
     """Command-line entry: prints the JSON receipt, then the Markdown unless `--out` was given."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.url is not None and (args.document is not None or args.self_check):
+        parser.error("--url cannot be combined with a local document or --self-check")
+    if args.render_js and args.url is None:
+        parser.error("--render-js requires --url")
     if args.self_check:
         return self_check()
-    if not args.document:
+    if args.url is not None:
+        from brewdoc.htmlurl import _run_url
+
+        rc, line, markdown = _run_url(
+            args.url, args.out, render_js=args.render_js,
+            sheets=args.sheet, artifact_outputs=args.artifact)
+    elif not args.document:
         parser.print_usage()
         return EXIT_USAGE
-    try:
-        artifact_outputs = _artifact_assignments(args.artifact)
-    except BrewdocError as exc:
-        rc, line, markdown = EXIT_FAIL, _line(
-            _route(Path(args.document)), False, str(exc), args.document), ""
     else:
-        rc, line, markdown = run(
-            args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
+        try:
+            artifact_outputs = _artifact_assignments(args.artifact)
+        except BrewdocError as exc:
+            rc, line, markdown = EXIT_FAIL, _line(
+                _route(Path(args.document)), False, str(exc), args.document), ""
+        else:
+            rc, line, markdown = run(
+                args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
         if line["route"] == "html" and hasattr(sys.stdout, "buffer"):
