@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import ast
 import base64
+import compileall
 import hashlib
 import importlib.metadata
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 import tarfile
 import tempfile
 import tomllib
@@ -84,6 +87,9 @@ def prepare(checkout: Path, bundle: Path) -> None:
     runtime = metadata / "runtime-requirements.txt"
     command(["uv", "export", "--locked", "--no-dev", "--no-emit-project",
              "--output-file", str(runtime)], checkout)
+    optional = metadata / "render-js-requirements.txt"
+    command(["uv", "export", "--locked", "--no-dev", "--no-emit-project",
+             "--extra", "render-js", "--output-file", str(optional)], checkout)
     build = metadata / "build-constraints.txt"
     constraints = project["build-system"]["requires"] + project["tool"]["uv"]["build-constraint-dependencies"]
     build.write_text("\n".join(constraints) + "\n", encoding="utf-8")
@@ -95,7 +101,7 @@ def prepare(checkout: Path, bundle: Path) -> None:
                 "source": {name: digest(checkout / name) for name in ("pyproject.toml", "uv.lock")},
                 "files": {path.relative_to(bundle).as_posix(): {
                     "size": path.stat().st_size, "sha256": digest(path)}
-                    for path in (wheel, sdist, runtime, build)}}
+                    for path in (wheel, sdist, runtime, optional, build)}}
     (metadata / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
@@ -143,7 +149,85 @@ def select_inputs(checkout: Path) -> list[tuple[dict, dict]]:
     return [chosen[suffix] for suffix in sorted(chosen)]
 
 
-def probe(checkout: Path, bundle: Path) -> dict:
+def installed_url_runtime(enabled: bool) -> dict:
+    """Count all installed brewdoc and optional native bytes, including generated caches."""
+    import brewdoc
+
+    package = Path(brewdoc.__file__).parent
+    compileall.compile_dir(package, quiet=2)
+    files = set(package.rglob("*"))
+    for name in ("htmlurl.py", "htmljs.py", "_urljs", "_vendor"):
+        if not (package / name).exists():
+            raise ValueError(f"Installed URL asset missing: {name}")
+    distributions = [importlib.metadata.distribution("brewdoc")]
+    if enabled:
+        distributions.append(importlib.metadata.distribution("quickjs-ng"))
+    for distribution in distributions:
+        for item in distribution.files or ():
+            path = Path(distribution.locate_file(item))
+            files.add(path)
+            if path.suffix == ".py":
+                compileall.compile_file(path, quiet=2)
+                files.update(path.parent.rglob("*.pyc"))
+    inventory = [{"path": path.relative_to(Path(sys.prefix)).as_posix(),
+                  "bytes": path.stat().st_size, "sha256": digest(path)}
+                 for path in sorted(files) if path.is_file()]
+    total = sum(item["bytes"] for item in inventory)
+    if total > 10_000_000:
+        raise ValueError(f"Complete added installed URL runtime exceeds cap: {total}")
+    return {"added_installed_bytes": total, "inventory": inventory,
+            "shared_exclusion": "Existing Python and base conversion dependencies; entire brewdoc package included conservatively"}
+
+
+def probe_js(enabled: bool) -> dict:
+    """Check installed optional capture or its explicit platform/dependency refusal."""
+    import brewdoc
+    from brewdoc.htmljs import _check_runtime
+
+    supported = (sys.platform == "linux" and sys.maxsize > 2**32
+                 and platform.machine().lower() in {"x86_64", "amd64", "aarch64", "arm64"}
+                 and platform.libc_ver()[0] == "glibc") or (
+        sys.platform == "darwin" and platform.machine() == "arm64")
+    packages = {item.metadata["Name"].lower().replace("_", "-")
+                for item in importlib.metadata.distributions()}
+    if ("quickjs-ng" in packages) != enabled:
+        raise ValueError("Base-only/optional native dependency isolation changed")
+    footprint = installed_url_runtime(enabled)
+    if not enabled or not supported:
+        try:
+            _check_runtime()
+        except Exception as error:
+            if not str(error):
+                raise ValueError("Unsupported JS must provide an explicit refusal") from error
+            scripts = Path(sys.prefix) / ("Scripts" if os.name == "nt" else "bin")
+            console = scripts / ("brewdoc.exe" if os.name == "nt" else "brewdoc")
+            refused = subprocess.run([str(console), "--url", "https://fixture.test/", "--render-js"],
+                                     capture_output=True, timeout=15)
+            if refused.returncode != 1 or refused.stderr:
+                raise ValueError("Unavailable JS console must refuse with its receipt")
+            receipt = json.loads(refused.stdout)
+            if receipt.get("receipt_schema") != "brewdoc.receipt/2" or receipt.get("file_ok") is not False:
+                raise ValueError("Unavailable JS console refusal receipt changed")
+            acquisition = receipt.get("acquisition", {})
+            if (acquisition.get("refusal_stage") != "prerequisites"
+                    or acquisition.get("counts", {}).get("requests") != 0):
+                raise ValueError("Unavailable JS must refuse before acquisition")
+            return {**footprint, "enabled": enabled, "supported": supported, "refusal": str(error),
+                    "cli_receipt": receipt}
+        raise ValueError("Unsupported or missing optional runtime did not refuse")
+    _check_runtime()
+    from brewdoc.htmljs import render
+
+    source = '<html><body><p id="result">pending</p><script type="module">document.querySelector("#result").textContent=String(await Promise.resolve(42))</script></body></html>'
+    captured = render(source, "https://fixture.test/", lambda request: None,
+                      time.monotonic() + 10, soft_window=0.1)
+    if '<p id="result">42</p>' not in captured["html"] or captured["capture_status"] != "settled":
+        raise ValueError("Installed native module/DOM capture changed")
+    return {**footprint, "enabled": True, "supported": True,
+            "capture_status": captured["capture_status"]}
+
+
+def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     """Exercise real installed imports, every suffix and bounded console/output contracts."""
     import brewdoc
 
@@ -216,7 +300,7 @@ def probe(checkout: Path, bundle: Path) -> dict:
     cli.append(check_cli(subprocess.run([console, str(unsupported)], capture_output=True, timeout=120), brewdoc.run(unsupported)))
     return {"python": sys.version, "module": str(Path(brewdoc.__file__).resolve()),
             "prefix": sys.prefix, "self_check": checked.stdout.decode(), "routes": routes,
-            "cli": cli, "artifacts": artifacts,
+            "cli": cli, "artifacts": artifacts, "javascript": probe_js(render_js),
             "packages": sorted((item.metadata["Name"], item.version)
                                for item in importlib.metadata.distributions())}
 
@@ -236,20 +320,26 @@ def verify(checkout: Path, bundle: Path) -> None:
         root = Path(temporary).resolve()
         if root.is_relative_to(checkout.resolve()):
             raise ValueError("Installation directory must be outside checkout")
-        for number, distribution in enumerate(distributions(bundle / "dist")):
+        for number, (distribution, render_js) in enumerate(
+                (item, enabled) for item in distributions(bundle / "dist") for enabled in (False, True)):
             prefix = root / f"env-{number}"
             command(["uv", "venv", "--python", sys.executable, str(prefix)], root)
             python = prefix / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             command(["uv", "pip", "install", "--python", str(python), "--require-hashes",
-                     "--requirements", str(bundle / "ci-package/runtime-requirements.txt")], root)
+                     "--requirements", str(bundle / "ci-package" / (
+                         "render-js-requirements.txt" if render_js else "runtime-requirements.txt"))], root)
             command(["uv", "pip", "install", "--python", str(python), "--no-deps", "--no-cache",
                      "--build-constraints", str(bundle / "ci-package/build-constraints.txt"),
                      str(distribution)], root)
             work = root / f"work-{number}"
             work.mkdir()
-            checked = command([str(python), "-I", str(Path(__file__).resolve()), "probe",
-                               "--checkout", str(checkout), "--bundle", str(bundle)], work)
-            results.append({"distribution": distribution.name, "sha256": digest(distribution),
+            argv = [str(python), "-I", str(Path(__file__).resolve()), "probe",
+                    "--checkout", str(checkout), "--bundle", str(bundle)]
+            if render_js:
+                argv.append("--render-js")
+            checked = command(argv, work)
+            results.append({"distribution": distribution.name, "render_js": render_js,
+                            "sha256": digest(distribution),
                             "probe": json.loads(checked.stdout)})
     report = {"checkout_sha": manifest["checkout_sha"], "uv": manifest["uv"],
               "action_cache_hit": os.environ.get("BREWDOC_CACHE_HIT"),
@@ -264,9 +354,13 @@ def main() -> None:
     parser.add_argument("mode", choices=("prepare", "verify", "probe"))
     parser.add_argument("--checkout", type=Path, default=Path.cwd())
     parser.add_argument("--bundle", type=Path, default=Path.cwd())
+    parser.add_argument("--render-js", action="store_true", help="Probe the isolated optional installation")
     args = parser.parse_args()
-    result = {"prepare": prepare, "verify": verify, "probe": probe}[args.mode](
-        args.checkout.resolve(), args.bundle.resolve())
+    if args.mode == "probe":
+        result = probe(args.checkout.resolve(), args.bundle.resolve(), args.render_js)
+    else:
+        result = {"prepare": prepare, "verify": verify}[args.mode](
+            args.checkout.resolve(), args.bundle.resolve())
     if result is not None:
         print(json.dumps(result))
 

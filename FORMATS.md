@@ -19,7 +19,7 @@ artifact inventory, known omissions, linked contents, then anchored content unit
 PDF pages, selected empty sheets, heading-created empty DOCX chapters, and declared empty or hidden
 PPTX slides remain navigable.
 
-Every receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
+Every local receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
 `sheet`, `html`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
 unit kind decides the content keys: `page/000001`, `chapter/000001`, `slide/000001`,
 `sheet/000001`. A suffix brewdoc does not read is refused with route `none` and unit kind `none`;
@@ -108,6 +108,68 @@ subtrees, 1 MiB UTF-8 per decoded attribute, 32 MiB included decoded text before
 reduction, 100,000 total span-expanded table positions including nested tables, and 64 MiB final
 UTF-8 Markdown including the envelope. Postparse checks do not guarantee native-parser memory safety.
 
+## URL acquisition
+
+`--url URL` explicitly acquires a static HTTP(S) page, then passes a frozen UTF-8
+snapshot through the existing HTML converter. Local `.html` and Python APIs keep
+their offline contracts. Relative links and image targets resolve against the final
+URL and valid source base; this resolution does not fetch images or linked pages.
+The full recovered body remains in source order, without automatic article selection.
+
+Only public destinations and default ports 80/443 are accepted. Every DNS answer,
+connection peer and redirect destination must pass the destination policy. TLS keeps
+certificate and hostname verification. GET requests omit ambient credentials,
+cookies and proxy environment settings. At most five redirects are followed;
+HTTPS-to-HTTP redirects, unsupported schemes and private/special-use addresses
+refuse. Static acquisition has a 30-second total deadline, at most five seconds
+per blocking operation, and 8 MiB transferred/decompressed HTML limits. Only
+`text/html` with absent or UTF-8/UTF8 charset is accepted; invalid UTF-8 and
+conflicting declarations refuse. Identity and bounded gzip are accepted encodings.
+
+`--render-js` additionally requires the installed `brewdoc[render-js]` extra:
+QuickJS-ng 0.17.0.1 with bundled LinkeDOM 0.18.13. No Node, browser or runtime
+component download is used. The native public API and resource prerequisites are
+checked before HTTP. JS requires macOS ARM64 or 64-bit glibc Linux (x86_64/aarch64)
+with proved native prerequisites. Windows, macOS Intel, musl Linux, 32-bit systems and
+unsupported ABIs explicitly refuse JS.
+
+The finite subset includes DOM mutations, classic scripts, relative imported
+modules and dynamic imports, Promise jobs, function timers, GET fetch and async
+GET XHR. Read-only history and HTTP(S) anchor components provide limited page
+compatibility. Inline style reads mark the capture partial; they do not compute
+external CSS or layout. Host requests remain destination-validated and bounded. Cross-origin API
+bodies require accepted CORS headers; there is no authenticated fetch, arbitrary
+request-header or browser cookie model. Documents are parsed before scripts;
+async/defer and event ordering are approximate. Layout, IntersectionObserver,
+iframe execution, workers, WebSockets, media and browser CSP enforcement are
+outside this subset. A child process and native limits bound execution; they do
+not establish an operating-system sandbox against native engine vulnerabilities.
+
+JS acquisition has a 45-second hard deadline, at most 100 host GETs, an 8 MiB
+limit per response/snapshot and 32 MiB aggregate decoded response bytes. The
+native heap is limited to 64 MiB. Execution uses a checked, guarded OS thread with
+at most 1 MiB of stack, 250 ms per native invocation, 2,000 Promise jobs and 200
+fired timer callbacks. The soft capture window is
+12 seconds and ends early when supported work finishes. Later pending work or
+observable script/API errors can produce a useful partial DOM; hard execution,
+policy, transport, memory, job, IPC or snapshot failure refuses without output.
+Requested JS never retries as static.
+
+URL receipts use `brewdoc.receipt/2`: existing conversion fields plus `acquisition`
+with redacted requested/final/base URLs, response and snapshot identities, mode,
+capture status and explicit capture omissions. Query values and nonempty URL
+fragments are redacted in receipt display URLs.
+Frozen snapshot names use `url-<first 16 URL SHA-256 hex>.html`; Markdown source
+identity describes those snapshot bytes. Local receipts remain `brewdoc.receipt/1`.
+An exit-0 partial capture means valid snapshot conversion, not complete JS or
+primary-content recovery. Live acquisition is mutable; frozen conversion remains
+deterministic. No 90% corpus acceptance or global JS compatibility is claimed.
+
+`--url` with a positional document or `--self-check`, and `--render-js` without
+`--url`, produce usage exit 2 before acquisition. `--sheet` and `--artifact` with
+a URL produce HTML refusal exit 1 before HTTP. Hard refusal preserves existing
+destinations. The existing HTML structure and Markdown output limits still apply.
+
 ## Container documents
 
 DOCX accepts Transitional and Strict WordprocessingML. Main-story paragraphs and tables stay in
@@ -190,4 +252,5 @@ Not in any current plan.
 
 ## Never
 
-OCR, ML layout models, network. A page without a text layer is reported in the receipt, not guessed.
+OCR and ML layout models. Local conversion never uses the network; explicit URL
+acquisition is the exception. A page without a text layer is reported in the receipt, not guessed.
