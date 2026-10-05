@@ -142,7 +142,10 @@ code, receipt, markdown = brewdoc.run(
 
 `artifact_outputs` maps artifact keys to paths. The CLI builds it from repeated `--artifact KEY=PATH`.
 
-Planned formats, deferred ones and the never-list: `FORMATS.md`.
+CSV and TSV are intentionally unsupported and are not planned. LLMs can read their text tables
+directly, so brewdoc does not convert them to Markdown.
+
+Planned formats, excluded ones, deferred ones and the never-list: `FORMATS.md`.
 A planned format is refused by name today. The adapter contract and the ordered checklist for
 adding one are in [`docs/architecture.md`](docs/architecture.md).
 
