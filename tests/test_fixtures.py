@@ -16,7 +16,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
 # Derived from the live route table, never a literal: a new route must bring its corpus with it.
 SUPPORTED = tuple(sorted(service.ROUTES))
-PLANNED = (".csv", ".eml", ".epub", ".md", ".odp", ".odt", ".tsv", ".txt")
+UNSUPPORTED = (".csv", ".eml", ".epub", ".md", ".odp", ".odt", ".tsv", ".txt")
 HTML_SUPPORTED = platform.python_implementation() == "CPython" and (3, 12) <= sys.version_info < (3, 15)
 RECEIPT_KEYS = ("route", "receipt_schema", "unit_kind", "units", "tables", "text_regions")
 SNAPSHOT_KEYS = {
@@ -119,20 +119,20 @@ def test_the_scanned_patent_is_refused_by_name():
     ), "a scan must be refused, never rendered empty"
 
 
-def test_every_planned_format_fixture_is_refused_by_suffix_today():
-    # GIVEN every real document of a format the reader plans but does not read yet
-    planned = fixture_files(PLANNED)
-    assert {Path(rel).suffix.lower() for rel in planned} == set(PLANNED), (
-        "the planned corpus must cover all eight refused suffixes")
+def test_every_unsupported_format_fixture_is_refused_by_suffix():
+    # GIVEN every real document of a format the reader does not support
+    unsupported = fixture_files(UNSUPPORTED)
+    assert {Path(rel).suffix.lower() for rel in unsupported} == set(UNSUPPORTED), (
+        "the unsupported corpus must cover all eight refused suffixes")
     # WHEN each one is read
-    refused = {rel: refusal(rel) for rel in planned}
+    refused = {rel: refusal(rel) for rel in unsupported}
     # THEN one table holds every refusal, so a new supported suffix cannot churn per-file cases
     assert refused == {
         rel: (service.EXIT_FAIL, "none",
               "unsupported suffix '%s' in %s: brewdoc reads %s"
               % (Path(rel).suffix, FIXTURES / rel, service.SUFFIXES), "")
-        for rel in planned
-    }, "each planned format stays refused until its reader exists; SUFFIXES names the live routes"
+        for rel in unsupported
+    }, "each unsupported format must be refused; SUFFIXES names the live routes"
 
 
 def sources_rows() -> list[dict]:

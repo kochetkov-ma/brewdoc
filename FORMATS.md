@@ -1,7 +1,7 @@
 # Formats
 
-What brewdoc reads today, what is planned, what is deferred and what it will never do. Base runtime
-dependencies are `pdfplumber` and `python-calamine`. Static HTML adds one conditional native parser;
+What brewdoc reads today, what is planned, what is excluded, what is deferred and what it will never do.
+Base runtime dependencies are `pdfplumber` and `python-calamine`. Static HTML adds one conditional native parser;
 other formats retain the two-dependency policy.
 
 ## Supported
@@ -161,19 +161,23 @@ Order = implementation order, by value for agents.
 
 | # | in | mechanism | output |
 |---|---|---|---|
-| 1 | `.csv` `.tsv` | `csv` | one Markdown table |
-| 2 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
-| 3 | `.epub` | `zipfile` + XHTML chapters; parser reuse requires separate acceptance | one chapter per spine item |
-| 4 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
-| 5 | `.eml` | `email` | headers, text body, attachment names |
+| 1 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
+| 2 | `.epub` | `zipfile` + XHTML chapters; parser reuse requires separate acceptance | one chapter per spine item |
+| 3 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
+| 4 | `.eml` | `email` | headers, text body, attachment names |
 
 Image behavior for planned containers is not accepted yet. Never OCR.
 
-Eight planned suffixes share five adapter modules: `.csv` with `.tsv`, `.odt` with `.odp`, and
-`.md` with `.txt` each pair into one module, the other two rows take one each. Eleven source
-modules including HTML, sixteen at all planned formats. Each format is its own task and follows the ordered
+Six planned suffixes share four adapter modules: `.odt` with `.odp` and `.md` with `.txt`
+each pair into one module; the other two rows take one each. Eleven source modules including
+HTML, fifteen at all planned formats. Each format is its own task and follows the ordered
 checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
 user approval.
+
+## Excluded
+
+CSV and TSV are intentionally unsupported and are not planned. LLMs can read their text tables
+directly, so brewdoc does not convert them to Markdown.
 
 ## Deferred
 
