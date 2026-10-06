@@ -10,10 +10,11 @@ from urllib.parse import urljoin, urlsplit
 
 
 class NativeError(RuntimeError):
-    """Distinguish hard native resource refusal from script exceptions."""
+    """Distinguish trusted timing stops, resource refusal and script exceptions."""
 
-    def __init__(self, message, *, resource=False):
+    def __init__(self, message, *, resource=False, timing=False):
         self.resource = resource
+        self.timing = timing and not resource
         super().__init__('resource: ' + message if resource else message)
 
 
@@ -23,6 +24,11 @@ class _Union(ctypes.Union):
 
 class _Value(ctypes.Structure):
     _fields_ = [('u', _Union), ('tag', ctypes.c_int64)]
+
+
+class _PropertyDescriptor(ctypes.Structure):
+    """Mirror the pinned public 64-bit descriptor layout."""
+    _fields_ = [('flags', ctypes.c_int), ('value', _Value), ('getter', _Value), ('setter', _Value)]
 
 
 _PTR = ctypes.c_void_p
@@ -50,7 +56,9 @@ class _Allocators(ctypes.Structure):
 
 def preflight():
     """Validate installed version, platform, exports and JSValue ABI before HTTP."""
-    if ctypes.sizeof(_PTR) != 8 or ctypes.sizeof(_Value) != 16:
+    if (ctypes.sizeof(_PTR) != 8 or ctypes.sizeof(_Value) != 16
+            or ctypes.sizeof(_PropertyDescriptor) != 56 or ctypes.alignment(_PropertyDescriptor) != 8
+            or tuple(getattr(_PropertyDescriptor, name).offset for name in ('flags', 'value', 'getter', 'setter')) != (0, 8, 24, 40)):
         raise NativeError('JavaScript requires a proved 64-bit ABI')
     system, machine = platform.system(), platform.machine().lower()
     if system not in ('Darwin', 'Linux') or machine not in ('arm64', 'aarch64', 'x86_64', 'amd64') or (system == 'Darwin' and machine != 'arm64'):
@@ -80,6 +88,9 @@ def preflight():
             'JS_EvalFunction': (_Value, [_PTR, _Value]),
             'JS_GetException': (_Value, [_PTR]),
             'JS_GetPrototype': (_Value, [_PTR, _Value]),
+            'JS_IsProxy': (_BOOL, [_Value]),
+            'JS_GetOwnProperty': (_INT, [_PTR, ctypes.POINTER(_PropertyDescriptor), _Value, ctypes.c_uint32]),
+            'JS_ValueToAtom': (ctypes.c_uint32, [_PTR, _Value]),
             'JS_IsStrictEqual': (_BOOL, [_PTR, _Value, _Value]),
             'JS_Throw': (_Value, [_PTR, _Value]),
             'JS_FreeValue': (None, [_PTR, _Value]),
@@ -116,7 +127,7 @@ def preflight():
 class Context:
     """Own native memory, trusted handles and a bounded host-fed module graph."""
 
-    def __init__(self, fetch_module, *, guarded_stack=False):
+    def __init__(self, fetch_module, *, guarded_stack=False, loading_deadline=None):
         if guarded_stack and threading.current_thread() is threading.main_thread():
             raise NativeError('guarded native runtime requires its verified worker thread')
         self.lib = preflight()
@@ -138,8 +149,12 @@ class Context:
         self.fetch_module = fetch_module
         self.job_count = 0
         self.deadline = 0
+        self.loading_deadline = loading_deadline
+        self.recovery_deadline = None
+        self._active_deadline = None
         self.interrupted = False
         self.host_error = None
+        self.snapshot_refused = False
         self.module_bases = {}
         if not self.runtime:
             raise NativeError('native runtime allocation failed', resource=True)
@@ -213,7 +228,9 @@ class Context:
         return 0
 
     def _interrupt(self, runtime, opaque):
-        self.interrupted = time.monotonic() >= self.deadline
+        """Interrupt an invocation or its active loading/recovery phase budget."""
+        now = time.monotonic()
+        self.interrupted = now >= self.deadline or self._active_deadline is not None and now >= self._active_deadline
         return int(self.interrupted)
 
     def _rejection(self, context, promise, reason, handled, opaque):
@@ -288,8 +305,12 @@ class Context:
             finally:
                 self.lib.JS_FreeValue(context, value)
         except Exception as error:
-            if getattr(error, 'resource', False) or getattr(error, 'containment', False):
-                self.host_error = error
+            from ..htmlurl import URLPolicyError, URLResourceError, URLTimeoutError
+            if (isinstance(error, (URLPolicyError, URLResourceError, URLTimeoutError))
+                    or isinstance(error, NativeError) and (error.resource or error.timing)):
+                if (self.host_error is None or isinstance(self.host_error, URLTimeoutError)
+                        or isinstance(self.host_error, NativeError) and self.host_error.timing):
+                    self.host_error = error
             self._throw('module acquisition failed')
             return None
 
@@ -301,12 +322,29 @@ class Context:
         finally:
             self.lib.JS_FreeValue(self.context, value)
 
-    def _begin(self):
+    def _check_limits(self):
+        """Keep sticky heap and authoritative host failures ahead of timing."""
+        if self.heap_exhausted:
+            raise NativeError('native heap limit exceeded', resource=True)
+        if self.host_error is not None:
+            error, self.host_error = self.host_error, None
+            raise error
+        if self.snapshot_refused:
+            raise NativeError('native snapshot inspection refused', resource=True)
+
+    def _begin(self, *, recovery=False):
+        """Enforce trusted cutoffs before any page effect and retain hard precedence."""
         if not self.context:
             raise NativeError('native context is closed')
         if threading.get_ident() != self.thread:
             raise NativeError('native context requires its owning thread')
-        self.deadline = time.monotonic() + 0.250
+        self._check_limits()
+        now = time.monotonic()
+        self._active_deadline = self.recovery_deadline if recovery else self.loading_deadline
+        if self._active_deadline is not None and now >= self._active_deadline:
+            self.interrupted = True
+            raise NativeError('execution deadline exceeded', timing=True)
+        self.deadline = now + 0.250
         self.interrupted = False
 
     def _string(self, value):
@@ -317,7 +355,10 @@ class Context:
         size = _SIZE()
         pointer = self.lib.JS_ToCStringLen2(self.context, ctypes.byref(size), value, False)
         if not pointer:
-            raise NativeError('native string allocation failed', resource=True)
+            exception = self.lib.JS_GetException(self.context)
+            self.lib.JS_FreeValue(self.context, exception)
+            self._check_limits()
+            raise NativeError('native string conversion failed', timing=self.interrupted)
         try:
             if size.value > 8 * 1024 * 1024:
                 raise NativeError('native string bytes exceeded', resource=True)
@@ -325,28 +366,30 @@ class Context:
         finally:
             self.lib.JS_FreeCString(self.context, pointer)
 
-    def _check(self, value):
+    def _check(self, value, *, raw=False):
         """Classify native failures without inspecting page-controlled messages."""
-        if self.heap_exhausted:
-            raise NativeError('native heap limit exceeded', resource=True)
-        if self.host_error is not None:
-            error, self.host_error = self.host_error, None
-            raise error
-        if value.tag != 6:
-            return
-        exception = self.lib.JS_GetException(self.context)
+        exception = self.lib.JS_GetException(self.context) if value.tag == 6 else None
         try:
-            internal = False
+            self._check_limits()
+            if self.interrupted:
+                raise NativeError('execution limit exceeded', timing=True)
+            if exception is None:
+                return
+            if raw:
+                raise NativeError('native raw inspection failed', resource=True)
             if exception.tag == -1:
                 prototype = self.lib.JS_GetPrototype(self.context, exception)
                 try:
                     internal = self.lib.JS_IsStrictEqual(self.context, prototype, self.handles['_nativeInternalError'])
                 finally:
                     self.lib.JS_FreeValue(self.context, prototype)
+                if internal:
+                    raise NativeError('native InternalError refused', resource=True)
             message = self._text(exception)
         finally:
-            self.lib.JS_FreeValue(self.context, exception)
-        raise NativeError('execution limit exceeded' if self.interrupted else message[:512], resource=self.interrupted or internal)
+            if exception is not None:
+                self.lib.JS_FreeValue(self.context, exception)
+        raise NativeError(message[:512])
 
     def eval(self, source, name, module=False, *, meta_url=None):
         """Evaluate unchanged source; retain module promises for pending status."""
@@ -396,20 +439,427 @@ class Context:
         finally:
             self.lib.JS_FreeValue(self.context, global_object)
 
-    def call(self, name, *arguments):
-        """Invoke a captured handle without consulting page-controlled globals."""
-        self._begin()
-        values = [self._string(value) if isinstance(value, str) else _Value(_Union(integer=value), 0) for value in arguments]
+    def _invoke(self, name, arguments, *, raw=False):
+        """Return an owned call result while releasing only marshalled temporaries."""
+        self._begin(recovery=self.recovery_deadline is not None)
+        values, owned = [], []
         try:
+            for argument in arguments:
+                value = argument if isinstance(argument, _Value) else self._string(argument) if isinstance(argument, str) else _Value(_Union(integer=argument), 0)
+                values.append(value)
+                if not isinstance(argument, _Value):
+                    owned.append(value)
+                self._check(value, raw=raw)
             argv = (_Value * len(values))(*values)
             value = self.lib.JS_Call(self.context, self.handles[name], _UNDEFINED, len(values), argv)
             try:
-                self._check(value)
-                return self._text(value)
-            finally:
+                self._check(value, raw=raw)
+                return value
+            except Exception:
                 self.lib.JS_FreeValue(self.context, value)
+                raise
         finally:
-            for value in values:
+            for value in owned:
+                self.lib.JS_FreeValue(self.context, value)
+
+    def call(self, name, *arguments):
+        """Invoke a captured handle without consulting page-controlled globals."""
+        value = self._invoke(name, arguments)
+        try:
+            return self._text(value)
+        finally:
+            self.lib.JS_FreeValue(self.context, value)
+
+    def call_raw(self, name, *arguments):
+        """Return an owned raw value without page-controlled string conversion."""
+        return self._invoke(name, arguments, raw=True)
+
+    def is_proxy(self, value):
+        """Inspect the public native Proxy brand without invoking any trap."""
+        self._begin(recovery=self.recovery_deadline is not None)
+        return bool(self.lib.JS_IsProxy(value))
+
+    def _refuse_snapshot(self):
+        """Latch a source-guard refusal before a later timing stop can mask it."""
+        self.snapshot_refused = True
+        raise NativeError('native snapshot inspection refused', resource=True)
+
+    def own_descriptor(self, value, key):
+        """Return an owned descriptor or None, rejecting Proxy and key coercion."""
+        self._begin(recovery=self.recovery_deadline is not None)
+        if value.tag != -1 or self.lib.JS_IsProxy(value):
+            self._refuse_snapshot()
+        owned_key = isinstance(key, str)
+        key_value = self._string(key) if owned_key else key
+        atom = 0
+        try:
+            if not isinstance(key_value, _Value) or key_value.tag not in (-8, -7, -6):
+                self._refuse_snapshot()
+            atom = self.lib.JS_ValueToAtom(self.context, key_value)
+            if not atom:
+                self._check(_Value(_Union(integer=0), 6), raw=True)
+            descriptor = _PropertyDescriptor(0, _UNDEFINED, _UNDEFINED, _UNDEFINED)
+            status = self.lib.JS_GetOwnProperty(self.context, ctypes.byref(descriptor), value, atom)
+            if status < 0:
+                self._check(_Value(_Union(integer=0), 6), raw=True)
+            return descriptor if status else None
+        finally:
+            if atom:
+                self.lib.JS_FreeAtom(self.context, atom)
+            if owned_key:
+                self.lib.JS_FreeValue(self.context, key_value)
+
+    def free_descriptor(self, descriptor):
+        """Release all owned descriptor fields and clear their handles."""
+        for name in ('value', 'getter', 'setter'):
+            self.lib.JS_FreeValue(self.context, getattr(descriptor, name))
+            setattr(descriptor, name, _UNDEFINED)
+
+    def _retain_descriptor(self, descriptor, records):
+        """Transfer owned fields to a compact record or release them on failure."""
+        try:
+            records.append(bytes(descriptor))
+        except Exception:
+            self.free_descriptor(descriptor)
+            raise
+
+    def snapshot(self):
+        """Validate the source-used flat graph without traps, then serialize once."""
+        import resource
+        values, descriptors = [], []
+        cleanup = _PropertyDescriptor(0, _UNDEFINED, _UNDEFINED, _UNDEFINED)
+        cleanup_address = ctypes.addressof(cleanup)
+        cache, prototypes, cells, methods = {}, {}, {}, {}
+        keys = ('NEXT', 'END', 'START', 'VALUE', 'MIME', 'primitive', 'PREV', 'PRIVATE',
+                'CLASS_LIST', 'DATASET', 'STYLE', 'SHEET', 'CHANGED', 'UPGRADE', 'replaceSymbol',
+                'nodeType', 'ownerDocument', 'localName', 'name', 'publicId', 'systemId',
+                'toString', 'valueOf', 'childNodes', 'firstChild', 'nextSibling', 'cloneNode',
+                'textContent', 'data', 'attributes', 'ownerSVGElement', 'createElement',
+                'createElementNS', 'ignoreCase', 'voidElements', 'ownerElement', 'length',
+                'push', 'join', 'test', 'exec', 'flags', 'source', 'lastIndex', 'call',
+                'prototype', 'set', 'Map', 'global', 'multiline', 'dotAll', 'unicode',
+                'unicodeSets', 'sticky', 'hasIndices')
+
+        def raw(name, *arguments):
+            """Retain the owned return until serialization and guard cleanup finish."""
+            value = self.call_raw('__small' + name, *arguments)
+            values.append(value)
+            return value
+
+        def identity(value):
+            """Key a retained value by tag and native identity."""
+            return value.tag, value.u.pointer
+
+        def safe(value):
+            """Require a non-Proxy object before native reflection."""
+            if value.tag != -1 or self.is_proxy(value):
+                self._refuse_snapshot()
+
+        def own(value, key):
+            """Retain owned fields while temporary descriptor wrappers may expire."""
+            descriptor = self.own_descriptor(value, key)
+            if descriptor is not None:
+                self._retain_descriptor(descriptor, descriptors)
+            return descriptor
+
+        def prototype(value):
+            """Cache a Proxy-checked owned prototype reference."""
+            safe(value)
+            token = identity(value)
+            if token not in prototypes:
+                result = self.lib.JS_GetPrototype(self.context, value)
+                try:
+                    self._check(result, raw=True)
+                except Exception:
+                    self.lib.JS_FreeValue(self.context, result)
+                    raise
+                values.append(result)
+                prototypes[token] = result
+            return prototypes[token]
+
+        def resolve(value, key):
+            """Resolve descriptors through checked prototype hops without getters."""
+            path = []
+            first = True
+            while value.tag == -1:
+                safe(value)
+                token = identity(value), key if isinstance(key, str) else identity(key)
+                if token in cache:
+                    descriptor = cache[token]
+                    break
+                if not first:
+                    path.append(token)
+                descriptor = own(value, key)
+                if descriptor is not None:
+                    break
+                value = prototype(value)
+                first = False
+            else:
+                if value.tag != 2:
+                    self._refuse_snapshot()
+                descriptor = None
+            for token in path:
+                cache[token] = descriptor
+            return descriptor
+
+        def data(value, key, *, inherited=False, optional=False):
+            """Read a data field without invoking its accessor."""
+            if inherited:
+                descriptor = resolve(value, key)
+            elif isinstance(key, str) and (key == 'length' or key.isdecimal()):
+                # These keys address only the immutable private capture tables.
+                token = identity(value), key
+                if token not in cells:
+                    cells[token] = own(value, key)
+                descriptor = cells[token]
+            else:
+                descriptor = own(value, key)
+            if descriptor is None and optional:
+                return None
+            if descriptor is None or descriptor.flags & 16:
+                self._refuse_snapshot()
+            return descriptor.value
+
+        def number(value):
+            """Read primitive numeric tags without coercion."""
+            if value.tag == 0:
+                return value.u.integer
+            if value.tag == 8:
+                return value.u.number
+            self._refuse_snapshot()
+
+        def same(left, right):
+            """Compare native values without conversion."""
+            return bool(self.lib.JS_IsStrictEqual(self.context, left, right))
+
+        def array(value):
+            """Read captured private table rows through data descriptors."""
+            length = data(value, 'length')
+            if length.tag != 0 or length.u.integer < 0:
+                self._refuse_snapshot()
+            return [data(value, str(index)) for index in range(length.u.integer)]
+
+        def match(descriptor, record):
+            """Compare captured flags and native handles without coercion."""
+            flags = number(data(record, '2'))
+            if flags == -1:
+                return descriptor is None
+            return (descriptor is not None and descriptor.flags & 23 == flags
+                    and all(same(getattr(descriptor, field), data(record, str(index)))
+                            for index, field in ((3, 'value'), (4, 'getter'), (5, 'setter'))))
+
+        def verify(record, target=None):
+            """Refuse a changed source dependency before executing it."""
+            owner, key = data(record, '0'), data(record, '1')
+            descriptor = resolve(owner if target is None else target, key)
+            if not match(descriptor, record):
+                self._refuse_snapshot()
+            return descriptor
+
+        def assignable(target, names):
+            """Reject inherited setters or readonly destinations on fresh instances."""
+            for name in names:
+                descriptor = resolve(target, key_map.get(name, name))
+                if descriptor is not None and (descriptor.flags & 16 or not descriptor.flags & 2):
+                    self._refuse_snapshot()
+
+        def selected(name):
+            """Select a captured native constructor without consulting page registries."""
+            owned = isinstance(name, str)
+            candidate = self._string(name) if owned else name
+            try:
+                self._check(candidate, raw=True)
+                for row in constructor_rows:
+                    if same(data(row, '0'), candidate):
+                        return row
+                self._refuse_snapshot()
+            finally:
+                if owned:
+                    self.lib.JS_FreeValue(self.context, candidate)
+
+        def constructor(row, fields):
+            """Validate constructor edges and source-used fresh assignments."""
+            token = identity(row)
+            if token not in checked_constructors:
+                for entry in array(data(row, '2')):
+                    owner = data(entry, '0')
+                    if not same(prototype(owner), data(entry, '1')):
+                        self._refuse_snapshot()
+                    descriptor = verify(data(entry, '2'))
+                    if descriptor is not None and descriptor.value.tag == -1:
+                        if not same(prototype(descriptor.value), data(entry, '3')):
+                            self._refuse_snapshot()
+                checked_constructors.add(token)
+            assignable(data(row, '1'), fields)
+
+        def string(value):
+            """Require a native string tag without converting the value."""
+            if value.tag not in (-7, -6):
+                self._refuse_snapshot()
+
+        try:
+            key_map = {name: raw('RawKey', index) for index, name in enumerate(keys)}
+            groups = [raw('RawDependency', index) for index in range(14)]
+            serializer_records, dom_records = array(groups[0]), array(groups[1])
+            stable_records, regexp_records = array(groups[2]), array(groups[3])
+            clone_records, constructor_rows = array(groups[4]), array(groups[5])
+            mime, node_list, regexps = groups[6], groups[7], groups[8:11]
+            checked_constructors = set()
+            for record in stable_records:
+                verify(record)
+            for record in regexp_records:
+                for regexp in regexps:
+                    verify(record, regexp)
+            for regexp in regexps:
+                number(data(regexp, key_map['lastIndex']))
+            for record in array(groups[13]):
+                verify(record)
+            function_call = stable_records[1]
+            verify(function_call, data(stable_records[0], '3'))
+            verify(function_call, data(serializer_records[8], '3'))
+            constructor(selected('@nodelist'), ())
+            root = raw('RawRoot')
+            safe(root)
+            if number(data(root, key_map['nodeType'])) != 9:
+                self._refuse_snapshot()
+            stack, seen, children = [], set(), {}
+            current = raw('RawCurrent')
+            clone_fields = ('ownerDocument', 'localName', 'nodeType', 'parentNode',
+                            'NEXT', 'PREV', 'PRIVATE', 'END', 'CLASS_LIST', 'DATASET', 'STYLE')
+            attr_fields = ('ownerDocument', 'localName', 'nodeType', 'parentNode',
+                           'NEXT', 'PREV', 'ownerElement', 'name', 'VALUE', 'CHANGED')
+            cloning = False
+            while current.tag == -1:
+                safe(current)
+                token = identity(current)
+                if token in seen:
+                    self._refuse_snapshot()
+                seen.add(token)
+                if len(seen) % 128 == 0:
+                    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                    if rss * (1 if platform.system() == 'Darwin' else 1024) > 256 * 1048576:
+                        self._refuse_snapshot()
+                kind = number(data(current, key_map['nodeType']))
+                next_value = data(current, key_map['NEXT'])
+                if next_value.tag not in (-1, 2):
+                    self._refuse_snapshot()
+                if kind == -1:
+                    start = data(current, key_map['START'])
+                    if not stack or not same(start, stack[-1][0]) or not same(current, stack[-1][1]):
+                        self._refuse_snapshot()
+                    stack.pop()
+                    if not stack:
+                        if next_value.tag != 2:
+                            self._refuse_snapshot()
+                        break
+                else:
+                    if kind not in (1, 2, 3, 4, 8, 9, 10, 11) or kind == 9 and not same(current, root):
+                        self._refuse_snapshot()
+                    if stack and kind != 2:
+                        children[identity(stack[-1][0])] = children.get(identity(stack[-1][0]), 0) + 1
+                    if kind in (1, 9, 11):
+                        end = data(current, key_map['END'])
+                        safe(end)
+                        stack.append((current, end))
+                    for name in ('childNodes', 'firstChild', 'nextSibling', 'cloneNode',
+                                 'textContent', 'attributes', 'valueOf', 'primitive'):
+                        if own(current, key_map[name]) is not None:
+                            self._refuse_snapshot()
+                    if not same(current, root) and own(current, key_map['toString']) is not None:
+                        self._refuse_snapshot()
+                    conversion = resolve(current, key_map['valueOf'])
+                    if not match(conversion, groups[12]) or resolve(current, key_map['primitive']) is not None:
+                        self._refuse_snapshot()
+                    method = 11
+                    if not same(current, root):
+                        serializer = resolve(current, key_map['toString'])
+                        token = id(serializer)
+                        if token not in methods:
+                            # Retain the descriptor so its Python identity cannot be reused.
+                            methods[token] = (serializer, next((index for index, record in
+                                              enumerate(serializer_records) if match(serializer, record)), None))
+                        method = methods[token][1]
+                        if method is None:
+                            self._refuse_snapshot()
+                    if kind == 1 or method in (6, 8, 9, 10):
+                        string(data(current, key_map['localName']))
+                    if kind in (2, 3, 4, 8) or method in (1, 2, 3, 4):
+                        string(data(current, key_map['VALUE']))
+                    if kind == 2 or method == 1:
+                        string(data(current, key_map['name']))
+                    if kind == 10 or method == 7:
+                        name = data(current, key_map['name'])
+                        if name.tag not in (2, 3):
+                            string(name)
+                        for name in ('publicId', 'systemId'):
+                            string(data(current, key_map[name]))
+                    if method in (1, 8, 9, 10):
+                        document = data(current, key_map['ownerDocument'])
+                        safe(document)
+                        if not same(data(document, key_map['MIME']), mime):
+                            self._refuse_snapshot()
+                        resolve(current, key_map['ownerSVGElement'])
+                    if method in (6, 11):
+                        if method == 6:
+                            end = data(current, key_map['END'])
+                            safe(end)
+                            if (not stack or not same(current, stack[-1][0])
+                                    or not same(end, stack[-1][1])):
+                                self._refuse_snapshot()
+                        verify(dom_records[0], current)
+                        verify(dom_records[1], current)
+                    if method == 10:
+                        cloning = True
+                        verify(dom_records[2], current)
+                        content = resolve(current, key_map['textContent'])
+                        if not match(content, dom_records[3]) and not match(content, dom_records[9]):
+                            self._refuse_snapshot()
+                        if match(content, dom_records[9]):
+                            constructor(selected('style'), clone_fields + ('SHEET',))
+                        verify(dom_records[7], document)
+                        verify(dom_records[8], document)
+                        upgrade = data(document, key_map['UPGRADE'])
+                        if upgrade.tag != 2:
+                            self._refuse_snapshot()
+                        svg = data(current, key_map['ownerSVGElement'], inherited=True, optional=True)
+                        if svg is not None:
+                            if svg.tag not in (-1, 2):
+                                self._refuse_snapshot()
+                            if svg.tag == -1:
+                                safe(svg)
+                            constructor(selected('@svg'), clone_fields + ('ownerSVGElement',))
+                        else:
+                            name = data(current, key_map['localName'])
+                            if not any(same(name, data(selected(tag), '0'))
+                                       for tag in ('script', 'style', 'title', 'textarea')):
+                                self._refuse_snapshot()
+                            row = selected(name)
+                            constructor(row, clone_fields + ('SHEET',))
+                    if kind in (3, 4):
+                        verify(dom_records[4], current)
+                        verify(dom_records[5], current)
+                    if cloning and kind == 2:
+                        verify(dom_records[6], current)
+                raw('RawAdvance', next_value)
+                current = raw('RawCurrent')
+            else:
+                self._refuse_snapshot()
+            if stack or not seen:
+                self._refuse_snapshot()
+            if cloning:
+                verify(clone_records[0], groups[11])
+                verify(clone_records[1])
+                constructor(selected('@attr'), attr_fields)
+            for count in children.values():
+                assignable(node_list, tuple(str(index) for index in range(count)))
+            return self.call('__smallSnapshot')
+        finally:
+            methods.clear()
+            while descriptors:
+                record = descriptors.pop()
+                ctypes.memmove(cleanup_address, record, 56)
+                self.free_descriptor(cleanup)
+            for value in reversed(values):
                 self.lib.JS_FreeValue(self.context, value)
 
     def jobs(self):

@@ -6,6 +6,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import math
 import os
 import re
 import socket
@@ -26,9 +27,10 @@ from brewdoc.service import EXIT_FAIL, _line, run
 _BODY_LIMIT = 8 * 1048576
 _AGGREGATE_LIMIT = 32 * 1048576
 _REQUEST_LIMIT = 100
+_DEFAULT_TIMEOUT = 10.0
+_MAX_TIMEOUT = min(threading.TIMEOUT_MAX, (2**31 - 1) / 1000)
+_TIMEOUT_RANGE_REASON = "URL timeout exceeds supported clock range (maximum %s seconds)" % _MAX_TIMEOUT
 _STATIC_TIMEOUT = 30.0
-_JS_TIMEOUT = 45.0
-_OPERATION_TIMEOUT = 5.0
 _USER_AGENT = "brewdoc URL acquisition"
 _ACCEPT = {"html": "text/html", "script": "text/javascript, application/javascript",
            "module": "text/javascript, application/javascript", "api": "*/*"}
@@ -62,6 +64,26 @@ class URLResourceError(BrewdocError):
     """Refuse exhausted acquisition budgets without returning partial data."""
 
 
+class URLTimeoutError(BrewdocError):
+    """Stop acquisition on a trusted loading deadline without accepting half bodies."""
+
+
+def _timeout_seconds(value: int | float) -> float:
+    """Validate a finite positive duration within the supported clock range."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise BrewdocError("URL timeout must be a finite positive number")
+    try:
+        seconds = float(value)
+    except OverflowError as exc:
+        reason = _TIMEOUT_RANGE_REASON if value > 0 else "URL timeout must be a finite positive number"
+        raise BrewdocError(reason) from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise BrewdocError("URL timeout must be a finite positive number")
+    if seconds > _MAX_TIMEOUT:
+        raise BrewdocError(_TIMEOUT_RANGE_REASON)
+    return seconds
+
+
 def _error(message: str, stage: str, kind: type[BrewdocError] = BrewdocError) -> BrewdocError:
     """Attach a trusted refusal stage without forwarding page-controlled diagnostics."""
     error = kind(message)
@@ -73,8 +95,8 @@ def _remaining(deadline: float) -> float:
     """Return the next blocking-operation budget, refusing an expired watchdog."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise _error("URL deadline exceeded", "resource", URLResourceError)
-    return min(_OPERATION_TIMEOUT, remaining)
+        raise _error("URL deadline exceeded", "timeout", URLTimeoutError)
+    return remaining
 
 
 def _validate_url(url: str) -> str:
@@ -150,8 +172,10 @@ def _dns_lookup(host: str, port: int, deadline: float) -> tuple[str, ...]:
     try:
         result = subprocess.run([sys.executable, "-I", "-c", _DNS_CODE, host, str(port), str(os.getpid())],
                                 capture_output=True, timeout=_remaining(deadline), check=False)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise _error("URL DNS deadline or worker failure", "dns", URLResourceError) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise _error("URL DNS deadline exceeded", "dns", URLTimeoutError) from exc
+    except OSError as exc:
+        raise _error("URL DNS worker failed", "dns") from exc
     if result.returncode != 0 or len(result.stdout) > 16384:
         raise _error("URL DNS resolution failed", "dns")
     try:
@@ -293,8 +317,10 @@ def _request(url: str, deadline: float, accept: str, origin: str | None = None,
         _remaining(deadline)
         return {"status": response.status, "headers": headers, "entity": entity, "body": body}
     except (OSError, http.client.HTTPException, zlib.error) as exc:
+        if isinstance(exc, ssl.SSLError):
+            raise _error("URL TLS failed", "tls", URLPolicyError) from exc
         _remaining(deadline)
-        raise _error("URL transport failed", "tls" if isinstance(exc, ssl.SSLError) else "connect") from exc
+        raise _error("URL transport failed", "connect") from exc
     finally:
         if watchdog is not None:
             watchdog.cancel()
@@ -431,7 +457,19 @@ def _acquisition(render_js: bool) -> dict:
                                        "layout", "canvas", "shadow_roots", "browser_state",
                                        "parser_blocking_order", "async_script_order"] if render_js else
                                       ["scripts", "stylesheets", "images", "subframes", "media", "browser_state"]),
-            "refusal_stage": None, "soft_window_seconds": 12 if render_js else None}
+            "refusal_stage": None, "soft_window_seconds": None,
+            "soft_window_origin": None,
+            "timeout_seconds": None}
+
+
+def _capture_errors(errors: list[dict], limit: int) -> list[dict]:
+    """Reserve one bounded diagnostic slot for the actual timing recovery cause."""
+    causes = {"capture_timeout", "initial_html_timeout_fallback"}
+    cause = next((error for error in errors if error["category"] in causes), None)
+    if cause is None:
+        return errors[:limit]
+    ordinary = [error for error in errors if error["category"] not in causes]
+    return ordinary[:limit - 1] + [cause]
 
 
 def _challenge(html: str) -> bool:
@@ -445,14 +483,20 @@ def _challenge(html: str) -> bool:
 
 
 def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
-             artifact_outputs=None) -> tuple[int, dict, str]:
+             artifact_outputs=None, timeout: int | float = _DEFAULT_TIMEOUT) -> tuple[int, dict, str]:
     """Acquire a frozen URL snapshot, then reuse local conversion and output transactions."""
     acquisition = _acquisition(render_js)
     requested = url
     name = "url.html"
-    stage = "options"
+    stage = "timeout"
     budget = {"accepted_requests": 0, "decoded_bytes": 0}
     try:
+        acquisition["timeout_seconds"] = _timeout_seconds(timeout)
+        if render_js:
+            acquisition["soft_window_seconds"] = acquisition["timeout_seconds"]
+            acquisition["soft_window_origin"] = "request"
+        deadline = time.monotonic() + acquisition["timeout_seconds"]
+        stage = "options"
         if sheets is not None or artifact_outputs:
             raise BrewdocError("--sheet and --artifact are workbook-only options")
         stage = "url"
@@ -467,8 +511,7 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             raise BrewdocError("URL HTML parser unavailable")
         if render_js:
             from brewdoc import htmljs
-            htmljs._check_runtime()
-        deadline = time.monotonic() + (_JS_TIMEOUT if render_js else _STATIC_TIMEOUT)
+            htmljs._check_runtime(deadline=deadline)
         stage = "connect"
         response = _fetch(requested, deadline=deadline, budget=budget)
         final_url = response["final_url"]
@@ -495,7 +538,12 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
                 return _fetch(request["url"], deadline=deadline, kind=request["kind"], budget=budget,
                               origin=request.get("origin"), requested_with=request.get("requested_with", False))
 
-            capture = htmljs.render(source, final_url, fetch, deadline)
+            try:
+                capture = htmljs.render(source, final_url, fetch, deadline,
+                                        soft_window=acquisition["timeout_seconds"])
+            except URLTimeoutError:
+                capture = htmljs._initial_capture(source, acquisition["timeout_seconds"])
+            snapshot_kind = capture.get("snapshot_kind", "javascript_dom")
             source = capture["html"]
             acquisition["capture_status"] = ("settled" if capture.get("capture_status") == "settled"
                                               else "partial")
@@ -504,7 +552,7 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             acquisition["error_count"] = capture.get("error_count", len(errors))
             acquisition["errors"] = [{"category": error.get("category", "script"),
                                        "resource_url": _display_url(error["resource_url"])
-                                       if error.get("resource_url") else None} for error in errors[:16]]
+                                       if error.get("resource_url") else None} for error in _capture_errors(errors, 16)]
             acquisition["pending"] = capture["pending"]
             acquisition["counts"].update(capture["counts"])
             if csp:
@@ -515,14 +563,14 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             del capture
         else:
             acquisition["capture_status"] = "static"
+            snapshot_kind = "static_html"
         stage = "snapshot"
         snapshot, base = _snapshot(source, final_url)
         del source
         acquisition["effective_base_url"] = _display_url(base)
-        acquisition["snapshot"] = {"kind": "javascript_dom" if render_js else "static_html",
+        acquisition["snapshot"] = {"kind": snapshot_kind,
                                     "bytes": len(snapshot), "sha256": hashlib.sha256(snapshot).hexdigest()}
         acquisition["counts"]["requests"] = budget["accepted_requests"]
-        _remaining(deadline)
         stage = "conversion"
         with tempfile.TemporaryDirectory(prefix="brewdoc-url-") as folder:
             path = Path(folder) / name
@@ -544,8 +592,11 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
         acquisition["counts"]["requests"] = budget["accepted_requests"]
         acquisition["errors"] = [{"category": stage, "resource_url": None}]
         acquisition["error_count"] = 1
-        reason = ("--sheet and --artifact are workbook-only options" if stage == "options"
+        reason = ("URL timeout must be a finite positive number" if stage == "timeout" and acquisition["timeout_seconds"] is None
+                  else "--sheet and --artifact are workbook-only options" if stage == "options"
                   else "URL acquisition refused during %s" % stage)
+        if stage == "timeout" and acquisition["timeout_seconds"] is None and str(exc) == _TIMEOUT_RANGE_REASON:
+            reason = _TIMEOUT_RANGE_REASON
         receipt = _line(htmltext.ROUTE, False, reason, name)
         receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
                         "acquisition": acquisition})

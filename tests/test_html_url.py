@@ -245,7 +245,7 @@ def test_run_url_redacts_receipt_fragments_without_changing_runtime_or_identity(
     baseline = run(local)
     seen = []
     rendered_urls = []
-    monkeypatch.setattr(htmljs, "_check_runtime", lambda: None)
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
 
     def fetch(url, **kwargs):
         seen.append(url)
@@ -255,7 +255,7 @@ def test_run_url_redacts_receipt_fragments_without_changing_runtime_or_identity(
 
     monkeypatch.setattr(htmlurl, "_fetch", fetch)
 
-    def render(source, final_url, *args):
+    def render(source, final_url, *args, **options):
         rendered_urls.append(final_url)
         return {
             "html": body.decode(), "capture_status": "partial", "error_count": 1,
@@ -300,13 +300,13 @@ def test_js_main_response_csp_presence_marks_valid_dom_partial(htmlurl, monkeypa
     from brewdoc import htmljs
 
     body = b"<html><body><p>article</p></body></html>"
-    monkeypatch.setattr(htmljs, "_check_runtime", lambda: None)
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
     monkeypatch.setattr(htmlurl, "_fetch", lambda *args, **kwargs: {
         "final_url": "https://example.com/", "body": body, "entity": body,
         "body_sha256": hashlib.sha256(body).hexdigest(), "entity_sha256": hashlib.sha256(body).hexdigest(),
         "headers": (("Content-Security-Policy", policy),),
     })
-    monkeypatch.setattr(htmljs, "render", lambda *args: {
+    monkeypatch.setattr(htmljs, "render", lambda *args, **options: {
         "html": body.decode(), "capture_status": "settled", "errors": [], "error_count": 0,
         "pending": {"requests": 0, "timers": 0, "modules": 0, "promises": 0, "jobs": False},
         "counts": {"promise_jobs": 0, "timer_callbacks": 0},
@@ -374,7 +374,7 @@ def test_expired_body_deadline_refuses_before_another_read(htmlurl):
     response = Response(b"<p>late</p>")
     assert response.read_sizes == [], "deadline test must start with no response read"
     # WHEN attempting to read after the total deadline
-    with pytest.raises(BrewdocError):
+    with pytest.raises(htmlurl.URLTimeoutError):
         htmlurl._read_response(response, time.monotonic() - 1)
     # THEN no late blocking body operation starts
     assert response.read_sizes == [], "an expired total budget must refuse before socket reads"
@@ -491,7 +491,7 @@ def test_pinned_https_connection_verifies_hostname_and_keeps_tls_required(htmlur
     connection.close()
     # THEN the peer is pinned while original-host SNI and certificate verification remain enabled
     assert (stream.connections, stream.timeouts, tls, stream.closed) == (
-        [("93.184.216.34", 443)], [5.0, 5.0, 5.0], [("example.com", True, ssl.CERT_REQUIRED)], True
+        [("93.184.216.34", 443)], [30.0, 30.0, 30.0], [("example.com", True, ssl.CERT_REQUIRED)], True
     ), "numeric connection must retain verified original-host TLS and close its socket"
 
 
@@ -600,6 +600,7 @@ def test_private_dns_hard_failure_preserves_existing_output_and_exact_safe_recei
             "counts": {"requests": 1, "promise_jobs": 0, "timer_callbacks": 0},
             "unsupported_resources": ["scripts", "stylesheets", "images", "subframes", "media", "browser_state"],
             "refusal_stage": "dns", "soft_window_seconds": None,
+            "soft_window_origin": None, "timeout_seconds": 10.0,
         },
     }
     # THEN the whole refusal is sanitized and no snapshot or output is published

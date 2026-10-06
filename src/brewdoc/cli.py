@@ -14,6 +14,16 @@ from brewdoc.service import EXIT_FAIL, EXIT_OK, EXIT_USAGE, SUFFIXES, _line, _ro
 RENDERED_BY = "brewdoc"
 
 
+def _timeout_seconds(value: str) -> float:
+    """Validate an explicit URL wait budget as an argparse value."""
+    from brewdoc.htmlurl import _timeout_seconds as validate_timeout
+
+    try:
+        return validate_timeout(float(value))
+    except (ValueError, BrewdocError) as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _artifact_assignments(assignments) -> dict[str, str] | None:
     """Turn repeated CLI KEY=PATH values into the `run` mapping; refuse bad or repeated keys."""
     if assignments is None:
@@ -57,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("document", nargs="?",
                         help="the .pdf, .docx, .pptx, .html or spreadsheet to render")
     parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
+    parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
+                        help="maximum waiting for one --url call and JS; positive finite seconds "
+                             "within supported clock range, default 10")
     parser.add_argument("--render-js", action="store_true",
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
     parser.add_argument("--out", help="write Markdown here (HTML UTF-8, other formats ASCII); default stdout")
@@ -77,13 +90,16 @@ def main(argv=None) -> int:
         parser.error("--url cannot be combined with a local document or --self-check")
     if args.render_js and args.url is None:
         parser.error("--render-js requires --url")
+    if args.timeout is not None and args.url is None:
+        parser.error("--timeout requires --url")
     if args.self_check:
         return self_check()
     if args.url is not None:
-        from brewdoc.htmlurl import _run_url
+        from brewdoc.htmlurl import _DEFAULT_TIMEOUT, _run_url
 
         rc, line, markdown = _run_url(
             args.url, args.out, render_js=args.render_js,
+            timeout=_DEFAULT_TIMEOUT if args.timeout is None else args.timeout,
             sheets=args.sheet, artifact_outputs=args.artifact)
     elif not args.document:
         parser.print_usage()

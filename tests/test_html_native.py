@@ -77,16 +77,30 @@ def test_native_rejections_track_later_handlers():
         assert context.rejections == 0, 'The handled promise must leave the rejection set.'
 
 
-@pytest.mark.parametrize('source', ['while(true){}', 'new Uint8Array(80*1024*1024)'])
 @native_supported
-def test_native_interrupt_and_heap_exhaustion_are_hard_resource_failures(source):
-    # GIVEN native CPU and heap limits.
+def test_native_interrupt_reports_trusted_timing_without_a_heap_failure():
+    # GIVEN the unchanged native invocation guard and an endless actual script.
     with Context({}.__getitem__) as context:
-        # WHEN page code exceeds a native limit.
-        with pytest.raises(NativeError, match='resource') as caught:
-            context.eval(source, 'page')
-        # THEN the caller can classify refusal without inspecting script text.
-        assert caught.value.resource is True, 'Resource exhaustion must never become partial capture.'
+        # WHEN the engine's trusted interrupt stops evaluation.
+        with pytest.raises(NativeError) as caught:
+            context.eval('while(true){}', 'page')
+        # THEN timing provenance is distinct from a hard resource or heap failure.
+        assert (caught.value.resource, caught.value.timing, context.interrupted, context.heap_exhausted) == (
+            False, True, True, False,
+        ), 'Only a trusted timing interrupt can permit available-content recovery.'
+
+
+@native_supported
+def test_native_heap_exhaustion_remains_hard_without_timing_reclassification():
+    # GIVEN the unchanged native heap bound and an oversized allocation.
+    with Context({}.__getitem__) as context:
+        # WHEN page code exceeds the actual allocator limit.
+        with pytest.raises(NativeError, match='heap') as caught:
+            context.eval('new Uint8Array(80*1024*1024)', 'page')
+        # THEN a real heap denial retains hard priority over timing recovery.
+        assert (caught.value.resource, caught.value.timing, context.interrupted, context.heap_exhausted) == (
+            True, False, False, True,
+        ), 'Heap exhaustion must remain a hard refusal with trusted allocator evidence.'
 
 
 @native_supported
