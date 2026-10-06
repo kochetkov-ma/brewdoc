@@ -265,13 +265,19 @@ def _guarded_call(function, *, protect=False, probe=False):
 
 
 def _host_response(request, fetch, document_url, base_url):
-    """Validate finite GET options and enforce document-origin CORS."""
-    from .htmlurl import URLPolicyError, URLResourceError, _header, _validate_url
+    """Validate finite request permissions and enforce document-origin CORS."""
+    from .htmlurl import URLPolicyError, URLResourceError, _header, _search_body, _validate_url
+    post = request.get('method') == 'POST'
+    if post and (type(request.get('body')) is not str
+                 or any(type(request.get(name)) is not bool for name in
+                        ('body_present', 'xhr', 'with_credentials', 'headers_conflict'))
+                 or request['body_present'] is not True or type(request.get('url')) is not str):
+        raise URLPolicyError('JS search request IPC invalid')
     url = _validate_url(urljoin(base_url, str(request.get('url', ''))))
     kind = request.get('kind', 'api')
     if kind not in ('script', 'module', 'api'):
         raise URLPolicyError('JS unknown host request kind refused')
-    if request.get('method', 'GET') != 'GET' or request.get('body_present'):
+    if not post and (request.get('method', 'GET') != 'GET' or request.get('body_present')):
         return {'error': 'request_options_unsupported'}
     if request.get('credentials', 'omit') not in ('same-origin', 'omit'):
         return {'error': 'request_options_unsupported'}
@@ -279,19 +285,36 @@ def _host_response(request, fetch, document_url, base_url):
         return {'error': 'request_options_unsupported'}
     headers = request.get('headers', {})
     if not isinstance(headers, dict) or any(not isinstance(key, str) for key in headers):
+        if post:
+            raise URLPolicyError('JS search header IPC invalid')
         return {'error': 'request_headers_unsupported'}
     cross = _origin(url) != _origin(document_url)
     normalized = {key.lower(): value for key, value in headers.items()}
-    if (len(normalized) != len(headers) or set(normalized) - {'accept', 'x-requested-with'}
+    if post:
+        if not request['xhr'] or request['with_credentials'] or kind != 'api':
+            return {'error': 'request_options_unsupported'}
+        if any(type(value) is not str for value in headers.values()):
+            raise URLPolicyError('JS search header IPC invalid')
+        if (request['headers_conflict'] or len(normalized) != len(headers)
+                or set(normalized) - {'accept', 'content-type'}
+                or normalized.get('content-type') != 'application/x-www-form-urlencoded'
+                or ('accept' in normalized and normalized['accept'] not in ('*/*', 'application/json, text/plain, */*'))):
+            return {'error': 'request_headers_unsupported'}
+        if _search_body(url, _origin(document_url), request['body'], normalized['content-type']) is None:
+            return {'error': 'request_options_unsupported'}
+    elif (len(normalized) != len(headers) or set(normalized) - {'accept', 'x-requested-with'}
             or ('accept' in normalized and normalized['accept'] not in ('*/*', 'application/json, text/plain, */*'))
             or ('x-requested-with' in normalized and (normalized['x-requested-with'] != 'XMLHttpRequest' or cross or kind != 'api'))
             or (headers and kind != 'api')):
         return {'error': 'request_headers_unsupported'}
     if cross and request.get('mode') == 'same-origin':
         return {'error': 'cors_denied'}
-    response = fetch({'url': url, 'kind': kind,
-                      'origin': _origin(document_url) if kind != 'script' else None,
-                      'requested_with': 'x-requested-with' in normalized})
+    admitted = {'url': url, 'kind': kind,
+                'origin': _origin(document_url) if kind != 'script' else None,
+                'requested_with': 'x-requested-with' in normalized}
+    if post:
+        admitted.update(method='POST', body=request['body'], content_type=normalized['content-type'])
+    response = fetch(admitted)
     final_url = response.get('final_url', url)
     cross = _origin(final_url) != _origin(document_url)
     if cross and request.get('mode') == 'same-origin':
@@ -566,7 +589,7 @@ def _worker(channel, parent_pid):
 
 
 def _capture(source, url, channel, soft_window, deadline=None):
-    """Pump proved scripts, native modules, host GETs, jobs and finite timers."""
+    """Pump proved scripts, native modules, host requests, jobs and finite timers."""
     from ._urljs.native import Context, NativeError
     from .htmlurl import URLTimeoutError, _capture_errors
     import resource
@@ -631,6 +654,8 @@ def _capture(source, url, channel, soft_window, deadline=None):
             recorded = errors + [
                 {'category': item['category'] if item in ({'category': 'inline_style_only'},
                                                         {'category': 'ephemeral_storage_only'},
+                                                        {'category': 'request_options_unsupported'},
+                                                        {'category': 'request_headers_unsupported'},
                                                         {'category': 'promise_completion_unobservable'})
                  else 'javascript_callback_failed', 'resource_url': None} for item in observed]
             recorded.extend({'category': 'unhandled_promise_rejection', 'resource_url': None} for _ in range(native.rejections))

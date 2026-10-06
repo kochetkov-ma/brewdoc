@@ -443,7 +443,7 @@ def test_second_runtime_preflight_timeout_preserves_already_acquired_html_withou
     monkeypatch.setattr(htmlurl, "_fetch", fetch)
     assert (checks, processes) == ([], []), "the complete source starts before runtime or child I/O"
     # WHEN the trusted loading cutoff expires between acquisition and second preflight.
-    code, receipt, markdown = htmlurl._run_url(URL, render_js=True)
+    code, receipt, markdown = htmlurl._run_url(URL, render_js=True, timeout=10)
     acquisition = receipt["acquisition"]
     # THEN acquired original HTML survives without starting an expired worker.
     assert code == 0, "a second timing-only preflight must retain complete acquired HTML"

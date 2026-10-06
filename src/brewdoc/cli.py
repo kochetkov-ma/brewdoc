@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
     parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
                         help="maximum waiting for one --url call and JS; positive finite seconds "
-                             "within supported clock range, default 10")
+                             "within supported clock range, default 30")
     parser.add_argument("--render-js", action="store_true",
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
     parser.add_argument("--out", help="write Markdown here (HTML UTF-8, other formats ASCII); default stdout")

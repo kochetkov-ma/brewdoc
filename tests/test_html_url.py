@@ -600,7 +600,7 @@ def test_private_dns_hard_failure_preserves_existing_output_and_exact_safe_recei
             "counts": {"requests": 1, "promise_jobs": 0, "timer_callbacks": 0},
             "unsupported_resources": ["scripts", "stylesheets", "images", "subframes", "media", "browser_state"],
             "refusal_stage": "dns", "soft_window_seconds": None,
-            "soft_window_origin": None, "timeout_seconds": 10.0,
+            "soft_window_origin": None, "timeout_seconds": 30.0,
         },
     }
     # THEN the whole refusal is sanitized and no snapshot or output is published

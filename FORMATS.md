@@ -127,10 +127,10 @@ refuse. Static acquisition has 8 MiB transferred/decompressed HTML limits. Only
 conflicting declarations refuse. Identity and bounded gzip are accepted encodings.
 
 `--timeout SECONDS` sets the maximum loading/waiting budget for one `--url` call,
-default 10 seconds. It accepts positive finite seconds within the supported
+default 30 seconds. It accepts positive finite seconds within the supported
 clock range. One budget covers prerequisites, DNS, connections, TLS, redirects,
 the main body, scripts, resources and optional JS waiting. Ready captures return
-immediately. For example, `--timeout 30` allows longer acquisition and JS waiting;
+immediately. For example, `--timeout 60` allows longer acquisition and JS waiting;
 there is no separate five-second network or twelve-second JS waiting ceiling.
 After waiting stops, trusted recovery is bounded to one second and worker cleanup
 to another 1.1 seconds. Local conversion and output of the accepted snapshot follow;
@@ -147,8 +147,19 @@ unsupported ABIs explicitly refuse JS.
 process. No filesystem or shell APIs are exposed, and browser state is not reused.
 The finite subset includes DOM mutations, classic scripts, relative imported
 modules and dynamic imports, Promise jobs, function timers, GET fetch and async
-GET XHR. Read-only history and HTTP(S) anchor components provide limited page
-compatibility. Inline style reads mark the capture partial; they do not compute
+GET XHR. Async XHR admits one public search POST profile: documents at
+https://hn.algolia.com may query the public Item_dev endpoint at
+https://uj5wyc0l7x-dsn.algolia.net/1/indexes/Item_dev/query using the original
+public application/key query, string JSON body and application/x-www-form-urlencoded
+header. Other POST, fetch POST, cookies and user credentials remain unsupported.
+Search acquisition never follows redirects, automatically retries, or rewrites the body. Its strict
+UTF-8 body is limited to 16,384 bytes, JSON depth four and 256 total array entries.
+Unsupported search options preserve partial content without sending the request;
+resource overflow and security failures remain hard refusals.
+Read-only history and HTTP(S) anchor components provide limited page
+compatibility. Each JS capture starts with `innerWidth` set to 1024 CSS pixels.
+The page can change it through `window` or the global; later captures start at
+1024 again. Inline style reads mark the capture partial; they do not compute
 external CSS or layout. Temporary `localStorage` starts empty, is discarded after
 capture and has no storage events. Any access marks the result partial. It accepts
 at most 200 keys and 65,536 aggregate UTF-8 bytes across keys and values; exceeding
@@ -160,8 +171,9 @@ iframe execution, workers, WebSockets, media and browser CSP enforcement are
 outside this subset. A child process and native limits bound execution; they do
 not establish an operating-system sandbox against native engine vulnerabilities.
 
-JS acquisition allows at most 100 host GETs, an 8 MiB
-limit per response/snapshot and 32 MiB aggregate decoded response bytes. The
+JS acquisition allows at most 100 host requests, an 8 MiB
+limit per response/snapshot and 32 MiB aggregate decoded response and outgoing
+search-body bytes. An admitted search body is charged once before sending. The
 native heap is limited to 64 MiB. Execution uses a checked, guarded OS thread with
 at most 1 MiB of stack, 250 ms per native invocation, 2,000 Promise jobs and 200
 fired timer callbacks. The child also has a 45 CPU-second limit. A larger timeout

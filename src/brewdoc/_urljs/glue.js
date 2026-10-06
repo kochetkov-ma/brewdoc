@@ -513,7 +513,34 @@
     }
   }
 
-  function fetch(input, options = {}) {
+  function searchBodyAllowed(body) {
+    for (let index = 0; index < body.length; index++) {
+      const code = charCodeAt(body, index);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = charCodeAt(body, ++index);
+        if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      } else if (code >= 0xdc00 && code <= 0xdfff) return false;
+    }
+    if (utf8Bytes(body) > 16384) { violation = true; throw new RangeError('search body byte bound'); }
+    let value;
+    try { value = parse(body); } catch { return true; }
+    const pending = [[value, 0]];
+    let count = 0;
+    while (pending.length) {
+      const [item, depth] = pending.pop();
+      if (depth > 4) { violation = true; throw new RangeError('search body depth bound'); }
+      if (isArray(item)) {
+        count += item.length;
+        if (count > 256) { violation = true; throw new RangeError('search array entry bound'); }
+        for (const child of item) pending.push([child, depth + 1]);
+      } else if (item !== null && typeof item === 'object') {
+        for (const [, child] of entries(item)) pending.push([child, depth + 1]);
+      }
+    }
+    return true;
+  }
+
+  function fetch(input, options = {}, xhr = null) {
     const id = nextId++;
     return new NativePromise((resolve, reject) => {
       if (options.signal?.aborted) { reject(error('AbortError', 'request aborted')); return; }
@@ -521,6 +548,16 @@
         headers: Object.fromEntries(new Headers(options.headers)), mode: options.mode || 'cors',
         credentials: options.credentials || 'same-origin', redirect: options.redirect || 'follow' };
       request.body_present = options.body !== undefined && options.body !== null;
+      if (request.method === 'POST') {
+        if (xhr === null || !request.body_present || typeof options.body !== 'string' || !searchBodyAllowed(options.body)) {
+          errors.push({ category: 'request_options_unsupported' });
+          reject(error('TypeError', 'request_options_unsupported')); return;
+        }
+        request.body = options.body;
+        request.xhr = true;
+        request.with_credentials = xhr.with_credentials;
+        request.headers_conflict = xhr.headers_conflict;
+      }
       pending.set(id, { resolve, reject, aborted: false });
       options.signal?.addEventListener('abort', () => {
         const state = pending.get(id);
@@ -549,6 +586,36 @@
     globalThis.document = view.document;
     pageDocument = view.document;
     pageWindow = view;
+    const htmlConstructor = view.HTMLElement;
+    const htmlInstance = Function.call.bind(Function.prototype[Symbol.hasInstance]);
+    const innerText = ownDescriptor(Element$1.prototype, 'innerText');
+    const createFragment = Function.call.bind(pageDocument.createDocumentFragment);
+    const createText = Function.call.bind(pageDocument.createTextNode);
+    const createElement = Function.call.bind(pageDocument.createElement);
+    const appendChild = Function.call.bind(ParentNode.prototype.appendChild);
+    const replaceChildren = Function.call.bind(ParentNode.prototype.replaceChildren);
+    const sliceText = Function.call.bind(String.prototype.slice);
+    defineProperty(htmlConstructor.prototype, 'innerText', {
+      configurable: true, enumerable: innerText.enumerable, get: innerText.get,
+      set(value) {
+        if (!htmlInstance(htmlConstructor, this)) throw new NativeTypeError('innerText requires an HTML element');
+        if (typeof value === 'symbol') throw new NativeTypeError('innerText symbol unsupported');
+        const text = value === null ? '' : asString(value);
+        const document = this.ownerDocument;
+        const fragment = createFragment(document);
+        let start = 0;
+        for (let index = 0; index < text.length; index++) {
+          const code = charCodeAt(text, index);
+          if (code !== 10 && code !== 13) continue;
+          if (index > start) appendChild(fragment, createText(document, sliceText(text, start, index)));
+          appendChild(fragment, createElement(document, 'br'));
+          if (code === 13 && charCodeAt(text, index + 1) === 10) index++;
+          start = index + 1;
+        }
+        if (start < text.length) appendChild(fragment, createText(document, sliceText(text, start)));
+        replaceChildren(this, fragment);
+      }
+    });
     const descendants = Function.call.bind(ParentNode.prototype.querySelectorAll);
     const documentDescendants = Function.call.bind(view.Document.prototype.querySelectorAll);
     const namedElements = Function.call.bind(ParentNode.prototype.getElementsByTagName);
@@ -599,12 +666,13 @@
       });
     };
     globalThis.navigator = { userAgent: 'brewdoc QuickJS-ng', language: 'en-US', cookieEnabled: false };
+    globalThis.innerWidth = 1024;
     pageDocument.write = (...parts) => {
       if (!currentScript) throw new Error('document.write outside initial classic script unsupported');
       writeBuffer += parts.join('');
       if (writeBuffer.length > 8 * 1048576) { violation = true; throw new RangeError('document.write byte bound'); }
     };
-    globalThis.fetch = fetch;
+    globalThis.fetch = (input, options) => fetch(input, options);
     globalThis.Headers = Headers;
     globalThis.Response = Response;
     globalThis.queueMicrotask = callback => promiseThen(promiseResolve(), callback);
@@ -617,9 +685,11 @@
       abort() { this.signal.aborted = true; this.signal.dispatchEvent(new Event('abort')); }
     };
     globalThis.XMLHttpRequest = class extends EventTarget {
+      #headersConflict = false;
       constructor() {
         super(); this.readyState = 0; this.status = 0; this.responseType = ''; this.headers = {};
         this.responseText = ''; this.response = ''; this.responseURL = ''; this.timeout = 0;
+        this.withCredentials = false;
       }
       emit(type) {
         const event = new pageEvent(type);
@@ -635,6 +705,8 @@
       }
       setRequestHeader(name, value) {
         if (this.readyState !== 1) throw new Error('XHR not opened');
+        if (entries(this.headers).some(([key]) => key.toLowerCase() === String(name).toLowerCase()))
+          this.#headersConflict = true;
         this.headers[name] = value;
       }
       getResponseHeader(name) { return this.responseHeaders?.get(name) ?? null; }
@@ -642,12 +714,25 @@
         return this.responseHeaders ? [...this.responseHeaders.entries()].map(([name, value]) => name + ': ' + value + '\r\n').join('') : '';
       }
       send(body = null) {
-        if (this.readyState !== 1 || body !== null) throw new TypeError('only opened bodyless XHR supported');
+        if (this.readyState !== 1) throw new TypeError('XHR not opened');
+        const post = String(this.method).toUpperCase() === 'POST';
+        const credentials = this.withCredentials;
+        if (post && (typeof body !== 'string' || credentials !== false)) {
+          errors.push({ category: 'request_options_unsupported' });
+          throw new TypeError('request_options_unsupported');
+        }
+        if (!post && body !== null) throw new TypeError('only opened bodyless XHR supported');
+        if (post && entries(this.headers).some(([, value]) => typeof value !== 'string')) {
+          errors.push({ category: 'request_headers_unsupported' });
+          throw new TypeError('request_headers_unsupported');
+        }
         if (!['', 'text', 'json'].includes(this.responseType)) throw new TypeError('XHR responseType unsupported');
         this.controller = new AbortController();
         const timeout = this.timeout > 0 ? setTimeout(() => { this.timedOut = true; this.abort(); }, this.timeout) : null;
         const responseText = promiseThen(
-          fetch(this.url, { method: this.method, headers: this.headers, signal: this.controller.signal }), response => {
+          fetch(this.url, { method: this.method, headers: this.headers, signal: this.controller.signal,
+            ...(post ? { body } : {}) }, post ? { with_credentials: credentials,
+              headers_conflict: this.#headersConflict } : null), response => {
             this.status = response.status; this.responseURL = response.url;
             this.responseHeaders = response.headers; this.change(2);
             return response.text();
