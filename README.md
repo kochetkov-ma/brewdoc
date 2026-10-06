@@ -68,7 +68,7 @@ GET, verified TLS and default ports only. Private destinations, URL credentials
 and HTTPS downgrades are refused; proxy environment settings are ignored. Each redirect and
 resource is validated. Acquisition allows at most five redirects and an 8 MiB
 body limit. `--timeout SECONDS` sets one maximum waiting budget for loading and
-optional JS, default 10 seconds. It accepts positive finite seconds within the
+optional JS, default 30 seconds. It accepts positive finite seconds within the
 supported clock range and returns earlier when ready. Increase it for pages
 that need longer loading or JS waiting.
 Bounded cleanup and local conversion can add time after waiting ends.
@@ -79,8 +79,13 @@ Local files and default static URL capture do not execute JavaScript.
 process with bounded APIs and resources. No filesystem or shell APIs are exposed,
 and captures do not reuse browser state. This is not a general operating-system
 security sandbox. It supports DOM mutations, bounded jobs/timers and guarded GET
-requests; supported module loading uses the native engine. Temporary `localStorage`
+requests. Async XHR also supports the public Algolia search endpoint used by
+hn.algolia.com, with its original string body and no cookies or user credentials.
+Other POST requests remain unsupported; search redirects are refused without replay.
+Supported module loading uses the native engine. Temporary `localStorage`
 starts empty for each capture; accessing it marks the result partial.
+Each capture starts with a writable `innerWidth` of 1024 CSS pixels.
+Width changes stay within that capture.
 It does not provide browser layout, iframe execution,
 workers, WebSockets, media or browser-wide compatibility. Native JS requires a
 verified QuickJS public ABI on macOS ARM64 or 64-bit glibc Linux (x86_64/aarch64).

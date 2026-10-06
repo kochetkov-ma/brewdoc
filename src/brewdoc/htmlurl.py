@@ -1,4 +1,4 @@
-"""Explicit URL acquisition, bounded host GETs and frozen HTML snapshots."""
+"""Explicit URL acquisition, bounded host requests and frozen HTML snapshots."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import threading
 import time
 import zlib
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
 
 from brewdoc.common import BrewdocError
 from brewdoc import htmltext
@@ -27,7 +27,9 @@ from brewdoc.service import EXIT_FAIL, _line, run
 _BODY_LIMIT = 8 * 1048576
 _AGGREGATE_LIMIT = 32 * 1048576
 _REQUEST_LIMIT = 100
-_DEFAULT_TIMEOUT = 10.0
+_DEFAULT_TIMEOUT = 30.0
+_SEARCH_KEY_SHA256 = "3f95312b20bf7c1216841a364f20f791c979bf845e00ccb7ba516d45d616ad47"
+_SEARCH_CONTENT_TYPE = "application/x-www-form-urlencoded"
 _MAX_TIMEOUT = min(threading.TIMEOUT_MAX, (2**31 - 1) / 1000)
 _TIMEOUT_RANGE_REASON = "URL timeout exceeds supported clock range (maximum %s seconds)" % _MAX_TIMEOUT
 _STATIC_TIMEOUT = 30.0
@@ -288,9 +290,90 @@ def _read_response(response, deadline: float) -> tuple[bytes, bytes]:
     return bytes(entity), bytes(body)
 
 
+def _search_body(url: str, origin: str | None, body: str, content_type: str) -> bytes | None:
+    """Validate the public search profile without rewriting its original body."""
+    parts = urlsplit(url)
+    if (origin != "https://hn.algolia.com" or parts.scheme != "https"
+            or parts.hostname != "uj5wyc0l7x-dsn.algolia.net" or parts.port not in (None, 443)
+            or parts.path != "/1/indexes/Item_dev/query" or parts.fragment
+            or parts.username is not None or parts.password is not None
+            or content_type != _SEARCH_CONTENT_TYPE):
+        return None
+    try:
+        pairs = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True, errors="strict")
+    except (ValueError, UnicodeError):
+        return None
+    parameters = dict(pairs)
+    if (len(pairs) != 3 or set(parameters) != {
+            "x-algolia-agent", "x-algolia-application-id", "x-algolia-api-key"}
+            or parameters["x-algolia-application-id"] != "UJ5WYC0L7X"
+            or hashlib.sha256(parameters["x-algolia-api-key"].encode("utf-8")).hexdigest() != _SEARCH_KEY_SHA256):
+        return None
+    agent = parameters["x-algolia-agent"]
+    if not agent or len(agent) > 512 or any(not 32 <= ord(character) <= 126 for character in agent):
+        return None
+    try:
+        encoded = body.encode("utf-8", "strict")
+    except UnicodeError:
+        return None
+    if len(encoded) > 16384:
+        raise URLResourceError("URL search body byte limit exceeded")
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        """Reject duplicate JSON keys before schema validation."""
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate search field")
+        return value
+
+    try:
+        fields = json.loads(body, object_pairs_hook=unique_object)
+    except RecursionError as exc:
+        raise URLResourceError("URL search body depth limit exceeded") from exc
+    except ValueError:
+        return None
+    entries = 0
+    pending = [(fields, 0)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > 4:
+            raise URLResourceError("URL search body depth limit exceeded")
+        if isinstance(value, list):
+            entries += len(value)
+            if entries > 256:
+                raise URLResourceError("URL search array entry limit exceeded")
+            pending.extend((child, depth + 1) for child in value)
+        elif isinstance(value, dict):
+            pending.extend((child, depth + 1) for child in value.values())
+    integers = ("page", "hitsPerPage", "minWordSizefor1Typo", "minWordSizefor2Typos", "minProximity")
+    booleans = ("advancedSyntax", "ignorePlurals", "clickAnalytics", "getRankingInfo")
+    arrays = ("analyticsTags", "numericFilters", "tagFilters", "restrictSearchableAttributes")
+    if (type(fields) is not dict or set(fields) != {*integers, *booleans, *arrays, "query", "queryType", "typoTolerance"}
+            or type(fields["query"]) is not str
+            or any(type(fields[name]) is not int or fields[name] < 0 for name in integers)
+            or fields["hitsPerPage"] == 0
+            or any(type(fields[name]) is not bool for name in booleans)
+            or fields["queryType"] not in ("prefixLast", "prefixNone")
+            or not (type(fields["typoTolerance"]) is bool or fields["typoTolerance"] in ("min", "strict"))):
+        return None
+    for name in arrays:
+        if type(fields[name]) is not list:
+            return None
+        pending = list(fields[name])
+        while pending:
+            value = pending.pop()
+            if type(value) is str:
+                continue
+            if type(value) is list and name in ("numericFilters", "tagFilters"):
+                pending.extend(value)
+            else:
+                return None
+    return encoded
+
+
 def _request(url: str, deadline: float, accept: str, origin: str | None = None,
-             requested_with: bool = False) -> dict:
-    """Perform one pinned GET with a socket watchdog and bounded response buffers."""
+             requested_with: bool = False, *, search_body: bytes | None = None) -> dict:
+    """Perform one pinned request with bounded response buffers and owned cleanup."""
     parts = urlsplit(url)
     addresses = _resolve(parts.hostname, 443 if parts.scheme == "https" else 80, deadline)
     connection = None
@@ -310,8 +393,14 @@ def _request(url: str, deadline: float, accept: str, origin: str | None = None,
             headers["Origin"] = origin
         if requested_with and origin == "%s://%s" % (parts.scheme, parts.netloc):
             headers["X-Requested-With"] = "XMLHttpRequest"
-        connection.request("GET", target, headers=headers)
+        if search_body is None:
+            connection.request("GET", target, headers=headers)
+        else:
+            headers["Content-Type"] = _SEARCH_CONTENT_TYPE
+            connection.request("POST", target, body=search_body, headers=headers)
         response = connection.getresponse()
+        if search_body is not None and 300 <= response.status < 400:
+            raise URLPolicyError("URL search redirect refused")
         headers = tuple(response.getheaders())
         entity, body = _read_response(response, deadline)
         _remaining(deadline)
@@ -358,7 +447,7 @@ def _validate_media(body: bytes, headers: tuple[tuple[str, str], ...], kind: str
 
 def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
            budget: dict | None = None, origin: str | None = None,
-           requested_with: bool = False) -> dict:
+           requested_with: bool = False, search_body: str | None = None) -> dict:
     """Acquire one bounded resource, revalidating every redirect and shared budget."""
     requested = current = _validate_url(url)
     if kind not in _ACCEPT:
@@ -371,15 +460,30 @@ def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
         origin = "%s://%s" % (origin_parts.scheme, origin_parts.netloc)
     if type(requested_with) is not bool or (requested_with and (kind != "api" or origin is None)):
         raise _error("URL controlled XHR marker refused", "url", URLPolicyError)
+    outgoing = None
+    if search_body is not None:
+        if type(search_body) is not str or kind != "api" or requested_with:
+            raise URLPolicyError("URL search request policy refused")
+        outgoing = _search_body(current, origin, search_body, _SEARCH_CONTENT_TYPE)
+        if outgoing is None:
+            raise URLPolicyError("URL search request policy refused")
     deadline = deadline if deadline is not None else time.monotonic() + _STATIC_TIMEOUT
     budget = budget if budget is not None else {"accepted_requests": 0, "decoded_bytes": 0}
     redirects = []
     for hop in range(6):
-        _remaining(deadline)
+        if outgoing is None:
+            _remaining(deadline)
         if budget["accepted_requests"] >= _REQUEST_LIMIT:
             raise _error("URL request count limit exceeded", "resource", URLResourceError)
+        if outgoing is not None:
+            if budget["decoded_bytes"] + len(outgoing) > _AGGREGATE_LIMIT:
+                raise URLResourceError("URL aggregate byte limit exceeded")
+            _remaining(deadline)
+            budget["decoded_bytes"] += len(outgoing)
         budget["accepted_requests"] += 1
-        if requested_with:
+        if outgoing is not None:
+            response = _request(current, deadline, _ACCEPT[kind], origin, search_body=outgoing)
+        elif requested_with:
             response = _request(current, deadline, _ACCEPT[kind], origin,
                                 requested_with=origin == "%s://%s" % (urlsplit(current).scheme, urlsplit(current).netloc))
         else:
@@ -390,6 +494,8 @@ def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
         budget["decoded_bytes"] += len(response["body"])
         if budget["decoded_bytes"] > _AGGREGATE_LIMIT:
             raise _error("URL aggregate byte limit exceeded", "resource", URLResourceError)
+        if outgoing is not None and 300 <= response["status"] < 400:
+            raise URLPolicyError("URL search redirect refused")
         if response["status"] in _REDIRECTS:
             location = _header(response["headers"], "location")
             if hop == 5 or not location:
@@ -530,7 +636,17 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             stage = "javascript"
 
             def fetch(request: dict) -> dict:
-                """Validate the finite parent request record before the shared guarded GET."""
+                """Revalidate the finite parent request before guarded acquisition."""
+                if isinstance(request, dict) and request.get("method") == "POST":
+                    if (request.get("kind") != "api" or type(request.get("body")) is not str
+                            or request.get("origin") != "https://hn.algolia.com"
+                            or htmljs._origin(final_url) != "https://hn.algolia.com"
+                            or request.get("requested_with") is not False
+                            or request.get("headers") or request.get("body_present")
+                            or request.get("content_type") != _SEARCH_CONTENT_TYPE):
+                        raise URLPolicyError("URL search request policy refused")
+                    return _fetch(request["url"], deadline=deadline, kind="api", budget=budget,
+                                  origin=request["origin"], search_body=request["body"])
                 if (not isinstance(request, dict) or request.get("kind") not in ("script", "module", "api")
                         or request.get("method", "GET") != "GET" or request.get("body_present")
                         or request.get("headers")):

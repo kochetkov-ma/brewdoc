@@ -25,9 +25,10 @@ CHAPTER = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Untitled"\n\n'
 
 @pytest.mark.parametrize("render_js", [False, True], ids=["static", "javascript"])
 @pytest.mark.parametrize("arguments,expected_timeout", [
-    pytest.param([], 10.0, id="default-ten-seconds"),
+    pytest.param([], 30.0, id="default-thirty-seconds"),
+    pytest.param(["--timeout", "10"], 10.0, id="explicit-ten-seconds"),
     pytest.param(["--timeout", "0.125"], 0.125, id="fractional-override"),
-    pytest.param(["--timeout", "20"], 20.0, id="larger-override"),
+    pytest.param(["--timeout", "20"], 20.0, id="explicit-twenty-seconds"),
 ])
 def test_url_cli_forwards_each_requests_effective_timeout_once(render_js, arguments, expected_timeout, monkeypatch, capsys):
     # GIVEN an observable URL acquisition boundary with an exact ready result.
@@ -245,12 +246,16 @@ def test_huge_negative_integer_timeout_keeps_the_generic_positive_value_refusal(
     assert str(refused.value) == "URL timeout must be a finite positive number", "negative overflow must not claim a usable positive range"
 
 
-@pytest.mark.parametrize("render_js,timeout,expected", [
-    pytest.param(True, 20, (20.0, 20.0, "request"), id="configured-js-refusal"),
-    pytest.param(False, 20, (20.0, None, None), id="static-has-no-js-interval"),
-    pytest.param(True, 0, (None, None, None), id="invalid-timeout-has-no-configuration"),
+@pytest.mark.parametrize("render_js,options,expected", [
+    pytest.param(True, {}, (30.0, 30.0, "request"), id="default-js-refusal"),
+    pytest.param(False, {}, (30.0, None, None), id="default-static-refusal"),
+    pytest.param(True, {"timeout": 10}, (10.0, 10.0, "request"), id="explicit-ten-js-refusal"),
+    pytest.param(False, {"timeout": 10}, (10.0, None, None), id="explicit-ten-static-refusal"),
+    pytest.param(True, {"timeout": 20}, (20.0, 20.0, "request"), id="configured-js-refusal"),
+    pytest.param(False, {"timeout": 20}, (20.0, None, None), id="static-has-no-js-interval"),
+    pytest.param(True, {"timeout": 0}, (None, None, None), id="invalid-timeout-has-no-configuration"),
 ])
-def test_early_url_refusal_retains_effective_timeout_configuration_before_io(render_js, timeout, expected, monkeypatch, tmp_path):
+def test_early_url_refusal_retains_effective_timeout_configuration_before_io(render_js, options, expected, monkeypatch, tmp_path):
     # GIVEN a refused URL before prerequisites, network or output mutation.
     output = tmp_path / "article.md"
     output.write_bytes(b"previous output\n")
@@ -260,7 +265,7 @@ def test_early_url_refusal_retains_effective_timeout_configuration_before_io(ren
     monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: calls.append("runtime"))
     assert (calls, output.read_bytes()) == ([], b"previous output\n"), "configuration must be recorded before any I/O"
     # WHEN URL grammar refuses a valid configured budget or timeout validation fails.
-    code, receipt, markdown = htmlurl._run_url("file:///not-http", output, render_js=render_js, timeout=timeout)
+    code, receipt, markdown = htmlurl._run_url("file:///not-http", output, render_js=render_js, **options)
     acquisition = receipt["acquisition"]
     # THEN valid JS configuration remains visible even without acquired HTML.
     assert (code, markdown, calls, output.read_bytes(),
@@ -306,7 +311,7 @@ def test_native_timing_stop_preserves_committed_dom_and_discards_script_write_bu
     monkeypatch.setattr(htmlurl, "_fetch", fetch)
     assert requests == [], "the HTML source must be acquired exactly once"
     # WHEN the existing guarded invocation interrupts the actual running script.
-    code, receipt, markdown = htmlurl._run_url(URL, render_js=True)
+    code, receipt, markdown = htmlurl._run_url(URL, render_js=True, timeout=10)
     acquisition = receipt["acquisition"]
     # THEN current completed content survives without flushing uncommitted writes.
     assert code == 0, "a trusted timing stop must publish its acquired content"
