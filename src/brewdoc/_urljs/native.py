@@ -529,7 +529,7 @@ class Context:
         values, descriptors = [], []
         cleanup = _PropertyDescriptor(0, _UNDEFINED, _UNDEFINED, _UNDEFINED)
         cleanup_address = ctypes.addressof(cleanup)
-        cache, prototypes, cells = {}, {}, {}
+        cache, prototypes, cells, methods = {}, {}, {}, {}
         keys = ('NEXT', 'END', 'START', 'VALUE', 'MIME', 'primitive', 'PREV', 'PRIVATE',
                 'CLASS_LIST', 'DATASET', 'STYLE', 'SHEET', 'CHANGED', 'UPGRADE', 'replaceSymbol',
                 'nodeType', 'ownerDocument', 'localName', 'name', 'publicId', 'systemId',
@@ -770,11 +770,17 @@ class Context:
                     conversion = resolve(current, key_map['valueOf'])
                     if not match(conversion, groups[12]) or resolve(current, key_map['primitive']) is not None:
                         self._refuse_snapshot()
-                    serializer = resolve(current, key_map['toString']) if not same(current, root) else None
-                    matches = [index for index, record in enumerate(serializer_records) if match(serializer, record)]
-                    if not same(current, root) and not matches:
-                        self._refuse_snapshot()
-                    method = 11 if same(current, root) else matches[0]
+                    method = 11
+                    if not same(current, root):
+                        serializer = resolve(current, key_map['toString'])
+                        token = id(serializer)
+                        if token not in methods:
+                            # Retain the descriptor so its Python identity cannot be reused.
+                            methods[token] = (serializer, next((index for index, record in
+                                              enumerate(serializer_records) if match(serializer, record)), None))
+                        method = methods[token][1]
+                        if method is None:
+                            self._refuse_snapshot()
                     if kind == 1 or method in (6, 8, 9, 10):
                         string(data(current, key_map['localName']))
                     if kind in (2, 3, 4, 8) or method in (1, 2, 3, 4):
@@ -848,6 +854,7 @@ class Context:
                 assignable(node_list, tuple(str(index) for index in range(count)))
             return self.call('__smallSnapshot')
         finally:
+            methods.clear()
             while descriptors:
                 record = descriptors.pop()
                 ctypes.memmove(cleanup_address, record, 56)

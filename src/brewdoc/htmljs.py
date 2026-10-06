@@ -342,6 +342,7 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
     finally:
         child_socket.close()
     cancelled = False
+    cancellation_lock = threading.Lock()
     fallback = False
     timing_error = False
     timing_stop = False
@@ -350,9 +351,11 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
     parent_error_count = 0
     recovery_deadline = deadline + 1
     def terminate():
-        """Kill only the still-owned isolated child process group."""
+        """Cancel the still-owned child group without repeating a successful signal."""
         nonlocal cancelled
-        if process.poll() is None:
+        with cancellation_lock:
+            if cancelled or process.poll() is not None:
+                return
             try:
                 os.killpg(process.pid, signal.SIGKILL)
                 cancelled = True

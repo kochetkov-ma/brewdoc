@@ -3,7 +3,9 @@
 import os
 import signal
 import sys
+import threading
 import time
+from itertools import chain, repeat
 
 import pytest
 
@@ -96,7 +98,7 @@ def test_later_module_timing_failure_cannot_overwrite_the_first_hard_host_except
         assert refused.value is hard, "the first hard host exception must retain exact identity and priority"
 
 
-def _cancelled_worker_race(monkeypatch, final_status):
+def _cancelled_worker_race(monkeypatch, final_status, *, pending_polls=0):
     """Model an owned kill attempt racing a distinct actual final process status."""
     clock = [100.0]
     kills = []
@@ -116,6 +118,7 @@ def _cancelled_worker_race(monkeypatch, final_status):
             return final_status
 
     process = Process()
+    statuses = chain(repeat(None, pending_polls), repeat(final_status))
 
     class Channel:
         """Yield the final-status race without native execution or real IPC."""
@@ -128,7 +131,7 @@ def _cancelled_worker_race(monkeypatch, final_status):
 
         def poll(self, timeout):
             """Expose the actual final status after the successful kill attempt."""
-            process.returncode = final_status
+            process.returncode = next(statuses)
             return False
 
         def close(self):
@@ -160,6 +163,139 @@ def _cancelled_worker_race(monkeypatch, final_status):
     monkeypatch.setattr(htmljs.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(htmljs.os, "killpg", lambda pid, number: kills.append((pid, number)))
     return process, kills
+
+
+def test_watchdog_and_main_loop_signal_the_owned_group_once_before_reaping(monkeypatch):
+    # GIVEN a successful watchdog signal whose process status is not yet observable.
+    process, kills = _cancelled_worker_race(monkeypatch, -signal.SIGKILL, pending_polls=1)
+
+    def duplicate_signal(pid, number):
+        """Refuse a stale second group signal instead of treating it as cancellation."""
+        kills.append((pid, number))
+        raise PermissionError(1, "duplicate group signal refused")
+
+    signals = iter([lambda pid, number: kills.append((pid, number)), duplicate_signal])
+    monkeypatch.setattr(htmljs.os, "killpg", lambda pid, number: next(signals)(pid, number))
+    assert (process.returncode, kills) == (None, []), "the owned worker starts alive and unsignalled"
+    # WHEN watchdog cancellation precedes the main loop observing its final status.
+    captured = htmljs.render(INITIAL.decode(), URL, lambda request: None, 100.5, soft_window=0.5)
+    # THEN the parent reaps actual SIGKILL and publishes exact original-source fallback.
+    assert (captured, process.returncode, kills) == (
+        {"html": INITIAL.decode(), "capture_status": "partial", "errors": [FALLBACK],
+         "error_count": 1, "snapshot_kind": "initial_html_timeout_fallback",
+         "pending": {"requests": None, "timers": None, "modules": None, "promises": None, "jobs": None},
+         "counts": {"promise_jobs": None, "timer_callbacks": None},
+         "engine": "QuickJS-ng 0.17.0", "dom_bundle": "LinkeDOM 0.18.13", "soft_window_seconds": 0.5,
+         "unsupported": ["whole_document_parsed_before_scripts", "no_layout_or_intersection_observer",
+                         "no_cookies_or_credentials", "no_browser_csp_enforcement",
+                         "no_shadow_root_or_subframe_export", "no_canvas_media_or_service_workers",
+                         "coarse_async_defer_and_module_event_order", "document_write_buffered",
+                         "protected_host_intrinsic_prototypes", "imported_module_completion_unobservable"]},
+        -signal.SIGKILL, [(process.pid, signal.SIGKILL)],
+    ), "a successful owned signal must not be repeated while waiting for reap"
+
+
+def test_first_group_permission_refusal_cannot_claim_owned_timeout_fallback(monkeypatch):
+    # GIVEN a live worker whose first cancellation syscall is refused.
+    process, kills = _cancelled_worker_race(monkeypatch, 0, pending_polls=1)
+    monkeypatch.setattr(htmljs.threading.Timer, "start", lambda timer: None)
+    refusal = PermissionError(1, "first group signal refused")
+
+    def refuse(pid, number):
+        """Retain the real signal refusal without creating cancellation provenance."""
+        kills.append((pid, number))
+        raise refusal
+
+    monkeypatch.setattr(htmljs.os, "killpg", refuse)
+    assert (process.returncode, kills) == (None, []), "no earlier successful signal may justify fallback"
+    # WHEN the main loop reaches an already expired recovery deadline.
+    with pytest.raises(PermissionError) as rejected:
+        htmljs.render(INITIAL.decode(), URL, lambda request: None, 98.5, soft_window=0.5)
+    # THEN the exact syscall error survives and the final zero exit does not prove cancellation.
+    assert (rejected.value, process.returncode, kills) == (
+        refusal, 0, [(process.pid, signal.SIGKILL)],
+    ), "PermissionError must stay observable instead of being masked as eligible fallback"
+
+
+def test_concurrent_cancellers_signal_one_owned_group_before_status_becomes_visible(monkeypatch):
+    # GIVEN two cancellation callers entering before the first signal returns.
+    process, kills = _cancelled_worker_race(monkeypatch, -signal.SIGKILL)
+    signal_entered = threading.Event()
+    contender_entered = threading.Event()
+    release_signal = threading.Event()
+    failures = []
+    threads = []
+
+    def first_signal(pid, number):
+        """Hold successful cancellation until another caller enters the real callback."""
+        kills.append((pid, number))
+        signal_entered.set()
+        assert release_signal.wait(2), "the competing cancellation must release the first syscall"
+
+    def duplicate_signal(pid, number):
+        """Expose a second syscall on the same unreaped process group."""
+        kills.append((pid, number))
+        raise PermissionError(1, "concurrent group signal refused")
+
+    signals = iter([first_signal, duplicate_signal])
+    monkeypatch.setattr(htmljs.os, "killpg", lambda pid, number: next(signals)(pid, number))
+
+    class Watchdog:
+        """Enter two real cancellation calls without native code or real signals."""
+
+        def __init__(self, interval, callback):
+            self.callback = callback
+
+        def invoke(self):
+            """Capture expected signal errors so thread failure cannot escape pytest."""
+            try:
+                self.callback()
+            except PermissionError as exc:
+                failures.append((type(exc).__name__, exc.errno))
+
+        def contender(self):
+            """Record actual callback entry while the first syscall is still blocked."""
+            previous_trace = sys.gettrace()
+            sys.settrace(lambda frame, event, argument: contender_entered.set())
+            try:
+                self.callback()
+            except PermissionError as exc:
+                failures.append((type(exc).__name__, exc.errno))
+            finally:
+                sys.settrace(previous_trace)
+
+        def start(self):
+            """Release the owned syscall only after both callers entered cancellation."""
+            try:
+                threads.append(threading.Thread(target=self.invoke))
+                threads[-1].start()
+                assert signal_entered.wait(2), "the first caller must be inside the signal syscall"
+                threads.append(threading.Thread(target=self.contender))
+                threads[-1].start()
+                assert contender_entered.wait(2), "the second caller must enter before the first syscall returns"
+            finally:
+                release_signal.set()
+                for thread in threads:
+                    thread.join(2)
+
+        def cancel(self):
+            """Leave the completed bounded caller pair unchanged."""
+            pass
+
+        def join(self):
+            """Both fixture threads have already been joined by start."""
+            pass
+
+    monkeypatch.setattr(htmljs.threading, "Timer", Watchdog)
+    assert (process.returncode, kills, failures, threads) == (None, [], [], []), "both callers start with the same live owned worker"
+    # WHEN both cancellation calls compete while final process status is unknown.
+    captured = htmljs.render(INITIAL.decode(), URL, lambda request: None, 100.5, soft_window=0.5)
+    # THEN only one syscall establishes owned SIGKILL and both callers complete cleanly.
+    assert (captured["html"], captured["snapshot_kind"], process.returncode, kills, failures,
+            [thread.is_alive() for thread in threads]) == (
+        INITIAL.decode(), "initial_html_timeout_fallback", -signal.SIGKILL,
+        [(process.pid, signal.SIGKILL)], [], [False, False],
+    ), "concurrent cancellation must preserve process identity and suppress a second signal syscall"
 
 
 @pytest.mark.parametrize("status", [1, -11, 11, 0], ids=["ordinary-exit", "fault-signal", "guarded-fault-exit", "unproved-zero-exit"])
