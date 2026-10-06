@@ -49,7 +49,7 @@ def test_url_cli_forwards_mode_and_prints_exact_receipt_then_unicode(render_js, 
     code = cli.main(arguments)
     # THEN mode is forwarded once and stdout preserves the exact result
     assert (code, calls, capsys.readouterr().out) == (
-        0, [(URL, None, {"render_js": render_js, "sheets": None, "artifact_outputs": None})],
+        0, [(URL, None, {"render_js": render_js, "timeout": 10.0, "sheets": None, "artifact_outputs": None})],
         json.dumps(RECEIPT, ensure_ascii=True, sort_keys=True) + "\n" + MARKDOWN,
     ), "URL CLI must preserve Unicode and the acquisition receipt"
 

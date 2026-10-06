@@ -115,16 +115,26 @@ snapshot through the existing HTML converter. Local `.html` and Python APIs keep
 their offline contracts. Relative links and image targets resolve against the final
 URL and valid source base; this resolution does not fetch images or linked pages.
 The full recovered body remains in source order, without automatic article selection.
+Local files and static URL capture do not execute JavaScript.
 
 Only public destinations and default ports 80/443 are accepted. Every DNS answer,
 connection peer and redirect destination must pass the destination policy. TLS keeps
 certificate and hostname verification. GET requests omit ambient credentials,
 cookies and proxy environment settings. At most five redirects are followed;
 HTTPS-to-HTTP redirects, unsupported schemes and private/special-use addresses
-refuse. Static acquisition has a 30-second total deadline, at most five seconds
-per blocking operation, and 8 MiB transferred/decompressed HTML limits. Only
+refuse. Static acquisition has 8 MiB transferred/decompressed HTML limits. Only
 `text/html` with absent or UTF-8/UTF8 charset is accepted; invalid UTF-8 and
 conflicting declarations refuse. Identity and bounded gzip are accepted encodings.
+
+`--timeout SECONDS` sets the maximum loading/waiting budget for one `--url` call,
+default 10 seconds. It accepts positive finite seconds within the supported
+clock range. One budget covers prerequisites, DNS, connections, TLS, redirects,
+the main body, scripts, resources and optional JS waiting. Ready captures return
+immediately. For example, `--timeout 30` allows longer acquisition and JS waiting;
+there is no separate five-second network or twelve-second JS waiting ceiling.
+After waiting stops, trusted recovery is bounded to one second and worker cleanup
+to another 1.1 seconds. Local conversion and output of the accepted snapshot follow;
+the option does not guarantee an exact overall CLI duration.
 
 `--render-js` additionally requires the installed `brewdoc[render-js]` extra:
 QuickJS-ng 0.17.0.1 with bundled LinkeDOM 0.18.13. No Node, browser or runtime
@@ -133,32 +143,50 @@ checked before HTTP. JS requires macOS ARM64 or 64-bit glibc Linux (x86_64/aarch
 with proved native prerequisites. Windows, macOS Intel, musl Linux, 32-bit systems and
 unsupported ABIs explicitly refuse JS.
 
+`--render-js` explicitly executes the selected page's scripts locally in a separate
+process. No filesystem or shell APIs are exposed, and browser state is not reused.
 The finite subset includes DOM mutations, classic scripts, relative imported
 modules and dynamic imports, Promise jobs, function timers, GET fetch and async
 GET XHR. Read-only history and HTTP(S) anchor components provide limited page
 compatibility. Inline style reads mark the capture partial; they do not compute
-external CSS or layout. Host requests remain destination-validated and bounded. Cross-origin API
-bodies require accepted CORS headers; there is no authenticated fetch, arbitrary
+external CSS or layout. Temporary `localStorage` starts empty, is discarded after
+capture and has no storage events. Any access marks the result partial. It accepts
+at most 200 keys and 65,536 aggregate UTF-8 bytes across keys and values; exceeding
+either quota causes hard refusal. Host requests remain destination-validated and
+bounded. Cross-origin API bodies require accepted CORS headers; there is no authenticated fetch, arbitrary
 request-header or browser cookie model. Documents are parsed before scripts;
 async/defer and event ordering are approximate. Layout, IntersectionObserver,
 iframe execution, workers, WebSockets, media and browser CSP enforcement are
 outside this subset. A child process and native limits bound execution; they do
 not establish an operating-system sandbox against native engine vulnerabilities.
 
-JS acquisition has a 45-second hard deadline, at most 100 host GETs, an 8 MiB
+JS acquisition allows at most 100 host GETs, an 8 MiB
 limit per response/snapshot and 32 MiB aggregate decoded response bytes. The
 native heap is limited to 64 MiB. Execution uses a checked, guarded OS thread with
 at most 1 MiB of stack, 250 ms per native invocation, 2,000 Promise jobs and 200
-fired timer callbacks. The soft capture window is
-12 seconds and ends early when supported work finishes. Later pending work or
-observable script/API errors can produce a useful partial DOM; hard execution,
-policy, transport, memory, job, IPC or snapshot failure refuses without output.
-Requested JS never retries as static.
+fired timer callbacks. The child also has a 45 CPU-second limit. A larger timeout
+does not increase these limits.
+
+Once complete validated HTML exists, timing-only expiry stops scripts and further
+network activity while preserving valid content. Cooperative recovery returns the
+current DOM as partial with `capture_timeout` and observed pending work. If only
+parent cancellation can stop an unresponsive worker and no hard failure is observed,
+recovery uses the already acquired original HTML with
+`initial_html_timeout_fallback`. It does not fetch the page again. This fallback
+reports JS completion and unobserved pending work as unknown. Incomplete main
+responses, security violations, heap exhaustion, native faults, tampering and actual
+resource quotas still refuse without output. Hard failures take precedence over
+timing recovery. Ordinary script/API errors can also produce a useful partial DOM.
 
 URL receipts use `brewdoc.receipt/2`: existing conversion fields plus `acquisition`
 with redacted requested/final/base URLs, response and snapshot identities, mode,
-capture status and explicit capture omissions. Query values and nonempty URL
-fragments are redacted in receipt display URLs.
+capture status, effective `timeout_seconds` and explicit capture omissions.
+For JS requests, `acquisition.snapshot.kind` identifies `javascript_dom` or
+`initial_html_timeout_fallback`; the latter is original HTML, not recovered JS DOM.
+New JS receipts use `soft_window_seconds` equal to the configured timeout and
+`soft_window_origin: request`; historical capture-relative receipts retain their
+original meaning. Query values and nonempty URL fragments are redacted in
+receipt display URLs.
 Frozen snapshot names use `url-<first 16 URL SHA-256 hex>.html`; Markdown source
 identity describes those snapshot bytes. Local receipts remain `brewdoc.receipt/1`.
 An exit-0 partial capture means valid snapshot conversion, not complete JS or
@@ -166,7 +194,8 @@ primary-content recovery. Live acquisition is mutable; frozen conversion remains
 deterministic. No 90% corpus acceptance or global JS compatibility is claimed.
 
 `--url` with a positional document or `--self-check`, and `--render-js` without
-`--url`, produce usage exit 2 before acquisition. `--sheet` and `--artifact` with
+`--url`, produce usage exit 2 before acquisition. Invalid timeout values and an
+explicit `--timeout` without `--url` also produce exit 2. `--sheet` and `--artifact` with
 a URL produce HTML refusal exit 1 before HTTP. Hard refusal preserves existing
 destinations. The existing HTML structure and Markdown output limits still apply.
 

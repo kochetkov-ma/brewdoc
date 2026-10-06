@@ -50,7 +50,7 @@ brewdoc file.pdf --out file.md
 brewdoc slides.pptx --out slides.md
 brewdoc page.html --out page.md
 brewdoc --url https://example.com/article --out article.md
-brewdoc --url https://example.com/article --render-js --out article.md
+brewdoc --url https://example.com/article --render-js --timeout 30 --out article.md
 brewdoc file.xlsx                # no --out: receipt line, then the Markdown, on stdout
 brewdoc file.xlsx --sheet Calc --sheet Inputs
 brewdoc file.xlsm --artifact formula/sheet/000002=formulas.json
@@ -66,28 +66,43 @@ output collision before writing.
 URL mode accepts one public HTTP(S) HTML page with strict UTF-8 decoding. It uses
 GET, verified TLS and default ports only. Private destinations, URL credentials
 and HTTPS downgrades are refused; proxy environment settings are ignored. Each redirect and
-resource is validated. Static capture has a 30-second deadline, at most five
-redirects and an 8 MiB body limit. No login, cookie profile or bot bypass is offered.
+resource is validated. Acquisition allows at most five redirects and an 8 MiB
+body limit. `--timeout SECONDS` sets one maximum waiting budget for loading and
+optional JS, default 10 seconds. It accepts positive finite seconds within the
+supported clock range and returns earlier when ready. Increase it for pages
+that need longer loading or JS waiting.
+Bounded cleanup and local conversion can add time after waiting ends.
+No login, cookie profile or bot bypass is offered.
+Local files and default static URL capture do not execute JavaScript.
 
-`--render-js` runs a finite DOM/script subset in a bounded child process. It supports
-DOM mutations, bounded jobs/timers and guarded GET requests; supported module loading
-uses the native engine. It does not provide browser layout, iframe execution,
+`--render-js` explicitly executes the selected page's scripts locally in a separate
+process with bounded APIs and resources. No filesystem or shell APIs are exposed,
+and captures do not reuse browser state. This is not a general operating-system
+security sandbox. It supports DOM mutations, bounded jobs/timers and guarded GET
+requests; supported module loading uses the native engine. Temporary `localStorage`
+starts empty for each capture; accessing it marks the result partial.
+It does not provide browser layout, iframe execution,
 workers, WebSockets, media or browser-wide compatibility. Native JS requires a
 verified QuickJS public ABI on macOS ARM64 or 64-bit glibc Linux (x86_64/aarch64).
 Windows, macOS Intel, musl Linux and 32-bit systems refuse JS. Missing components or unsupported
-runtimes refuse before fetching; requested JS never silently falls back to static.
+runtimes refuse before fetching.
 See [URL acquisition limits](FORMATS.md#url-acquisition).
 
 URL receipts use `brewdoc.receipt/2` with redacted acquisition provenance and the
-frozen snapshot identity. A useful partial DOM may succeed with
-`acquisition.capture_status=partial`; exit 0 confirms conversion, not script
-completion or article fidelity. Hard network, policy, execution or resource failure
-exits 1 and preserves an existing output file. Live acquisition can change;
-conversion of the same frozen snapshot remains deterministic. No 90% coverage or
+frozen snapshot identity. Timing-only expiry preserves available valid content
+with `acquisition.capture_status=partial` and a diagnostic.
+The receipt distinguishes the current DOM from an explicitly marked fallback to
+the already acquired original HTML, where JS completion is unknown. No HTML is
+returned from an incomplete response. Hard network, security, heap, native fault,
+tamper or resource failures exit 1 and preserve an existing output file.
+Exit 0 confirms conversion, not script completion or article fidelity.
+Live acquisition can change; conversion of the same frozen snapshot remains
+deterministic. No 90% coverage or
 global JavaScript compatibility is claimed.
 
 Combining `--url` with a local path or `--self-check`, or using `--render-js` without
-`--url`, exits 2 before acquisition. URL requests with `--sheet` or `--artifact`
+`--url`, exits 2 before acquisition. Invalid timeout values and an explicit
+`--timeout` without `--url` also exit 2. URL requests with `--sheet` or `--artifact`
 exit 1 with an HTML refusal receipt before HTTP.
 
 Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,

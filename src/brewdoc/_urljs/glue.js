@@ -1,4 +1,5 @@
 (function () {
+  const hostGlobal = globalThis;
   let nextId = 1;
   let clock = 0;
   let baseURL = '';
@@ -9,17 +10,62 @@
   const parse = JSON.parse.bind(JSON);
   const stringify = JSON.stringify.bind(JSON);
   const NativePromise = Promise;
+  const NativeTypeError = TypeError;
   const promiseResolve = Promise.resolve.bind(Promise);
+  const promiseReject = NativePromise.reject.bind(NativePromise);
+  const promiseThen = Function.call.bind(NativePromise.prototype.then);
+  const promiseCatch = Function.call.bind(NativePromise.prototype.catch);
+  const promiseFinally = Function.call.bind(NativePromise.prototype.finally);
   const encodeURL = encodeURIComponent;
   const hasOwn = Function.call.bind(Object.prototype.hasOwnProperty);
   const primitive = Symbol.toPrimitive;
-  const serializers = new Set([Node$1, Attr$1, Text$1, Comment$2, CDATASection$1,
-    ParentNode, DocumentFragment$1, DocumentType$1, Element$1, HTMLTemplateElement, TextElement, Document$1]
-    .map(constructor => constructor.prototype.toString));
   const create = Object.create.bind(Object);
   const setPrototype = Object.setPrototypeOf.bind(Object);
   const entries = Object.entries.bind(Object);
   const isArray = Array.isArray.bind(Array);
+  const asObject = Object;
+  const asString = String;
+  const asNumber = Number;
+  const finiteNumber = Number.isFinite.bind(Number);
+  const truncate = Math.trunc.bind(Math);
+  const ownKeys = Reflect.ownKeys.bind(Reflect);
+  const ownDescriptor = Object.getOwnPropertyDescriptor.bind(Object);
+  const prototypeOf = Object.getPrototypeOf.bind(Object);
+  const rawKeys = [NEXT, END, START, VALUE, MIME, primitive, PREV, PRIVATE, CLASS_LIST,
+    DATASET, STYLE, SHEET, CHANGED, UPGRADE, Symbol.replace, 'nodeType', 'ownerDocument',
+    'localName', 'name', 'publicId', 'systemId', 'toString', 'valueOf', 'childNodes',
+    'firstChild', 'nextSibling', 'cloneNode', 'textContent', 'data', 'attributes',
+    'ownerSVGElement', 'createElement', 'createElementNS', 'ignoreCase', 'voidElements',
+    'ownerElement', 'length', 'push', 'join', 'test', 'exec', 'flags', 'source',
+    'lastIndex', 'call', 'prototype', 'set', 'Map', 'global', 'multiline', 'dotAll',
+    'unicode', 'unicodeSets', 'sticky', 'hasIndices'];
+  const setValue = Reflect.set.bind(Reflect);
+  const defineProperty = Object.defineProperty.bind(Object);
+  const charCodeAt = Function.call.bind(String.prototype.charCodeAt);
+  const applyFunction = Reflect.apply.bind(Reflect);
+  const construct = Reflect.construct.bind(Reflect);
+  const defineValue = Reflect.defineProperty.bind(Reflect);
+  const deleteValue = Reflect.deleteProperty.bind(Reflect);
+  const changePrototype = Reflect.setPrototypeOf.bind(Reflect);
+  const preventExtensions = Reflect.preventExtensions.bind(Reflect);
+  const descriptors = Object.getOwnPropertyDescriptors.bind(Object);
+  const legacyGetter = Object.prototype.__lookupGetter__;
+  const legacySetter = Object.prototype.__lookupSetter__;
+  const defineGetter = Object.prototype.__defineGetter__;
+  const defineSetter = Object.prototype.__defineSetter__;
+  Object.assign = function (target, source, ...sources) {
+    if (target === null || target === undefined) throw new NativeTypeError('assign target is null');
+    const result = asObject(target);
+    for (const current of [source, ...sources]) {
+      if (current === null || current === undefined) continue;
+      const from = asObject(current);
+      for (const key of ownKeys(from)) {
+        if (ownDescriptor(from, key)?.enumerable && !setValue(result, key, from[key]))
+          throw new NativeTypeError('assign target write failed');
+      }
+    }
+    return result;
+  };
   const controlJSON = value => {
     const copy = item => {
       if (!item || typeof item !== 'object') return item;
@@ -31,23 +77,367 @@
     return stringify(copy(value));
   };
   let pageDocument;
+  let rawCursor;
+  let rawDependencies;
   let pageWindow;
   let snapshot;
   let queryAll;
   let queryOne;
   let pageEvent;
-  let firstChild;
-  let nextSibling;
-  let getAttributes;
   let dispatchLoad;
   let currentScript;
   let writeBuffer = '';
   let pendingModules = 0;
   let violation = false;
   let inlineStyleUsed = false;
+  let parseState = 'idle';
+  let parsedView;
+  let initialParser;
+  let originalWrite;
+  let originalEnd;
+  let originalResume;
+  let originalPause;
+  let tokenizerDescriptor;
+  let tokenizerHook = false;
+  let checkpoint = 16384;
+  let pagePromiseUnknown = false;
+  let pagePromise;
+  let currentPromise;
+  let promiseGetter;
+  let promiseSetter;
   const seenScripts = new WeakSet();
   const scriptNodes = [];
   const error = (name, message) => Object.assign(new Error(message), { name });
+
+  function markPromiseUnknown() {
+    if (!pagePromiseUnknown) {
+      pagePromiseUnknown = true;
+      errors.push({ category: 'promise_completion_unobservable' });
+    }
+  }
+
+  function captureSnapshotDependencies() {
+    const record = (owner, key) => {
+      let descriptor;
+      for (let target = owner; target && !descriptor; target = prototypeOf(target))
+        descriptor = ownDescriptor(target, key);
+      const flags = descriptor ? (descriptor.configurable ? 1 : 0) |
+        (descriptor.writable ? 2 : 0) | (descriptor.enumerable ? 4 : 0) |
+        (hasOwn(descriptor, 'get') ? 16 : 0) : -1;
+      return [owner, key, flags, descriptor?.value, descriptor?.get, descriptor?.set];
+    };
+    const chain = constructor => {
+      const result = [];
+      for (let owner = constructor; owner; owner = prototypeOf(owner)) {
+        const instance = owner.prototype;
+        result.push([owner, prototypeOf(owner), record(owner, 'prototype'),
+          instance && typeof instance === 'object' ? prototypeOf(instance) : undefined]);
+      }
+      return result;
+    };
+    const serializerRecords = [Node$1, Attr$1, Text$1, Comment$2, CDATASection$1,
+      ParentNode, DocumentFragment$1, DocumentType$1, Element$1, HTMLTemplateElement,
+      TextElement, Document$1].map(constructor => record(constructor.prototype, 'toString'));
+    const domRecords = [record(ParentNode.prototype, 'childNodes'),
+      record(ParentNode.prototype, 'firstChild'), record(Element$1.prototype, 'cloneNode'),
+      record(Element$1.prototype, 'textContent'), record(CharacterData$1.prototype, 'textContent'),
+      record(CharacterData$1.prototype, 'data'), record(Attr$1.prototype, 'cloneNode'),
+      record(pageDocument, 'createElement'), record(pageDocument, 'createElementNS'),
+      record(HTMLStyleElement.prototype, 'textContent')];
+    const stableRecords = [record(String.prototype, 'replace'), record(Function.prototype, 'call'),
+      record(NodeList.prototype, 'push'), record(NodeList.prototype, 'join')];
+    const regexpRecords = ['test', 'exec', 'flags', 'source', 'global', 'ignoreCase',
+      'multiline', 'dotAll', 'unicode', 'unicodeSets', 'sticky', 'hasIndices', Symbol.replace]
+      .map(key => record(RegExp.prototype, key));
+    const cloneRecords = [record(WeakMap.prototype, 'set'), record(hostGlobal, 'Map')];
+    const constructors = [...htmlClasses].map(([name, constructor]) =>
+      [name, constructor.prototype, chain(constructor)]);
+    constructors.push(['@attr', Attr$1.prototype, chain(Attr$1)],
+      ['@svg', SVGElement$1.prototype, chain(SVGElement$1)],
+      ['@nodelist', NodeList.prototype, chain(NodeList)]);
+    const mime = pageDocument[MIME];
+    rawDependencies = [serializerRecords, domRecords, stableRecords, regexpRecords,
+      cloneRecords, constructors, mime, NodeList.prototype, ca, QUOTE, mime.voidElements,
+      wm, record(Object.prototype, 'valueOf'),
+      [record(mime, 'ignoreCase'), record(mime, 'voidElements')]];
+  }
+
+  function propertyKey(value) {
+    if (typeof value === 'string' || typeof value === 'symbol') return value;
+    const probe = create(null);
+    defineProperty(probe, value, { value: 0 });
+    return ownKeys(probe)[0];
+  }
+
+  function objectTarget(value, boxed = false) {
+    if (value === null || value === undefined ||
+        (!boxed && typeof value !== 'object' && typeof value !== 'function'))
+      throw new NativeTypeError('reflection target is not an object');
+    return boxed ? asObject(value) : value;
+  }
+
+  function inspectAccessor(descriptor) {
+    if (descriptor && (descriptor.get === promiseGetter || descriptor.get === promiseSetter ||
+                       descriptor.set === promiseGetter || descriptor.set === promiseSetter))
+      markPromiseUnknown();
+    return descriptor;
+  }
+
+  function installPromises() {
+    pagePromise = function Promise(executor) {
+      if (!new.target) throw new NativeTypeError('Promise requires new');
+      return construct(NativePromise, [executor], new.target);
+    };
+    const target = create(NativePromise.prototype);
+    for (const name of ownKeys(NativePromise.prototype)) {
+      const descriptor = ownDescriptor(NativePromise.prototype, name);
+      if (name === 'constructor') descriptor.value = pagePromise;
+      defineProperty(target, name, descriptor);
+    }
+    const prototype = new Proxy(target, {
+      set(object, name, value, receiver) { markPromiseUnknown(); return setValue(object, name, value, receiver); },
+      defineProperty(object, name, descriptor) { markPromiseUnknown(); return defineValue(object, name, descriptor); },
+      deleteProperty(object, name) { markPromiseUnknown(); return deleteValue(object, name); },
+      setPrototypeOf(object, parent) { markPromiseUnknown(); return changePrototype(object, parent); },
+      preventExtensions(object) { markPromiseUnknown(); return preventExtensions(object); }
+    });
+    defineProperty(pagePromise, 'prototype', { value: prototype });
+    setPrototype(pagePromise, NativePromise);
+    currentPromise = pagePromise;
+    promiseGetter = () => currentPromise;
+    promiseSetter = value => {
+      if (value !== currentPromise) markPromiseUnknown();
+      currentPromise = value;
+    };
+    defineProperty(globalThis, 'Promise', { configurable: true, enumerable: false,
+      get: promiseGetter, set: promiseSetter });
+
+    const readDescriptor = (target, key, boxed) => {
+      const object = objectTarget(target, boxed);
+      const name = propertyKey(key);
+      if (name === 'Promise') markPromiseUnknown();
+      return inspectAccessor(ownDescriptor(object, name));
+    };
+    const defineDescriptor = (target, key, descriptor, reflective) => {
+      const object = objectTarget(target);
+      const name = propertyKey(key);
+      if (name === 'Promise') markPromiseUnknown();
+      return reflective ? defineValue(object, name, descriptor) : defineProperty(object, name, descriptor);
+    };
+    const lookup = (target, key, method) => {
+      const object = objectTarget(target, true);
+      const name = propertyKey(key);
+      if (name === 'Promise') markPromiseUnknown();
+      const capability = applyFunction(method, object, [name]);
+      if (capability === promiseGetter || capability === promiseSetter) markPromiseUnknown();
+      return capability;
+    };
+    const defineLegacy = (target, key, callback, method) => {
+      const object = objectTarget(target, true);
+      if (typeof callback !== 'function') throw new NativeTypeError('accessor is not callable');
+      const name = propertyKey(key);
+      if (name === 'Promise') markPromiseUnknown();
+      return applyFunction(method, object, [name, callback]);
+    };
+    const guards = [
+      [Object, 'getOwnPropertyDescriptor', function (target, key) { return readDescriptor(target, key, true); }],
+      [Reflect, 'getOwnPropertyDescriptor', function (target, key) { return readDescriptor(target, key, false); }],
+      [Object, 'getOwnPropertyDescriptors', function (target) {
+        const result = descriptors(objectTarget(target, true));
+        for (const name of ownKeys(result)) {
+          if (name === 'Promise') markPromiseUnknown();
+          inspectAccessor(result[name]);
+        }
+        return result;
+      }],
+      [Object, 'defineProperty', function (target, key, descriptor) { return defineDescriptor(target, key, descriptor, false); }],
+      [Reflect, 'defineProperty', function (target, key, descriptor) { return defineDescriptor(target, key, descriptor, true); }],
+      [Object.prototype, '__lookupGetter__', function (key) { 'use strict'; return lookup(this, key, legacyGetter); }],
+      [Object.prototype, '__lookupSetter__', function (key) { 'use strict'; return lookup(this, key, legacySetter); }],
+      [Object.prototype, '__defineGetter__', function (key, callback) { 'use strict'; return defineLegacy(this, key, callback, defineGetter); }],
+      [Object.prototype, '__defineSetter__', function (key, callback) { 'use strict'; return defineLegacy(this, key, callback, defineSetter); }]
+    ];
+    for (const [object, name, value] of guards)
+      defineProperty(object, name, { ...ownDescriptor(object, name), value, writable: false, configurable: false });
+  }
+
+  function releaseParser() {
+    if (tokenizerHook) {
+      if (tokenizerDescriptor)
+        defineProperty(initialParser.tokenizer, 'shouldContinue', tokenizerDescriptor);
+      else delete initialParser.tokenizer.shouldContinue;
+    }
+    tokenizerHook = false;
+    initialParser = originalWrite = originalEnd = originalResume = originalPause = tokenizerDescriptor = undefined;
+  }
+
+  function failParsing(reason) {
+    parseState = 'failed';
+    parsedView = undefined;
+    releaseParser();
+    throw reason;
+  }
+
+  globalThis.__smallParseStart = source => {
+    if (parseState !== 'idle') failParsing(new Error('initial parser already started'));
+    parseState = 'failed';
+    const prototype = Parser$1.prototype;
+    const writeDescriptor = ownDescriptor(prototype, 'write');
+    const endDescriptor = ownDescriptor(prototype, 'end');
+    originalWrite = writeDescriptor.value;
+    originalEnd = endDescriptor.value;
+    originalResume = prototype.resume;
+    originalPause = prototype.pause;
+    let input;
+    let writeChanged = false;
+    let endChanged = false;
+    try {
+      try {
+        defineProperty(prototype, 'write', { ...writeDescriptor, value: function (markup) {
+          if (initialParser) throw new Error('initial parser duplicate write');
+          initialParser = this;
+          input = markup;
+        } });
+        writeChanged = true;
+        defineProperty(prototype, 'end', { ...endDescriptor, value: function () {
+          if (this !== initialParser) throw new Error('initial parser mismatch');
+        } });
+        endChanged = true;
+        parsedView = parseHTML(source);
+      } finally {
+        try {
+          if (endChanged) defineProperty(prototype, 'end', endDescriptor);
+        } finally {
+          if (writeChanged) defineProperty(prototype, 'write', writeDescriptor);
+        }
+      }
+      if (initialParser) {
+        const tokenizer = initialParser.tokenizer;
+        const shouldContinue = tokenizer.shouldContinue.bind(tokenizer);
+        tokenizerDescriptor = ownDescriptor(tokenizer, 'shouldContinue');
+        defineProperty(tokenizer, 'shouldContinue', { configurable: true, value() {
+          if (!shouldContinue()) return false;
+          if (tokenizer.index >= checkpoint) {
+            originalPause.call(initialParser);
+            return false;
+          }
+          return true;
+        } });
+        tokenizerHook = true;
+        originalWrite.call(initialParser, input);
+      }
+      parseState = initialParser && !initialParser.tokenizer.running ? 'paused' : 'drained';
+      return parseState === 'paused' ? 1 : 0;
+    } catch (reason) { failParsing(reason); }
+  };
+  globalThis.__smallParseResume = () => {
+    if (parseState !== 'paused') failParsing(new Error('initial parser has no paused work'));
+    parseState = 'failed';
+    checkpoint = initialParser.tokenizer.index + 16384;
+    try {
+      originalResume.call(initialParser);
+      parseState = initialParser.tokenizer.running ? 'drained' : 'paused';
+      return parseState === 'paused' ? 1 : 0;
+    } catch (reason) { failParsing(reason); }
+  };
+  globalThis.__smallParseEnd = () => {
+    if (parseState !== 'drained') failParsing(new Error('initial parser is not drained'));
+    parseState = 'failed';
+    try {
+      if (initialParser) originalEnd.call(initialParser);
+      releaseParser();
+      parseState = 'ready';
+      return 1;
+    } catch (reason) { failParsing(reason); }
+  };
+
+  function utf8Bytes(text) {
+    let bytes = 0;
+    for (let index = 0; index < text.length; index++) {
+      const code = charCodeAt(text, index);
+      if (code < 128) bytes++;
+      else if (code < 2048) bytes += 2;
+      else if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length &&
+               charCodeAt(text, index + 1) >= 0xdc00 && charCodeAt(text, index + 1) <= 0xdfff) {
+        bytes += 4;
+        index++;
+      } else bytes += 3;
+    }
+    return bytes;
+  }
+
+  function installStorage() {
+    const stored = new Map();
+    const reserved = new Set(['getItem', 'setItem', 'removeItem', 'clear', 'key', 'length']);
+    let bytes = 0;
+    let used = false;
+    const touch = () => {
+      if (!used) { used = true; errors.push({ category: 'ephemeral_storage_only' }); }
+    };
+    const dataKey = value => {
+      if (typeof value === 'symbol') throw new TypeError('storage symbol key unsupported');
+      const key = asString(value);
+      if (reserved.has(key)) throw new TypeError('storage API name is reserved');
+      return key;
+    };
+    const setItem = (name, value) => {
+      touch();
+      const key = dataKey(name);
+      const text = asString(value);
+      const existing = stored.has(key);
+      const proposed = bytes + utf8Bytes(text) - (existing ? utf8Bytes(stored.get(key)) : 0) +
+        (existing ? 0 : utf8Bytes(key));
+      if ((!existing && stored.size >= 200) || proposed > 65536) {
+        violation = true;
+        throw new RangeError('storage quota exceeded');
+      }
+      stored.set(key, text);
+      bytes = proposed;
+    };
+    const removeItem = name => {
+      touch();
+      const key = dataKey(name);
+      if (stored.has(key)) {
+        bytes -= utf8Bytes(key) + utf8Bytes(stored.get(key));
+        stored.delete(key);
+      }
+    };
+    const target = create(null);
+    const methods = {
+      getItem(name) { touch(); return stored.get(dataKey(name)) ?? null; },
+      setItem, removeItem,
+      clear() { touch(); stored.clear(); bytes = 0; },
+      key(index) {
+        touch();
+        const value = asNumber(index);
+        const position = finiteNumber(value) ? truncate(value) : 0;
+        return [...stored.keys()][position] ?? null;
+      }
+    };
+    for (const [name, method] of entries(methods))
+      defineProperty(target, name, { value: method, configurable: true });
+    defineProperty(target, 'length', { configurable: true, get() { touch(); return stored.size; } });
+    const unsupported = () => { touch(); throw new TypeError('storage mutation unsupported'); };
+    const storage = new Proxy(target, {
+      get(object, name) {
+        touch();
+        if (typeof name === 'symbol') throw new TypeError('storage symbol key unsupported');
+        return reserved.has(name) ? object[name] : stored.get(name);
+      },
+      set(object, name, value) { setItem(name, value); return true; },
+      deleteProperty(object, name) { removeItem(name); return true; },
+      has(object, name) { touch(); return reserved.has(name) || stored.has(dataKey(name)); },
+      ownKeys() { touch(); return [...stored.keys()]; },
+      getOwnPropertyDescriptor(object, name) {
+        touch();
+        if (typeof name === 'symbol') throw new TypeError('storage symbol key unsupported');
+        if (reserved.has(name)) return ownDescriptor(object, name);
+        return stored.has(name) ? { value: stored.get(name), configurable: true, enumerable: true, writable: true } : undefined;
+      },
+      defineProperty: unsupported, setPrototypeOf: unsupported, preventExtensions: unsupported
+    });
+    defineProperty(globalThis, 'localStorage', { configurable: true, get() { touch(); return storage; } });
+  }
 
   function anchorURL(value) {
     const raw = String(value);
@@ -111,11 +501,11 @@
       this.payload = record.body;
     }
     text() {
-      if (this.bodyUsed) return NativePromise.reject(new TypeError('body already consumed'));
+      if (this.bodyUsed) return promiseReject(new TypeError('body already consumed'));
       this.bodyUsed = true;
       return promiseResolve(this.payload);
     }
-    json() { return this.text().then(text => parse(text)); }
+    json() { return promiseThen(this.text(), text => parse(text)); }
     clone() {
       if (this.bodyUsed) throw new TypeError('body already consumed');
       return new Response({ status: this.status, url: this.url, headers: Object.fromEntries(this.headers),
@@ -149,20 +539,38 @@
     return id;
   }
 
-  globalThis.__smallBoot = (html, url, locationJSON) => {
-    const view = parseHTML(html);
+  globalThis.__smallBoot = (url, locationJSON) => {
+    if (parseState !== 'ready') failParsing(new Error('initial parser view is not ready'));
+    const view = parsedView;
+    parsedView = undefined;
     baseURL = url;
+    installStorage();
     globalThis.window = view;
     globalThis.document = view.document;
     pageDocument = view.document;
     pageWindow = view;
+    const descendants = Function.call.bind(ParentNode.prototype.querySelectorAll);
+    const documentDescendants = Function.call.bind(view.Document.prototype.querySelectorAll);
+    const namedElements = Function.call.bind(ParentNode.prototype.getElementsByTagName);
+    ParentNode.prototype.getElementsByTagName = function (name) {
+      if (name !== '*') return namedElements(this, name);
+      return this.nodeType === 9 ? documentDescendants(this, '*') : descendants(this, '*');
+    };
+    const protectedRoot = Object.prototype;
+    const originalToString = protectedRoot.toString;
+    const defineOwn = Object.defineProperty.bind(Object);
+    defineOwn(protectedRoot, 'toString', {
+      configurable: true, enumerable: false,
+      get() { return originalToString; },
+      set(value) {
+        if (this === protectedRoot) throw new TypeError('protected root mutation');
+        defineOwn(this, 'toString', { value, configurable: true, writable: true, enumerable: true });
+      }
+    });
     snapshot = pageDocument.toString.bind(pageDocument);
     queryAll = pageDocument.querySelectorAll.bind(pageDocument);
     queryOne = pageDocument.querySelector.bind(pageDocument);
     pageEvent = view.Event;
-    firstChild = Function.call.bind(Object.getOwnPropertyDescriptor(ParentNode.prototype, 'firstChild').get);
-    nextSibling = Function.call.bind(Object.getOwnPropertyDescriptor(view.Element.prototype, 'nextSibling').get);
-    getAttributes = Function.call.bind(Object.getOwnPropertyDescriptor(view.Element.prototype, 'attributes').get);
     dispatchLoad = view.dispatchEvent.bind(view);
     for (const key of ['HTMLElement', 'customElements', 'Event', 'CustomEvent', 'EventTarget', 'Node'])
       globalThis[key] = view[key];
@@ -199,7 +607,7 @@
     globalThis.fetch = fetch;
     globalThis.Headers = Headers;
     globalThis.Response = Response;
-    globalThis.queueMicrotask = callback => promiseResolve().then(callback);
+    globalThis.queueMicrotask = callback => promiseThen(promiseResolve(), callback);
     globalThis.setTimeout = (callback, delay, ...args) => setTimer(callback, delay, false, args);
     globalThis.setInterval = (callback, delay, ...args) => setTimer(callback, delay, true, args);
     globalThis.clearTimeout = id => timers.delete(id);
@@ -238,27 +646,30 @@
         if (!['', 'text', 'json'].includes(this.responseType)) throw new TypeError('XHR responseType unsupported');
         this.controller = new AbortController();
         const timeout = this.timeout > 0 ? setTimeout(() => { this.timedOut = true; this.abort(); }, this.timeout) : null;
-        fetch(this.url, { method: this.method, headers: this.headers, signal: this.controller.signal })
-          .then(response => {
+        const responseText = promiseThen(
+          fetch(this.url, { method: this.method, headers: this.headers, signal: this.controller.signal }), response => {
             this.status = response.status; this.responseURL = response.url;
             this.responseHeaders = response.headers; this.change(2);
             return response.text();
-          }).then(text => {
+          });
+        const loaded = promiseThen(responseText, text => {
             this.change(3); this.responseText = text;
             this.response = this.responseType === 'json' ? parse(text) : text;
             this.change(4); this.emit('load'); this.emit('loadend');
-          }).catch(reason => {
+          });
+        promiseFinally(promiseCatch(loaded, reason => {
             this.status = 0; this.change(4);
             this.emit(this.timedOut ? 'timeout' : reason.name === 'AbortError' ? 'abort' : 'error');
             this.emit('loadend');
-          }).finally(() => clearTimeout(timeout));
+          }), () => clearTimeout(timeout));
       }
       abort() { this.controller?.abort(); }
     };
+    installPromises();
     for (const prototype of [Object.prototype, Array.prototype, Map.prototype,
-      Set.prototype, WeakSet.prototype, Promise.prototype, Function.prototype])
+      Set.prototype, WeakSet.prototype, NativePromise.prototype, Function.prototype])
       Object.freeze(prototype);
-    for (const constructor of [Object, Array, Map, Set, WeakSet, Promise, Function, JSON])
+    for (const constructor of [Object, Array, Map, Set, WeakSet, NativePromise, Promise, Function, JSON])
       Object.freeze(constructor);
     for (const name of ['Node', 'Element', 'Document', 'HTMLElement', 'HTMLScriptElement', 'HTMLAnchorElement',
       'Text', 'Comment', 'DocumentType']) {
@@ -268,6 +679,8 @@
         prototype = Object.getPrototypeOf(prototype);
       }
     }
+    captureSnapshotDependencies();
+    parseState = 'bound';
   };
 
   globalThis.__smallBase = () => queryOne('base[href]')?.getAttribute('href') || '';
@@ -319,22 +732,20 @@
     try { timer.callback(...timer.args); } catch (reason) { errors.push(String(reason)); }
   };
   globalThis.__smallClock = now => { clock = now; };
-  globalThis.__smallErrors = () => controlJSON(errors);
+  globalThis.__smallErrors = () => {
+    const descriptor = ownDescriptor(hostGlobal, 'Promise');
+    if (!descriptor || descriptor.get !== promiseGetter || descriptor.set !== promiseSetter ||
+        descriptor.configurable !== true || descriptor.enumerable !== false || currentPromise !== pagePromise)
+      markPromiseUnknown();
+    return controlJSON(errors);
+  };
+  globalThis.__smallRawRoot = () => { rawCursor = pageDocument; return rawCursor; };
+  globalThis.__smallRawCurrent = () => rawCursor;
+  globalThis.__smallRawAdvance = next => { rawCursor = next; };
+  globalThis.__smallRawKey = index => rawKeys[index];
+  globalThis.__smallRawDependency = index => rawDependencies[index];
   globalThis.__smallSnapshot = () => {
-    const visit = node => {
-      for (const key of ['childNodes', 'firstChild', 'nextSibling', 'cloneNode',
-        'textContent', 'attributes', 'valueOf', primitive])
-        if (hasOwn(node, key)) throw new Error('DOM serializer tampering');
-      if (node !== pageDocument && hasOwn(node, 'toString')) throw new Error('DOM serializer tampering');
-      if (node !== pageDocument && !serializers.has(node.toString)) throw new Error('DOM serializer tampering');
-      if (hasOwn(node, END))
-        for (const attribute of getAttributes(node))
-          if (hasOwn(attribute, 'toString') || hasOwn(attribute, primitive) ||
-            !serializers.has(attribute.toString)) throw new Error('DOM serializer tampering');
-      if (hasOwn(node, END))
-        for (let child = firstChild(node); child; child = nextSibling(child)) visit(child);
-    };
-    visit(pageDocument);
+    if (parseState !== 'bound') failParsing(new Error('initial parser view is not bound'));
     return snapshot();
   };
   globalThis.__smallStartScript = index => { currentScript = scriptNodes[index]; };
@@ -342,9 +753,10 @@
     if (writeBuffer) currentScript.insertAdjacentHTML('afterend', writeBuffer);
     writeBuffer = ''; currentScript = null;
   };
+  globalThis.__smallAbortScript = () => { writeBuffer = ''; currentScript = null; };
   globalThis.__smallTrackModule = value => {
     pendingModules++;
-    promiseResolve(value).then(() => { pendingModules--; }, reason => {
+    promiseThen(promiseResolve(value), () => { pendingModules--; }, reason => {
       pendingModules--; errors.push(String(reason));
     });
   };

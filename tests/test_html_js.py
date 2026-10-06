@@ -45,13 +45,17 @@ def test_later_timer_returns_partial_snapshot():
     assert captured['pending']['timers'] == 1, 'Exactly one later timer remains.'
 
 
-def test_runaway_script_refuses_capture():
-    # GIVEN an unbounded CPU loop.
+def test_runaway_script_timing_preserves_valid_available_dom():
+    # GIVEN useful acquired content followed by an unbounded CPU loop.
     source = '<html><body><p>article</p><script>while(true){}</script></body></html>'
     # WHEN capture executes the script under its native interrupt.
-    with pytest.raises(BrewdocError, match='resource'):
-        render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.1)
-    # THEN the exception prevents a snapshot from reaching conversion.
+    captured = render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.1)
+    # THEN a trusted timing stop preserves current content as explicitly partial.
+    assert (captured['capture_status'], captured['errors'], captured['pending']) == (
+        'partial', [{'category': 'capture_timeout', 'resource_url': None}],
+        {'requests': 0, 'timers': 0, 'modules': 0, 'promises': 0, 'jobs': False},
+    ), 'Timing alone must preserve available DOM without claiming completed JS.'
+    assert '<p>article</p>' in captured['html'], 'The valid acquired article must remain in the current DOM.'
 
 
 @pytest.mark.parametrize('script', [
@@ -70,7 +74,6 @@ def test_caught_or_runaway_resource_exhaustion_still_refuses(script):
     # GIVEN script work that exhausts one hard structural or execution bound.
     source = '<html><body><p>article</p><script>' + script + '</script></body></html>'
     # WHEN the page tries to catch errors or retain useful initial text.
-    # Keep soft capture beyond the hard deadline so slow timers cannot return partial.
     with pytest.raises(BrewdocError, match='resource|crash'):
         render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=12)
     # THEN exhaustion still prevents publication of a partial snapshot.
@@ -203,22 +206,25 @@ def test_success_and_soft_capture_reap_owned_worker(monkeypatch):
         os.kill(processes[-1].pid, 0)
 
 
-def test_hard_deadline_kills_and_reaps_worker(monkeypatch):
+def test_loading_deadline_fallback_kills_and_reaps_unresponsive_worker(monkeypatch):
     import brewdoc.htmljs as module
-    # GIVEN a tracked page whose timer extends beyond the hard deadline.
+    # GIVEN acquired HTML and a tracked worker that cannot cooperatively return.
     processes = []
     original = module.subprocess.Popen
     def start(*args, **options):
-        process = original(*args, **options)
+        process = original([sys.executable, '-I', '-c', 'import threading;threading.Event().wait(60)'], **options)
         processes.append(process)
         return process
     monkeypatch.setattr(module.subprocess, 'Popen', start)
+    monkeypatch.setattr(module, '_check_runtime', lambda **options: None)
     # WHEN the authoritative watchdog reaches its deadline.
-    with pytest.raises(BrewdocError, match='resource|crash'):
-        render('<html><body><p>article</p><script>setTimeout(()=>{},10000)</script></body></html>',
-               'https://fixture.test/', lambda request: None, time.monotonic() + 0.15, soft_window=12)
+    source = '<html><body><p>article</p><script>setTimeout(()=>{},10000)</script></body></html>'
+    captured = render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 0.15, soft_window=12)
     # THEN the one owned child is killed and reaped before returning.
-    assert tuple(process.returncode for process in processes) in ((-signal.SIGKILL,), (int(signal.SIGUSR1), -signal.SIGKILL)), 'The prerequisite must exit and the watchdog must kill the capture.'
+    assert (captured['html'], captured['capture_status'], captured['errors'],
+            tuple(process.returncode for process in processes)) == (
+        source, 'partial', [{'category': 'initial_html_timeout_fallback', 'resource_url': None}], (-signal.SIGKILL,),
+    ), 'Only parent-owned timing cancellation may publish original HTML after killing its child.'
     with pytest.raises(ProcessLookupError):
         os.kill(processes[-1].pid, 0)
 

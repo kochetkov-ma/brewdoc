@@ -3,6 +3,7 @@
 import importlib.metadata
 import ctypes
 import json
+import math
 import os
 import signal
 import socket
@@ -33,8 +34,11 @@ OMISSIONS = (
 )
 
 
-def _check_runtime():
+def _check_runtime(*, deadline=None):
     """Refuse absent or unsupported installed native prerequisites before I/O."""
+    from .htmlurl import URLTimeoutError, _remaining
+    if deadline is not None:
+        _remaining(deadline)
     try:
         if importlib.metadata.version('quickjs-ng') != '0.17.0.1':
             raise BrewdocError('JS installed engine version refused')
@@ -53,9 +57,12 @@ def _check_runtime():
     if not _SIGNAL_PREREQUISITE:
         command = 'from brewdoc.htmljs import _signal_preflight; _signal_preflight()'
         try:
-            probe = subprocess.run([sys.executable, '-I', '-c', command], timeout=5,
+            probe = subprocess.run([sys.executable, '-I', '-c', command],
+                timeout=min(5, _remaining(deadline)) if deadline is not None else 5,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except (OSError, subprocess.TimeoutExpired) as exc:
+            if isinstance(exc, subprocess.TimeoutExpired) and deadline is not None and time.monotonic() >= deadline:
+                raise URLTimeoutError('JS prerequisite loading deadline exceeded') from exc
             raise BrewdocError('JS native fault handler prerequisite unavailable') from exc
         if probe.returncode != int(signal.SIGUSR1):
             raise BrewdocError('JS native fault handler prerequisite unavailable')
@@ -318,7 +325,8 @@ def _host_response(request, fetch, document_url, base_url):
 
 def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
     """Acquire child-requested resources and return a bounded frozen DOM."""
-    _check_runtime()
+    from .htmlurl import URLPolicyError, URLResourceError, URLTimeoutError
+    _check_runtime(deadline=deadline)
     if len(source.encode('utf-8')) > BYTE_LIMIT:
         raise BrewdocError('JS resource main source byte limit exceeded')
     parent_socket, child_socket = socket.socketpair()
@@ -333,40 +341,73 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
         raise BrewdocError('JS child start failed') from exc
     finally:
         child_socket.close()
+    cancelled = False
+    fallback = False
+    timing_error = False
+    timing_stop = False
+    notified = False
+    parent_errors = []
+    parent_error_count = 0
+    recovery_deadline = deadline + 1
     def terminate():
         """Kill only the still-owned isolated child process group."""
+        nonlocal cancelled
         if process.poll() is None:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
+                cancelled = True
             except ProcessLookupError:
                 pass
-    watchdog = threading.Timer(max(0, deadline - time.monotonic()), terminate)
+    watchdog = threading.Timer(max(0, recovery_deadline - time.monotonic()), terminate)
     watchdog.start()
     try:
-        _send(parent, {'source': source, 'url': final_url, 'soft_window': soft_window})
+        _send(parent, {'source': source, 'url': final_url, 'soft_window': soft_window,
+                       'deadline': deadline})
         base_url = final_url
         while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise BrewdocError('JS resource hard deadline exceeded')
-            if not parent.poll(min(remaining, 0.05)):
+            now = time.monotonic()
+            timing_stop = timing_stop or now >= deadline
+            if not parent.poll(max(0, min(recovery_deadline - now, 0.05))):
                 if process.poll() is not None:
+                    if cancelled:
+                        fallback = True
+                        return _initial_capture(source, soft_window, parent_errors, parent_error_count)
                     raise BrewdocError('JS child crash refused')
+                if now >= recovery_deadline:
+                    terminate()
                 continue
-            message = _receive(parent)
-            if time.monotonic() >= deadline:
-                raise BrewdocError('JS resource hard deadline exceeded')
+            try:
+                message = _receive(parent)
+            except BrewdocError as exc:
+                if cancelled and isinstance(exc.__cause__, (EOFError, ConnectionResetError)):
+                    fallback = True
+                    return _initial_capture(source, soft_window, parent_errors, parent_error_count)
+                raise
             if message.get('kind') == 'request':
                 request = message.get('request')
                 if not isinstance(request, dict):
                     raise BrewdocError('JS resource request invalid')
                 try:
-                    response = _host_response(request, fetch, final_url, base_url)
+                    def acquire(record):
+                        """Preserve option validation while refusing acquisition after timing stop."""
+                        if timing_stop or time.monotonic() >= deadline:
+                            raise URLTimeoutError('JS loading deadline exceeded')
+                        return fetch(record)
+                    response = _host_response(request, acquire, final_url, base_url)
                 except BrewdocError as exc:
-                    from .htmlurl import URLPolicyError, URLResourceError
                     if isinstance(exc, (URLPolicyError, URLResourceError)):
                         raise
-                    response = {'error': 'ancillary_transport_failed'}
+                    if isinstance(exc, URLTimeoutError):
+                        timing_stop = True
+                        response = {'timing': True}
+                    else:
+                        response = {'error': 'ancillary_transport_failed'}
+                if response.get('error'):
+                    parent_error_count += 1
+                    if len(parent_errors) < 20:
+                        parent_errors.append({'category': response['error'], 'resource_url': None})
+                if timing_stop:
+                    response = {'timing': True}
                 _send(parent, response)
             elif message.get('kind') == 'base':
                 from .htmlurl import _validate_url
@@ -374,7 +415,22 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
                 if not isinstance(value, str) or len(value.encode('utf-8')) > 8192:
                     raise BrewdocError('JS resource base IPC invalid')
                 base_url = _validate_url(urljoin(final_url, value))
-                _send(parent, {'base': base_url})
+                _send(parent, {'timing': True} if timing_stop else {'base': base_url})
+            elif message.get('kind') == 'timing':
+                offered = message.get('recovery_deadline')
+                if (set(message) != {'kind', 'recovery_deadline'} or type(offered) not in (int, float)
+                        or offered <= 0 or offered > deadline + 1 or not math.isfinite(offered)):
+                    raise BrewdocError('JS resource timing IPC invalid')
+                if not notified:
+                    notified = True
+                    timing_stop = True
+                    received_at = time.monotonic()
+                    watchdog.cancel()
+                    watchdog.join()
+                    recovery_deadline = min(recovery_deadline, offered, received_at + 1)
+                    if not cancelled:
+                        watchdog = threading.Timer(max(0, recovery_deadline - time.monotonic()), terminate)
+                        watchdog.start()
             elif message.get('kind') == 'result':
                 result = message.get('result')
                 if not isinstance(result, dict) or not isinstance(result.get('html'), str):
@@ -384,18 +440,53 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
                 _validate_capture(result, soft_window)
                 return result
             elif message.get('kind') == 'error':
+                if message == {'kind': 'error', 'cause': 'timing'}:
+                    timing_error = True
+                    fallback = True
+                    return _initial_capture(source, soft_window, parent_errors, parent_error_count)
                 raise BrewdocError('JS resource execution refused')
             else:
                 raise BrewdocError('JS resource IPC kind invalid')
     finally:
         watchdog.cancel()
         watchdog.join()
-        parent.close()
         try:
             process.wait(0.1)
         except subprocess.TimeoutExpired:
             terminate()
             process.wait(1)
+        try:
+            if fallback:
+                for _ in range(100):
+                    if not parent.poll(0):
+                        break
+                    try:
+                        terminal = _receive(parent)
+                    except BrewdocError as exc:
+                        if isinstance(exc.__cause__, EOFError) or cancelled and isinstance(exc.__cause__, ConnectionResetError):
+                            break
+                        raise
+                    if terminal.get('kind') != 'timing' and terminal != {'kind': 'error', 'cause': 'timing'}:
+                        raise BrewdocError('JS resource terminal refusal prohibits fallback')
+            if process.returncode != 0 and not (cancelled and process.returncode == -signal.SIGKILL):
+                raise BrewdocError('JS child crash refused')
+            if fallback and not timing_error and not (cancelled and process.returncode == -signal.SIGKILL):
+                raise BrewdocError('JS child cancellation unproved')
+        finally:
+            parent.close()
+
+
+def _initial_capture(source, soft_window, errors=(), error_count=0):
+    """Label original acquired HTML without claiming observed JavaScript completion."""
+    from .htmlurl import _capture_errors
+    recorded = _capture_errors([*errors, {'category': 'initial_html_timeout_fallback', 'resource_url': None}], 20)
+    return {'html': source, 'snapshot_kind': 'initial_html_timeout_fallback',
+            'capture_status': 'partial',
+            'errors': recorded,
+            'error_count': error_count + 1, 'pending': dict.fromkeys(('requests', 'timers', 'modules', 'promises', 'jobs')),
+            'counts': {'promise_jobs': None, 'timer_callbacks': None},
+            'engine': 'QuickJS-ng 0.17.0', 'dom_bundle': 'LinkeDOM 0.18.13',
+            'soft_window_seconds': soft_window, 'unsupported': list(OMISSIONS)}
 
 
 def _validate_capture(result, soft_window):
@@ -410,7 +501,8 @@ def _validate_capture(result, soft_window):
     categories = {'request_options_unsupported', 'request_headers_unsupported', 'cors_denied',
                   'resource_encoding_unsupported', 'ancillary_transport_failed', 'script_resource_failed',
                   'script_execution_failed', 'javascript_callback_failed', 'unhandled_promise_rejection',
-                  'csp_policy_unsupported', 'inline_style_only'}
+                  'csp_policy_unsupported', 'inline_style_only', 'ephemeral_storage_only',
+                  'promise_completion_unobservable', 'capture_timeout'}
     errors = result['errors']
     valid = valid and isinstance(errors, list) and len(errors) <= 20
     valid = valid and all(isinstance(error, dict) and set(error) == {'category', 'resource_url'}
@@ -455,20 +547,25 @@ def _worker(channel, parent_pid):
         resource.setrlimit(resource.RLIMIT_AS, (PROCESS_LIMIT, PROCESS_LIMIT))
     try:
         record = _receive(channel)
-        result = _guarded_call(lambda: _capture(record['source'], record['url'], channel, float(record['soft_window'])), protect=True)
+        result = _guarded_call(lambda: _capture(record['source'], record['url'], channel,
+                               float(record['soft_window']), float(record['deadline'])), protect=True)
         _send(channel, {'kind': 'result', 'result': result})
-    except Exception:
+    except Exception as exc:
+        from .htmlurl import URLTimeoutError
+        from ._urljs.native import NativeError
         try:
-            _send(channel, {'kind': 'error'})
+            timing = isinstance(exc, URLTimeoutError) or isinstance(exc, NativeError) and exc.timing
+            _send(channel, {'kind': 'error', 'cause': 'timing' if timing else 'hard'})
         except (OSError, BrewdocError):
             pass
     finally:
         channel.close()
 
 
-def _capture(source, url, channel, soft_window):
+def _capture(source, url, channel, soft_window, deadline=None):
     """Pump proved scripts, native modules, host GETs, jobs and finite timers."""
     from ._urljs.native import Context, NativeError
+    from .htmlurl import URLTimeoutError, _capture_errors
     import resource
     started = time.monotonic()
     errors = []
@@ -478,6 +575,8 @@ def _capture(source, url, channel, soft_window):
         """Ask the authoritative parent for one bounded resource."""
         _send(channel, {'kind': 'request', 'request': record})
         response = _receive(channel)
+        if response.get('timing') is True:
+            raise URLTimeoutError('JS loading deadline exceeded')
         if response.get('error'):
             errors.append({'category': response['error'], 'resource_url': None})
         return response
@@ -489,7 +588,8 @@ def _capture(source, url, channel, soft_window):
         if response.get('error') or not 200 <= response['status'] < 300:
             raise BrewdocError('JS module resource failed')
         return response['body'], response['url']
-    native = Context(module_source, guarded_stack=True)
+    native = Context(module_source, guarded_stack=True, loading_deadline=deadline)
+    booted = False
     try:
         worker = Path(__file__).with_name('_vendor').joinpath('linkedom-worker.js').read_text()
         bundle, marker, suffix = worker.rpartition('\nexport {')
@@ -497,33 +597,73 @@ def _capture(source, url, channel, soft_window):
             raise BrewdocError('JS installed DOM bundle shape refused')
         glue = Path(__file__).with_name('_urljs').joinpath('glue.js').read_text()
         native.eval('(()=>{' + bundle + '\n' + glue + '\n})();', 'installed-bootstrap')
-        names = ('Boot', 'Requests', 'Complete', 'Timers', 'RunTimer', 'Clock', 'Errors', 'Ready',
-                 'Loaded', 'Snapshot', 'StartScript', 'EndScript', 'TrackModule', 'Modules',
+        names = ('ParseStart', 'ParseResume', 'ParseEnd', 'Boot', 'Requests', 'Complete', 'Timers',
+                 'RunTimer', 'Clock', 'Errors', 'Ready',
+                 'Loaded', 'Snapshot', 'StartScript', 'EndScript', 'AbortScript', 'TrackModule', 'Modules',
                  'Scripts', 'ScriptDone', 'Base', 'SetBase', 'Pending', 'Policy', 'Violation')
+        names += ('RawRoot', 'RawCurrent', 'RawAdvance', 'RawKey', 'RawDependency')
         native.save(['__small' + name for name in names])
         def call(name, *args):
             """Use trusted native handles and enforce sticky host limits."""
-            value = native.call('__small' + name, *args)
+            if (native.recovery_deadline is not None and name not in
+                    ('AbortScript', 'Errors', 'Pending', 'Timers', 'Violation', 'Snapshot',
+                     'RawRoot', 'RawCurrent', 'RawAdvance', 'RawKey', 'RawDependency')):
+                raise BrewdocError('JS resource recovery callback refused')
+            value = native.snapshot() if name == 'Snapshot' else native.call('__small' + name, *args)
             if name != 'Violation' and int(native.call('__smallViolation')):
                 raise BrewdocError('JS resource scheduler or write limit exceeded')
             rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             if rss * (1 if sys.platform == 'darwin' else 1024) > PROCESS_LIMIT:
                 raise BrewdocError('JS resource process memory limit exceeded')
             return value
+        def inspect_pending():
+            """Observe actual pending work without running completion callbacks."""
+            modules = native.pending_modules
+            return {'requests': int(call('Pending')), 'timers': len(json.loads(call('Timers'))),
+                    'modules': modules if modules else None if unknown_modules else 0,
+                    'promises': native.pending_promises, 'jobs': bool(native.lib.JS_IsJobPending(native.runtime))}
+        def finish(pending, *, timed=False):
+            """Serialize once through protected controls and retain sanitized observations."""
+            observed = json.loads(call('Errors'))
+            recorded = errors + [
+                {'category': item['category'] if item in ({'category': 'inline_style_only'},
+                                                        {'category': 'ephemeral_storage_only'},
+                                                        {'category': 'promise_completion_unobservable'})
+                 else 'javascript_callback_failed', 'resource_url': None} for item in observed]
+            recorded.extend({'category': 'unhandled_promise_rejection', 'resource_url': None} for _ in range(native.rejections))
+            if timed:
+                recorded.append({'category': 'capture_timeout', 'resource_url': None})
+            snapshot = call('Snapshot')
+            return {'html': snapshot,
+                    'capture_status': 'partial' if timed or recorded or any(pending.values()) or unknown_modules else 'settled',
+                    'errors': _capture_errors(recorded, 20), 'error_count': len(recorded), 'pending': pending, 'counts': counts,
+                    'engine': 'QuickJS-ng 0.17.0', 'dom_bundle': 'LinkeDOM 0.18.13',
+                    'soft_window_seconds': soft_window, 'unsupported': list(OMISSIONS)}
         parsed = urlsplit(url)
         location = {'href': url, 'protocol': parsed.scheme + ':', 'hostname': parsed.hostname,
                     'host': parsed.netloc, 'pathname': parsed.path, 'search': '?' + parsed.query if parsed.query else '',
                     'hash': '#' + parsed.fragment if parsed.fragment else '', 'origin': _origin(url)}
-        call('Boot', source, url, json.dumps(location))
+        pending_parse = int(call('ParseStart', source))
+        while pending_parse:
+            pending_parse = int(call('ParseResume'))
+        call('ParseEnd')
+        call('Boot', url, json.dumps(location))
+        booted = True
         if int(call('Policy')):
             errors.append({'category': 'csp_policy_unsupported', 'resource_url': None})
         base = call('Base')
         if base:
             _send(channel, {'kind': 'base', 'value': base})
-            call('SetBase', _receive(channel)['base'])
+            response = _receive(channel)
+            if response.get('timing') is True:
+                raise URLTimeoutError('JS loading deadline exceeded')
+            call('SetBase', response['base'])
         def drain():
             """Drain native jobs under the cumulative per-capture cap."""
-            counts['promise_jobs'] += native.jobs()
+            try:
+                native.jobs()
+            finally:
+                counts['promise_jobs'] = native.job_count
         def scripts():
             """Execute each discovered accepted script exactly once."""
             found = json.loads(call('Scripts'))
@@ -533,6 +673,7 @@ def _capture(source, url, channel, soft_window):
                 text = script['text']
                 name = urlunsplit(parsed._replace(fragment='')) + '#inline-' + str(script['index'])
                 success = False
+                aborted = False
                 if script['src']:
                     response = request({'url': script['src'], 'kind': 'module' if script['type'] == 'module' else 'script'})
                     if response.get('error') or not 200 <= response['status'] < 300:
@@ -547,11 +688,18 @@ def _capture(source, url, channel, soft_window):
                     drain()
                     success = True
                 except NativeError as exc:
+                    if exc.timing:
+                        aborted = True
+                        raise
                     if exc.resource:
                         raise BrewdocError('JS resource native limit exceeded') from exc
                     errors.append({'category': 'script_execution_failed', 'resource_url': None})
+                except URLTimeoutError:
+                    aborted = True
+                    raise
                 finally:
-                    call('EndScript')
+                    if not aborted:
+                        call('EndScript')
                 call('ScriptDone', script['index'], int(success))
             return len(found)
         scripts()
@@ -560,6 +708,8 @@ def _capture(source, url, channel, soft_window):
         call('Loaded')
         drain()
         while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise URLTimeoutError('JS loading deadline exceeded')
             now = (time.monotonic() - started) * 1000
             call('Clock', int(now))
             queue = json.loads(call('Requests'))
@@ -577,24 +727,22 @@ def _capture(source, url, channel, soft_window):
                     raise BrewdocError('JS resource timer callback limit exceeded')
                 call('RunTimer', timer['id'], int(now))
                 drain()
-            native_pending = native.pending_modules
-            pending = {'requests': int(call('Pending')), 'timers': len(json.loads(call('Timers'))),
-                       'modules': native_pending if native_pending else None if unknown_modules else 0,
-                       'promises': native.pending_promises, 'jobs': False}
+            pending = inspect_pending()
             if not any(pending.values()) and not queue and not added:
                 break
             if time.monotonic() - started >= soft_window:
                 break
             if not queue and not added:
                 time.sleep(0.005)
-        observed = json.loads(call('Errors'))
-        errors.extend({'category': 'inline_style_only' if item == {'category': 'inline_style_only'}
-                       else 'javascript_callback_failed', 'resource_url': None} for item in observed)
-        errors.extend({'category': 'unhandled_promise_rejection', 'resource_url': None} for _ in range(native.rejections))
-        snapshot = call('Snapshot')
-        return {'html': snapshot, 'capture_status': 'partial' if errors or any(pending.values()) or unknown_modules else 'settled',
-                'errors': errors[:20], 'error_count': len(errors), 'pending': pending, 'counts': counts,
-                'engine': 'QuickJS-ng 0.17.0', 'dom_bundle': 'LinkeDOM 0.18.13',
-                'soft_window_seconds': soft_window, 'unsupported': list(OMISSIONS)}
+        return finish(pending)
+    except (NativeError, URLTimeoutError) as exc:
+        if isinstance(exc, NativeError) and not exc.timing:
+            raise
+        native.recovery_deadline = min(time.monotonic() + 1, deadline + 1) if deadline is not None else time.monotonic() + 1
+        _send(channel, {'kind': 'timing', 'recovery_deadline': native.recovery_deadline})
+        if not booted:
+            raise URLTimeoutError('JS initialization timing stop') from exc
+        call('AbortScript')
+        return finish(inspect_pending(), timed=True)
     finally:
         native.close()

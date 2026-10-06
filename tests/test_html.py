@@ -1237,3 +1237,38 @@ def test_consumed_literal_and_image_anchors_preserve_each_safe_target_once(
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "consumed content must preserve each safe anchor occurrence without fabricated or duplicate records"
     assert out.read_bytes() == expected.encode("utf-8"), "target-preserving file and API bytes must agree"
+
+
+@supported_html
+@pytest.mark.parametrize("cell,words", [
+    pytest.param('<ul><li>First</li><li>Second</li></ul>', 'First  Second', id="unordered-siblings"),
+    pytest.param('<ol><li>First</li><li>Second</li></ol>', 'First  Second', id="ordered-siblings"),
+    pytest.param('<ul><li>First<ol><li>Second</li><li>Third</li></ol>Fourth</li><li>Fifth</li></ul>',
+                 'First  Second  Third  Fourth  Fifth', id="nested-mixed-lists"),
+    pytest.param('<blockquote>First</blockquote><blockquote>Second</blockquote>', 'First  Second', id="blockquote-siblings"),
+    pytest.param('<h1>First</h1><h1>Second</h1>', 'First  Second', id="h1-siblings"),
+    pytest.param('<h2>First</h2><h2>Second</h2>', 'First  Second', id="h2-siblings"),
+    pytest.param('<h3>First</h3><h3>Second</h3>', 'First  Second', id="h3-siblings"),
+    pytest.param('<h4>First</h4><h4>Second</h4>', 'First  Second', id="h4-siblings"),
+    pytest.param('<h5>First</h5><h5>Second</h5>', 'First  Second', id="h5-siblings"),
+    pytest.param('<h6>First</h6><h6>Second</h6>', 'First  Second', id="h6-siblings"),
+    pytest.param('<ul><li><a href="/one">First</a></li><li><em>Second</em></li></ul>',
+                 '[First](/one)  *Second*', id="linked-and-emphasized-list-items"),
+    pytest.param('<ul><li>A|B &amp; &lt;C&gt;</li><li>café 東京</li></ul>',
+                 'A\\|B &amp; &lt;C&gt;  café 東京', id="list-boundaries-preserve-escaping"),
+    pytest.param('<div>First</div><p>Second</p>', 'First  Second', id="existing-block-boundaries"),
+    pytest.param('<span>foo</span><span>bar</span>', 'foobar', id="true-inline-adjacency"),
+])
+def test_table_cell_structure_preserves_word_boundaries_and_inline_adjacency(tmp_path, cell, words):
+    # GIVEN a synthetic one-cell table with exact structural and inline text expectations.
+    path, out = tmp_path / "sample.html", tmp_path / "cell-words.md"
+    path.write_text('<table><tr><td>' + cell + '</td></tr></table>', encoding="utf-8")
+    assert out.exists() is False, "table word-boundary output must start absent"
+    content = '| ' + words + ' |\n| --- |\n'
+    expected = expected_document(path, content, 0, tables=1)
+    # WHEN the shared static adapter renders the recovered cell contents.
+    result = service.run(path, out)
+    # THEN separate blocks keep every word while inline siblings and escaping remain exact.
+    assert result == (0, expected_receipt(path, out, 0, tables=1), expected), (
+        "cell structure must preserve word boundaries without changing inline adjacency, escaping or receipts")
+    assert out.read_bytes() == expected.encode("utf-8"), "table file and public API bytes must agree"

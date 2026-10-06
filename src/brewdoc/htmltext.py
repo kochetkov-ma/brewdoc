@@ -489,7 +489,8 @@ def _cell_text(cell, tables: dict) -> str:
         if tag == "img":
             parts.append(" " + _image(node) + " ")
             continue
-        if tag == "br" or tag in _BLOCKS or tag in _CONTROL_BOUNDARIES:
+        if (tag == "br" or tag in _BLOCKS or tag in _CONTROL_BOUNDARIES
+                or tag in ("ul", "ol", "li", "blockquote") or tag in _HEADINGS):
             parts.append(" ")
         if tag in _EMPHASIS and _literal_text(node).strip():
             if leaving:
