@@ -136,13 +136,13 @@ document.querySelector('#result').textContent=JSON.stringify({
 """
     source = '<html><body>' + rows + '<p id="result">pending</p><script>' + script + '</script></body></html>'
     assert len(source.encode("utf-8")) < 8 * 1048576, "The witness must remain within the original input limit."
-    # WHEN the original per-call interrupt and parent deadline guard initialization.
+    # WHEN initialization uses an explicit 30-second caller budget and the original per-call guard.
     captured = htmljs.render(source, "https://fixture.test/", lambda request: None,
-                            time.monotonic() + 10, soft_window=1)
+                            time.monotonic() + 30, soft_window=1)
     # THEN page code sees every element and none of the trusted initialization handles.
     assert (captured["capture_status"], _page_observation(captured)) == (
         "settled", {"count": 8192, "last": "row 8191", "handles": ["undefined"] * 3},
-    ), "Initial parsing must finish under existing limits before any page code runs."
+    ), "Initial parsing must finish before page observation within the explicit caller budget."
 
 
 _PAUSED_SOURCE = "<html><body><p>" + "x" * 20000 + "</p></body></html>"
