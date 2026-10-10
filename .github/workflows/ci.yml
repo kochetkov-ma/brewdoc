@@ -36,7 +36,7 @@ jobs:
         run: uv run --no-sync python benchmarks/compare_latency.py compare --baseline-ref dc1f0c7fdedeec024840127ed989e1f58416762a --output "${{ runner.temp }}/isolated-latency"
       - name: Preserve complete or partial elapsed evidence
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: isolated-latency-${{ github.sha }}-${{ github.run_id }}
           path: ${{ runner.temp }}/isolated-latency/
@@ -64,7 +64,7 @@ jobs:
           BREWDOC_CACHE_HIT: ${{ steps.uv.outputs.cache-hit }}
           BREWDOC_CACHE_KEY: ${{ steps.uv.outputs.cache-key }}
         run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py prepare
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: ci-dist
           path: |
@@ -113,7 +113,7 @@ jobs:
         run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py verify --bundle "${{ runner.temp }}/ci-dist"
       - name: Preserve test and installed-package evidence
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ci-results-${{ matrix.platform }}
           path: |

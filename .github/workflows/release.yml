@@ -28,7 +28,7 @@ jobs:
         run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py prepare
       - name: Check built distributions before publication
         run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py verify
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: dist
           path: dist/
