@@ -3,6 +3,7 @@
 import importlib.util
 import base64
 import hashlib
+import io
 import json
 import os
 import stat
@@ -256,6 +257,96 @@ def test_archive_roundtrip_retains_internal_links_and_all_file_hashes(tmp_path):
     actual = BUILDER.extract_archive(asset, tmp_path / 'consumer', expected)
     # THEN bytes, types, permissions and relative link targets remain identical
     assert BUILDER.inventory(actual) == expected, 'extraction preserves the whole admitted inventory'
+
+
+def symlink_tar(tmp_path, link_mode):
+    """Write a synthetic TAR with explicit sealed modes and an internal link."""
+    payload = b'native payload'
+    expected = {'brewdoc': {'kind': 'directory', 'mode': 0o755},
+                'brewdoc/library': {'kind': 'file', 'mode': 0o644, 'bytes': len(payload),
+                                    'sha256': hashlib.sha256(payload).hexdigest()},
+                'brewdoc/alias': {'kind': 'symlink', 'mode': link_mode, 'target': 'library'}}
+    asset = tmp_path / 'bundle.tar.gz'
+    directory = tarfile.TarInfo('brewdoc')
+    directory.type, directory.mode = tarfile.DIRTYPE, 0o755
+    library = tarfile.TarInfo('brewdoc/library')
+    library.mode, library.size = 0o644, len(payload)
+    alias = tarfile.TarInfo('brewdoc/alias')
+    alias.type, alias.mode, alias.linkname = tarfile.SYMTYPE, link_mode, 'library'
+    with tarfile.open(asset, 'w:gz') as archive:
+        archive.addfile(directory)
+        archive.addfile(library, io.BytesIO(payload))
+        archive.addfile(alias)
+    return asset, expected
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX TAR links acquire the extracting host mode')
+def test_extraction_admits_sealed_symlink_mode_from_another_host(tmp_path):
+    # GIVEN a real TAR whose accepted link mode differs from this host's link mode
+    probe = tmp_path / 'probe'
+    probe.symlink_to('library')
+    host_mode = stat.S_IMODE(probe.lstat().st_mode)
+    archived_mode = host_mode ^ 0o022
+    assert archived_mode ^ host_mode == 0o022, 'the sealed mode differs from the actual host mode'
+    asset, expected = symlink_tar(tmp_path, archived_mode)
+    sealed = json.loads(json.dumps(expected))
+    with tarfile.open(asset) as archive:
+        assert archive.getmember('brewdoc/alias').mode == archived_mode, 'the real header matches the sealed link mode'
+    # WHEN strict header admission extracts the archive onto this host
+    actual = BUILDER.extract_archive(asset, tmp_path / 'consumer', expected)
+    # THEN only observed link permissions differ, while the sealed record stays unchanged
+    observed = {**sealed, 'brewdoc/alias': {'kind': 'symlink', 'mode': host_mode, 'target': 'library'}}
+    assert BUILDER.inventory(actual) == observed, 'file bytes, file/directory modes and link targets survive extraction'
+    assert expected == sealed, 'admission must preserve the original sealed evidence'
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Windows bundles forbid symbolic links')
+@pytest.mark.parametrize('name,delta,reason', [
+    ('brewdoc/alias', {'mode': 0o755}, 'Standalone tar declared size or mode changed'),
+    ('brewdoc/alias', {'target': './library'}, 'Standalone link target changed'),
+    ('brewdoc/library', {'mode': 0o755}, 'Standalone tar declared size or mode changed'),
+    ('brewdoc', {'mode': 0o700}, 'Standalone tar declared size or mode changed'),
+], ids=['link-mode', 'link-target', 'file-mode', 'directory-mode'])
+def test_extraction_refuses_tar_headers_that_differ_from_sealed_evidence(tmp_path, name, delta, reason):
+    # GIVEN real TAR headers with one conflicting sealed mode or link target
+    asset, expected = symlink_tar(tmp_path, 0o777)
+    with tarfile.open(asset) as archive:
+        assert archive.getmember(name).mode == expected[name]['mode'], 'the original sealed mode matches the raw header'
+    expected[name].update(delta)
+    # WHEN admission compares raw headers before any payload is written
+    with pytest.raises(ValueError, match='^' + reason + '$'):
+        BUILDER.extract_archive(asset, tmp_path / 'consumer', expected)
+    # THEN host link permission handling cannot bypass raw archive integrity
+    assert list((tmp_path / 'consumer').iterdir()) == [], 'conflicting headers refuse before extraction'
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX native archives contain symbolic links')
+@pytest.mark.parametrize('mutate', [
+    lambda root: (root / 'library').chmod(0o755),
+    lambda root: root.chmod(0o700),
+    lambda root: ((root / 'alias').unlink(), (root / 'alias').symlink_to('./library')),
+    lambda root: ((root / 'alias').unlink(), (root / 'alias').write_bytes(b'native payload')),
+    lambda root: (root / 'library').write_bytes(b'changed payload'),
+    lambda root: (root / 'library').write_bytes(b'changed bytes!'),
+], ids=['file-mode', 'directory-mode', 'link-target', 'link-kind', 'file-size', 'file-hash'])
+def test_extraction_refuses_changes_to_extracted_files_directories_and_link_identity(tmp_path, monkeypatch, mutate):
+    # GIVEN an admitted real TAR and a filesystem change before final inventory
+    asset, expected = symlink_tar(tmp_path, 0o777)
+    sealed = json.loads(json.dumps(expected))
+    original_inventory = BUILDER.inventory
+    assert expected['brewdoc/library']['bytes'] == 14, 'the file-size and same-size hash cases start with 14 bytes'
+
+    def changed_inventory(root):
+        """Change actual extracted state at the final observation boundary."""
+        mutate(root)
+        return original_inventory(root)
+
+    monkeypatch.setattr(BUILDER, 'inventory', changed_inventory)
+    # WHEN final admission observes the changed filesystem
+    with pytest.raises(ValueError, match='^Extracted standalone bytes, modes or link targets changed$'):
+        BUILDER.extract_archive(asset, tmp_path / 'consumer', expected)
+    # THEN accepting host link permissions does not alter the original seal
+    assert expected == sealed, 'file, directory and link integrity failures preserve accepted evidence'
 
 
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX temporary roots may use an internal filesystem alias')

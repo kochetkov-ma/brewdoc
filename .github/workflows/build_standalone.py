@@ -302,7 +302,12 @@ def extract_archive(archive_path: Path, destination: Path, expected: dict) -> Pa
             for member in links:
                 archive.extract(member, destination, filter='data')
     root = destination / 'brewdoc'
-    if inventory(root) != expected:
+    observed = inventory(root)
+    # Symlink permissions depend on the host; their archive modes were checked above.
+    for name, record in observed.items():
+        if record['kind'] == 'symlink' and expected.get(name, {}).get('kind') == 'symlink':
+            record['mode'] = expected[name]['mode']
+    if observed != expected:
         raise ValueError('Extracted standalone bytes, modes or link targets changed')
     return root
 
