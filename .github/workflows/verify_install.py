@@ -8,6 +8,7 @@ import base64
 import compileall
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import os
 import platform
@@ -60,6 +61,8 @@ def distributions(folder: Path) -> tuple[Path, Path]:
 
 def verify_manifest(bundle: Path, manifest: dict) -> None:
     """Reject altered bytes, path escapes and symlink substitutions before installation."""
+    if manifest.get("verification_scope", "full") not in ("full", "smoke"):
+        raise ValueError("Unknown installed verification scope")
     bundle = bundle.resolve()
     for name, expected in manifest["files"].items():
         source = bundle / name
@@ -71,7 +74,13 @@ def verify_manifest(bundle: Path, manifest: dict) -> None:
             raise ValueError(f"Artifact bytes changed: {name}")
 
 
-def prepare(checkout: Path, bundle: Path) -> None:
+def check_scope(manifest: dict, smoke: bool) -> None:
+    """Refuse a requested scope that differs from explicit or legacy producer coverage."""
+    if manifest.get("verification_scope", "full") != ("smoke" if smoke else "full"):
+        raise ValueError("Requested installed verification scope differs from its producer")
+
+
+def prepare(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
     """Inspect archives and export locked runtime and isolated build constraints."""
     project = tomllib.loads((checkout / "pyproject.toml").read_text(encoding="utf-8"))
     wheel, sdist = distributions(bundle / "dist")
@@ -103,12 +112,16 @@ def prepare(checkout: Path, bundle: Path) -> None:
     constraints = project["build-system"]["requires"] + project["tool"]["uv"]["build-constraint-dependencies"]
     build.write_text("\n".join(constraints) + "\n", encoding="utf-8")
     manifest = {"version": project["project"]["version"], "exports": exports,
+                "verification_scope": "smoke" if smoke else "full",
                 "uv": command(["uv", "--version"], checkout).stdout.decode().split()[1],
                 "checkout_sha": command(["git", "rev-parse", "HEAD"], checkout).stdout.decode().strip(),
                 "action_cache_hit": os.environ.get("BREWDOC_CACHE_HIT"),
                 "action_cache_key": os.environ.get("BREWDOC_CACHE_KEY"),
                 "source": {name: digest(checkout / name) for name in (
-                    "pyproject.toml", "uv.lock", "benchmarks/corpus.json", "tests/fixtures/receipts.json")},
+                    ("pyproject.toml", "uv.lock", ".github/workflows/build_standalone.py",
+                     ".github/workflows/verify_install.py", "tests/test_contract.py", "tests/test_epub.py",
+                     "tests/test_spreadsheets.py") if smoke else (
+                    "pyproject.toml", "uv.lock", "benchmarks/corpus.json", "tests/fixtures/receipts.json"))},
                 "files": {path.relative_to(bundle).as_posix(): {
                     "size": path.stat().st_size, "sha256": digest(path)}
                     for path in (wheel, sdist, runtime, optional, build)}}
@@ -311,12 +324,38 @@ def probe_js(enabled: bool) -> dict:
             "capture_status": captured["capture_status"]}
 
 
-def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
-    """Exercise real installed imports, every suffix and bounded console/output contracts."""
+def probe_smoke(checkout: Path, console: str) -> dict:
+    """Check only existing generated EPUB/formula bytes and real CLI/output refusal."""
+    spec = importlib.util.spec_from_file_location("standalone_smoke", Path(__file__).with_name("build_standalone.py"))
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    inputs = Path.cwd() / "probe-inputs.json"
+    builder.write_json(inputs, builder.synthetic_cases(checkout, Path.cwd()))
+    observed = json.loads(command([sys.executable, "-I", "-c", builder.ORACLE_CODE,
+                                   str(Path(__file__).resolve()), str(checkout), str(inputs), "smoke"], Path.cwd()).stdout)
+    for row in observed["probes"]:
+        source = Path.cwd() / row["path"]
+        arguments = [console, str(source)]
+        payload = None
+        if "artifact" in row:
+            payload = Path.cwd() / "formula.json"
+            arguments += ["--artifact", row["artifact"]["key"] + "=" + str(payload)]
+        builder.check_output(command(arguments, Path.cwd()), row, artifact_output=payload)
+        out = Path.cwd() / (row["probe"] + ".md")
+        builder.check_output(command([*arguments, "--out", str(out)], Path.cwd()), row, out, payload)
+        if payload is not None and (payload.stat().st_size, digest(payload)) != (
+                row["artifact"]["bytes"], row["artifact"]["sha256"]):
+            raise ValueError("Installed synthetic formula artifact changed")
+    return {"oracle": observed["oracle"], "probes": observed["probes"],
+            "epub_refusal": probe_epub_refusal(console)}
+
+
+def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool = False) -> dict:
+    """Check installed identity and console/output contracts for the requested scope."""
+    manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
+    check_scope(manifest, smoke)
     import brewdoc
     from brewdoc import epub
-
-    manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
     installed = importlib.metadata.distribution("brewdoc")
     direct = json.loads(installed.read_text("direct_url.json") or "{}")
     check_origin(Path(brewdoc.__file__), Path(sys.prefix), checkout, sys.path, direct)
@@ -331,6 +370,13 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     checked = command([console, "--self-check"], Path.cwd())
     if (checked.stdout, checked.stderr) != (("self-check: ok (38 checks)" + os.linesep).encode(), b""):
         raise ValueError("Installed console self-check verdict changed")
+    if smoke:
+        return {"verification_scope": "smoke", "python": sys.version,
+                "module": str(Path(brewdoc.__file__).resolve()), "prefix": sys.prefix,
+                "self_check": checked.stdout.decode(), **probe_smoke(checkout, console),
+                "javascript": probe_js(render_js),
+                "packages": sorted((item.metadata["Name"], item.version)
+                                   for item in importlib.metadata.distributions())}
     routes = []
     cli = []
     artifacts = []
@@ -388,7 +434,7 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     cli.append(check_cli(subprocess.run([console, str(absent)], capture_output=True, timeout=120), brewdoc.run(absent)))
     unsupported = Path("unsupported.txt")
     cli.append(check_cli(subprocess.run([console, str(unsupported)], capture_output=True, timeout=120), brewdoc.run(unsupported)))
-    return {"python": sys.version, "module": str(Path(brewdoc.__file__).resolve()),
+    return {"verification_scope": "full", "python": sys.version, "module": str(Path(brewdoc.__file__).resolve()),
             "prefix": sys.prefix, "self_check": checked.stdout.decode(), "routes": routes,
             "cli": cli, "artifacts": artifacts, "epub": epubs,
             "epub_refusal": probe_epub_refusal(console), "javascript": probe_js(render_js),
@@ -396,9 +442,10 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
                                for item in importlib.metadata.distributions())}
 
 
-def verify(checkout: Path, bundle: Path) -> None:
+def verify(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
     """Install wheel and sdist separately outside checkout, then invoke isolated probes."""
     manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
+    check_scope(manifest, smoke)
     verify_manifest(bundle, manifest)
     if {name: digest(checkout / name) for name in manifest["source"]} != manifest["source"]:
         raise ValueError("Consumer manifests differ from the producer checkout")
@@ -412,7 +459,7 @@ def verify(checkout: Path, bundle: Path) -> None:
         if root.is_relative_to(checkout.resolve()):
             raise ValueError("Installation directory must be outside checkout")
         for number, (distribution, render_js) in enumerate(
-                (item, enabled) for item in distributions(bundle / "dist") for enabled in (False, True)):
+                (item, enabled) for item in distributions(bundle / "dist") for enabled in ((False,) if smoke else (False, True))):
             prefix = root / f"env-{number}"
             command(["uv", "venv", "--python", sys.executable, str(prefix)], root)
             python = prefix / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -428,11 +475,18 @@ def verify(checkout: Path, bundle: Path) -> None:
                     "--checkout", str(checkout), "--bundle", str(bundle)]
             if render_js:
                 argv.append("--render-js")
+            if smoke:
+                argv.append("--smoke")
             checked = command(argv, work)
+            observed = json.loads(checked.stdout)
+            if smoke and (observed.get("verification_scope"), observed.get("oracle"),
+                          [row["probe"] for row in observed.get("probes", [])]) != ("smoke", [], ["epub2", "formula"]):
+                raise ValueError("Installed smoke consumer evidence is incomplete")
             results.append({"distribution": distribution.name, "render_js": render_js,
                             "sha256": digest(distribution),
-                            "probe": json.loads(checked.stdout)})
+                            "probe": observed})
     report = {"checkout_sha": manifest["checkout_sha"], "uv": manifest["uv"],
+              "verification_scope": "smoke" if smoke else "full",
               "action_cache_hit": os.environ.get("BREWDOC_CACHE_HIT"),
               "action_cache_key": os.environ.get("BREWDOC_CACHE_KEY"), "installations": results}
     (bundle / "ci-package" / f"verification-{sys.platform}.json").write_text(
@@ -446,12 +500,13 @@ def main() -> None:
     parser.add_argument("--checkout", type=Path, default=Path.cwd())
     parser.add_argument("--bundle", type=Path, default=Path.cwd())
     parser.add_argument("--render-js", action="store_true", help="Probe the isolated optional installation")
+    parser.add_argument("--smoke", action="store_true", help="Use two synthetic probes and only base installations")
     args = parser.parse_args()
     if args.mode == "probe":
-        result = probe(args.checkout.resolve(), args.bundle.resolve(), args.render_js)
+        result = probe(args.checkout.resolve(), args.bundle.resolve(), args.render_js, smoke=args.smoke)
     else:
         result = {"prepare": prepare, "verify": verify}[args.mode](
-            args.checkout.resolve(), args.bundle.resolve())
+            args.checkout.resolve(), args.bundle.resolve(), smoke=args.smoke)
     if result is not None:
         print(json.dumps(result))
 

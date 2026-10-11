@@ -1,4 +1,9 @@
+.github/workflows/*.py text eol=lf
+tests/**/*.py text eol=lf
 tests/fixtures/** -text
 pyproject.toml text eol=lf
 uv.lock text eol=lf
 benchmarks/corpus.json text eol=lf
+.github/standalone-licenses/** -text
+.github/distribution.json text eol=lf
+src/brewdoc/**/*.py text eol=lf

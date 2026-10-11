@@ -13,11 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  latency:
-    name: isolated elapsed comparison (Linux, Python 3.12)
-    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.head_ref == 'perf/full-performance-review' && github.run_attempt == '1'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 45
+  scope:
+    name: select smoke checks
+    runs-on: ubuntu-22.04
+    outputs:
+      smoke: ${{ steps.scope.outputs.smoke }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -26,25 +26,222 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.12.21"
-          python-version: "3.12"
-          enable-cache: false
-      - run: uv sync --locked --group dev --no-install-project
-      - name: Compare sealed sources in one locked runtime
-        timeout-minutes: 40
+          python-version: "3.12.14"
+          cache-suffix: ${{ runner.os }}-${{ runner.arch }}-uv0.12.21-py3.12.14-${{ hashFiles('uv.lock') }}
+      - id: scope
         env:
-          BREWDOC_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: uv run --no-sync python benchmarks/compare_latency.py compare --baseline-ref dc1f0c7fdedeec024840127ed989e1f58416762a --output "${{ runner.temp }}/isolated-latency"
-      - name: Preserve complete or partial elapsed evidence
+          BREWDOC_BASE: ${{ github.event.pull_request.base.sha }}
+          BREWDOC_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py ci-scope --checkout "${{ github.workspace }}" --base "$BREWDOC_BASE" --head "$BREWDOC_HEAD" --github-output "$GITHUB_OUTPUT"
+
+  standalone:
+    name: standalone (${{ matrix.target }}, Python 3.12.14)
+    needs: [scope, package]
+    if: needs.scope.outputs.smoke == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+          cache-suffix: ${{ runner.os }}-${{ runner.arch }}-uv0.12.21-py3.12.14-${{ hashFiles('uv.lock') }}
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ci-dist
+          path: ${{ runner.temp }}/ci-dist
+          digest-mismatch: error
+      - name: Check four actual Windows source DNS lifecycle cases
+        if: matrix.target == 'windows-x64'
+        run: |
+          uv sync --locked --python 3.12.14 --group dev --extra render-js
+          uv run --locked --extra render-js pytest -q tests/test_standalone.py::test_isolated_source_dns_script_works_without_the_package_or_python_environment tests/test_standalone.py::test_windows_production_dns_succeeds_outside_checkout_with_hostile_python_paths tests/test_standalone.py::test_windows_direct_dns_timeout_reaps_the_same_runtime_worker tests/test_standalone.py::test_windows_direct_dns_stops_when_its_logical_owner_exits
+      - name: Build the accepted wheel into its native standalone bundle
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py build --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist" --output "${{ runner.temp }}/ci-native-${{ matrix.target }}" --target "${{ matrix.target }}" --smoke
+      - name: Verify native CLI and accepted outputs outside the checkout
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py verify --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist" --output "${{ runner.temp }}/ci-native-${{ matrix.target }}" --target "${{ matrix.target }}" --smoke
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/npm-downloads/_cacache
+          key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
+        env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
+      - name: Pack the verified platform before native file attributes leave this runner
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py pack --native-dir "${{ runner.temp }}/ci-native-${{ matrix.target }}" --output "${{ runner.temp }}/ci-npm-${{ matrix.target }}"
+      - name: Preserve native bundle and runtime evidence
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: isolated-latency-${{ github.sha }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/isolated-latency/
+          overwrite: true
+          name: ci-native-target-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/*.tar.gz
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/*.zip
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/manifest.json
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/verification.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve sealed npm platform tarball and admission record
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-npm-target-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/ci-npm-${{ matrix.target }}/*.tgz
+            ${{ runner.temp }}/ci-npm-${{ matrix.target }}/platform-record.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  standalone-assets:
+    name: admit complete standalone and npm assets
+    needs: [scope, standalone]
+    if: needs.scope.outputs.smoke == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+          cache-suffix: ${{ runner.os }}-${{ runner.arch }}-uv0.12.21-py3.12.14-${{ hashFiles('uv.lock') }}
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/npm-downloads/_cacache
+          key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
+        env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: ci-native-target-*
+          path: ${{ runner.temp }}/ci-native-targets
+          digest-mismatch: error
+      - name: Admit exactly three verified native target manifests
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py aggregate --input "${{ runner.temp }}/ci-native-targets" --output "${{ runner.temp }}/ci-native-assets"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-native-assets
+          path: ${{ runner.temp }}/ci-native-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: ci-npm-target-*
+          path: ${{ runner.temp }}/ci-npm-targets
+          digest-mismatch: error
+      - name: Assemble the main package only after every native platform passes
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py aggregate --input "${{ runner.temp }}/ci-npm-targets" --output "${{ runner.temp }}/ci-npm-release"
+      - name: Admit the complete four-package npm set
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py verify --input "${{ runner.temp }}/ci-npm-release"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-npm-release
+          path: |
+            ${{ runner.temp }}/ci-npm-release/*.tgz
+            ${{ runner.temp }}/ci-npm-release/npm-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  npm-consumer:
+    name: npm consumer (${{ matrix.target }})
+    needs: [scope, standalone-assets]
+    if: needs.scope.outputs.smoke == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+          cache-suffix: ${{ runner.os }}-${{ runner.arch }}-uv0.12.21-py3.12.14-${{ hashFiles('uv.lock') }}
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/npm-downloads/_cacache
+          key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
+        env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ci-npm-release
+          path: ${{ runner.temp }}/ci-npm-release
+          digest-mismatch: error
+      - name: Verify normal npm and npx consumers from the sealed local package set
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py probe --input "${{ runner.temp }}/ci-npm-release" --target "${{ matrix.target }}" --mode local --smoke --output "${{ runner.temp }}/ci-npm-probe-${{ matrix.target }}.json"
+      - name: Preserve npm consumer observations
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-npm-consumer-${{ matrix.target }}
+          path: ${{ runner.temp }}/ci-npm-probe-${{ matrix.target }}.json
           if-no-files-found: warn
           retention-days: 7
 
   package:
     name: package (Python 3.12)
+    needs: scope
+    if: needs.scope.outputs.smoke == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -55,17 +252,31 @@ jobs:
         id: uv
         with:
           version: "0.12.21"
-          python-version: "3.12"
-          cache-suffix: uv-0.12.21-ci-build
+          python-version: "3.12.14"
+          cache-suffix: ${{ runner.os }}-${{ runner.arch }}-uv0.12.21-py3.12.14-${{ hashFiles('uv.lock') }}
       - run: uv lock --check
+      - run: uv sync --locked --group dev --extra render-js
+      - name: Check the public API and CLI contracts
+        run: >-
+          uv run --locked --extra render-js pytest -q
+          tests/test_contract.py::test_public_api_is_exactly_the_package_exports
+          tests/test_contract.py::test_version_matches_package_metadata
+          tests/test_contract.py::test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes
+          tests/test_contract.py::test_cli_without_a_document_returns_usage_two_on_stdout
+          tests/test_contract.py::test_cli_prints_the_api_refusal_receipt_and_exits_one
       - run: uv build --no-sources --no-create-gitignore --out-dir dist --verbose
       - name: Record package identity and installation constraints
         env:
           BREWDOC_CACHE_HIT: ${{ steps.uv.outputs.cache-hit }}
           BREWDOC_CACHE_KEY: ${{ steps.uv.outputs.cache-key }}
-        run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py prepare
+        run: uv run --no-project --python 3.12.14 python .github/workflows/verify_install.py prepare --smoke
+      - name: Record exact producer input and tool identities
+        run: uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py record-inputs --checkout "${{ github.workspace }}" --output ci-package/producer-inputs.json
+      - name: Verify wheel and sdist smoke outside the source checkout
+        run: uv run --no-project --python 3.12.14 python .github/workflows/verify_install.py verify --smoke
       - uses: actions/upload-artifact@v7.0.2
         with:
+          overwrite: true
           name: ci-dist
           path: |
             dist/
@@ -75,50 +286,26 @@ jobs:
 
   test:
     name: test (${{ matrix.platform }}, Python 3.12)
-    needs: package
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    if: always()
+    needs: [scope, package, standalone, standalone-assets, npm-consumer]
+    runs-on: ubuntu-22.04
     strategy:
-      fail-fast: false
-      max-parallel: 2
       matrix:
-        include:
-          - platform: Linux
-            os: ubuntu-26.04
-          - platform: macOS
-            os: macos-26
-          - platform: Windows
-            os: windows-2025
+        platform: [Linux, macOS, Windows]
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.2.0
-        id: uv
-        with:
-          version: "0.12.21"
-          python-version: "3.12"
-          cache-suffix: uv-0.12.21-ci-test
-      - run: uv sync --locked --group dev --extra render-js
-      - name: Run all source tests, including corpus
-        run: uv run --locked --extra render-js pytest -q --strict-markers -n 4 --randomly-seed=0 --junitxml=ci-results.xml
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          name: ci-dist
-          path: ${{ runner.temp }}/ci-dist
-          digest-mismatch: error
-      - name: Check base-only and optional wheel and sdist installations
+      - name: Require every selected smoke lane to finish successfully
         env:
-          BREWDOC_CACHE_HIT: ${{ steps.uv.outputs.cache-hit }}
-          BREWDOC_CACHE_KEY: ${{ steps.uv.outputs.cache-key }}
-        run: uv run --no-project --python 3.12 python .github/workflows/verify_install.py verify --bundle "${{ runner.temp }}/ci-dist"
-      - name: Preserve test and installed-package evidence
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: ci-results-${{ matrix.platform }}
-          path: |
-            ci-results.xml
-            ${{ runner.temp }}/ci-dist/ci-package/verification-*.json
-          if-no-files-found: warn
-          retention-days: 7
+          BREWDOC_SCOPE_RESULT: ${{ needs.scope.result }}
+          BREWDOC_SMOKE: ${{ needs.scope.outputs.smoke }}
+          BREWDOC_PACKAGE: ${{ needs.package.result }}
+          BREWDOC_NATIVE: ${{ needs.standalone.result }}
+          BREWDOC_ASSETS: ${{ needs.standalone-assets.result }}
+          BREWDOC_NPM: ${{ needs.npm-consumer.result }}
+        run: |
+          test "$BREWDOC_SCOPE_RESULT" = success
+          if [ "$BREWDOC_SMOKE" = false ]; then
+            test "$BREWDOC_PACKAGE:$BREWDOC_NATIVE:$BREWDOC_ASSETS:$BREWDOC_NPM" = skipped:skipped:skipped:skipped
+          else
+            test "$BREWDOC_SMOKE" = true
+            test "$BREWDOC_PACKAGE:$BREWDOC_NATIVE:$BREWDOC_ASSETS:$BREWDOC_NPM" = success:success:success:success
+          fi

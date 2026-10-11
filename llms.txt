@@ -1,0 +1,58 @@
+# brewdoc
+
+> Convert PDF, DOCX, PPTX, spreadsheets, EPUB and static HTML into deterministic
+> Markdown with a JSON receipt. No OCR or models. Local conversion is offline.
+
+## Install and scope
+
+- [Installation and CLI](https://github.com/kochetkov-ma/brewdoc/blob/main/README.md): pip, uv/uvx/uv tool and pipx need the documented Python runtime. Choose an exact published version.
+- [Latest release and full guide](https://github.com/kochetkov-ma/brewdoc/releases/latest): version-specific assets, checksums, installation, update and removal. Use the channels whose public consumer checks passed for that release.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md): supported formats, omissions, HTML/EPUB and URL/JavaScript boundaries.
+- [Release process](https://github.com/kochetkov-ma/brewdoc/blob/main/RELEASING.md): source and artifact identity checks.
+
+## CLI and Python API
+
+```sh
+brewdoc file.pdf --out file.md
+brewdoc book.epub --out book.md
+brewdoc book.xlsx --sheet Calc --sheet Inputs --out book.md
+brewdoc --self-check
+```
+
+Conversion prints one JSON receipt line to stdout. Without --out, Markdown follows
+that line. --out resolves against the caller's current directory and creates parents.
+Markdown uses brewdoc.markdown/2. Local receipts use brewdoc.receipt/1; URL receipts
+use brewdoc.receipt/2. --sheet and --artifact apply only to workbooks; use the
+[artifact keys listed in Markdown](https://github.com/kochetkov-ma/brewdoc/blob/main/README.md#usage).
+Exit 0 means
+conversion succeeded, 1 means refusal, and 2 means invalid usage. Self-check is offline
+and has its own output. Conversion success does not prove content fidelity.
+
+```python
+import brewdoc
+
+code, receipt, markdown = brewdoc.run("book.epub", out="book.md")
+markdown, tally = brewdoc.render_html("page.html")
+```
+
+The public API also exports PDF, DOCX, presentation, EPUB and workbook renderers,
+artifact access and self_check. Local run/render APIs do not acquire URLs.
+
+## Explicit URL acquisition
+
+```sh
+brewdoc --url https://example.com --out page.md
+brewdoc --url https://example.com --render-js --timeout 30 --out page.md
+```
+
+URL acquisition validates public destinations, DNS, redirects, TLS and request/byte
+budgets. The default waiting budget is 30 seconds; --timeout accepts positive finite
+seconds. Ordinary requests use GET, with only the narrow credential-free HN Algolia
+XHR POST exception during JS capture. Local files never fetch resources or execute JS.
+Optional JS uses an installed QuickJS-ng engine and bundled DOM in a separate bounded
+process. It downloads no browser, driver or runtime component during invocation.
+Supported JS platforms and prerequisite refusals are documented in the format limits.
+Timing-only expiry can preserve a valid partial capture; hard failures refuse output.
+
+This file is a readable entry point. Clients may use its links explicitly; automatic
+discovery or ingestion is not promised.

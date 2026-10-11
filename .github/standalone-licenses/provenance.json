@@ -1,0 +1,2347 @@
+{
+  "schema": 1,
+  "scope": "Supplemental native source and runtime notices; each bundle also retains its installed distribution and interpreter license trees",
+  "source_policy": "Exact archived versions, Cargo checksums and resolved Git revisions; no runtime fetching",
+  "pyo3_file_review": "Missing upstream standalone LICENSE remains explicit; retained author/source declaration plus Apache-2.0 text require independent acceptance",
+  "sources": [
+    {
+      "component": "python-calamine-0.8.2",
+      "version": "0.8.2",
+      "url": "https://files.pythonhosted.org/packages/10/36/473a55063a6af3739cdf4b879869d3067e677f3dfb52ec8fadac23941a33/python_calamine-0.8.2.tar.gz",
+      "sha256": "b2000c085722afd01d973af3d58325d26cfd798b3665bb0924e3a658351ebfad",
+      "expected_sha256": "b2000c085722afd01d973af3d58325d26cfd798b3665bb0924e3a658351ebfad",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "python-calamine-0.8.2/LICENSE",
+          "input_sha256": "6ced4640162333a7c880d45d346ae88409746709fafece61303768bc87d80bf0",
+          "sha256": "6ced4640162333a7c880d45d346ae88409746709fafece61303768bc87d80bf0",
+          "bytes": 1065,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "source-identity/Cargo.lock",
+          "path": "python-calamine-0.8.2/source-identity/Cargo.lock",
+          "input_sha256": "a0e44b8e46ed1003ecdceab1219ff8222f0e4daf07c227ceebbdc48cfed454b5",
+          "sha256": "a0e44b8e46ed1003ecdceab1219ff8222f0e4daf07c227ceebbdc48cfed454b5",
+          "bytes": 16138,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "source-identity/Cargo.toml",
+          "path": "python-calamine-0.8.2/source-identity/Cargo.toml",
+          "input_sha256": "793579f4b67b0a455d29f303197b1b15eb3a63d0f5e61b7946a95d8078ced4aa",
+          "sha256": "793579f4b67b0a455d29f303197b1b15eb3a63d0f5e61b7946a95d8078ced4aa",
+          "bytes": 556,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "selectolax-0.4.13",
+      "version": "0.4.13",
+      "url": "https://files.pythonhosted.org/packages/49/3a/3c56859df452fddb6d94d30ff8b6b19088a09b542a01f211cd147ccca39a/selectolax-0.4.13.tar.gz",
+      "sha256": "261116b1b13efbec5cc0252baeca3a85098e96ef5c088bf3ef8cfbe15d3a8ea3",
+      "expected_sha256": "261116b1b13efbec5cc0252baeca3a85098e96ef5c088bf3ef8cfbe15d3a8ea3",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "selectolax-0.4.13/LICENSE",
+          "input_sha256": "d8c42c1875be7c97fdd54e7b5a36ad171e9bf9aedb7f2231ba1b34c15070921f",
+          "sha256": "d8c42c1875be7c97fdd54e7b5a36ad171e9bf9aedb7f2231ba1b34c15070921f",
+          "bytes": 1077,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "lexbor/LICENSE",
+          "path": "selectolax-0.4.13/lexbor/LICENSE",
+          "input_sha256": "7321caa1f366dfbebf799b6c6c2604772dbb12ef10ed6a6b7cbb384b3401c4dd",
+          "sha256": "7321caa1f366dfbebf799b6c6c2604772dbb12ef10ed6a6b7cbb384b3401c4dd",
+          "bytes": 12261,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "lexbor/NOTICE",
+          "path": "selectolax-0.4.13/lexbor/NOTICE",
+          "input_sha256": "b87f965fd2eba846a0a502d633dd7e7a680b93de5c514c404c948ccf1e5c9dc7",
+          "sha256": "b87f965fd2eba846a0a502d633dd7e7a680b93de5c514c404c948ccf1e5c9dc7",
+          "bytes": 606,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "quickjs-ng-0.17.0.1",
+      "version": "0.17.0.1",
+      "url": "https://files.pythonhosted.org/packages/9d/f0/34285112767f07aa2df4f4f8741b00fc6bae80124162245f2901fba1f2e7/quickjs_ng-0.17.0.1.tar.gz",
+      "sha256": "a1f7352b7e508346c8254f5ae790799898ebd1b2df2538bf9b7070a757faf903",
+      "expected_sha256": "a1f7352b7e508346c8254f5ae790799898ebd1b2df2538bf9b7070a757faf903",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "quickjs-ng-0.17.0.1/LICENSE",
+          "input_sha256": "1d98bbf860c3c0f04281941e41e5534a4e5c3588daa7356b065c2a182de27c2a",
+          "sha256": "1d98bbf860c3c0f04281941e41e5534a4e5c3588daa7356b065c2a182de27c2a",
+          "bytes": 1075,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/cutils.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/cutils.h.txt",
+          "input_sha256": "defd35147dab4bae13954c9b6a29713090287cafd52fe2d7d63083e6d8007e12",
+          "sha256": "7e0fe4067b295134b10ce8dcd90cb982d5b7cb41bbdab365e5fe20bdf1ad6586",
+          "bytes": 1175,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/dtoa.c.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/dtoa.c.txt",
+          "input_sha256": "1189a2dd251a2872f7265fa4298ffbc0df8972fb08a5203044e97bc003ba5cde",
+          "sha256": "450801b4e1613417b2e97da12c2c16cd219b092abcae2b4460445946c816a215",
+          "bytes": 1168,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/dtoa.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/dtoa.h.txt",
+          "input_sha256": "1189a2dd251a2872f7265fa4298ffbc0df8972fb08a5203044e97bc003ba5cde",
+          "sha256": "450801b4e1613417b2e97da12c2c16cd219b092abcae2b4460445946c816a215",
+          "bytes": 1168,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/libregexp-opcode.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/libregexp-opcode.h.txt",
+          "input_sha256": "b65603688dd7d8ce02c3316f9621ad54e914770ffb60dde5f3d58abfad3a763f",
+          "sha256": "bc5974fe7de8f9f529e0f9b2857edeee3d045d169cb7fb46868f46e66e2e67f8",
+          "bytes": 1157,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/libregexp.c.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/libregexp.c.txt",
+          "input_sha256": "b65603688dd7d8ce02c3316f9621ad54e914770ffb60dde5f3d58abfad3a763f",
+          "sha256": "bc5974fe7de8f9f529e0f9b2857edeee3d045d169cb7fb46868f46e66e2e67f8",
+          "bytes": 1157,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/libregexp.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/libregexp.h.txt",
+          "input_sha256": "b65603688dd7d8ce02c3316f9621ad54e914770ffb60dde5f3d58abfad3a763f",
+          "sha256": "bc5974fe7de8f9f529e0f9b2857edeee3d045d169cb7fb46868f46e66e2e67f8",
+          "bytes": 1157,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/libunicode.c.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/libunicode.c.txt",
+          "input_sha256": "0edc91fb5bcc10e21c254bdd6e232c26a31e2968b2d69c4a2693aacb3a4fb5cf",
+          "sha256": "2482d28b35648f52415f2b479fe63cd3d0643c81c57dfd847a570a331a927b21",
+          "bytes": 1149,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/libunicode.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/libunicode.h.txt",
+          "input_sha256": "0edc91fb5bcc10e21c254bdd6e232c26a31e2968b2d69c4a2693aacb3a4fb5cf",
+          "sha256": "2482d28b35648f52415f2b479fe63cd3d0643c81c57dfd847a570a331a927b21",
+          "bytes": 1149,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/list.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/list.h.txt",
+          "input_sha256": "167df93e0112c0d81383e176bd0dc04dc0d8573f508e30707b48c2b64dc2390e",
+          "sha256": "9ec634af41817a1c4d9c2cf4d4d3f8ddbf8142d561d1df6ce974f992807c2800",
+          "bytes": 1155,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/quickjs-atom.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/quickjs-atom.h.txt",
+          "input_sha256": "24af83600cf56c649568a26e21dc6d058236d527beeeb634f716f1a2d1baceb3",
+          "sha256": "feb053912deeeb2a8fef504b768c919902b4eb49ae1da4f2f54307ffc06d02ca",
+          "bytes": 1198,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/quickjs-opcode.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/quickjs-opcode.h.txt",
+          "input_sha256": "385f7cc6ef27f47aa37933a7122906f35ffff95feb9dfd2c5bb844f11f3aafa2",
+          "sha256": "251e88f198fa747e1b4645c3fea40b90624a747d758f89fa16e8a0967ec6d429",
+          "bytes": 1200,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/quickjs.c.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/quickjs.c.txt",
+          "input_sha256": "9c41e7a2771816a0897def2fc1f4ac7bb098d80e43eeb1203288aa6b4d1defc3",
+          "sha256": "77a32089c3bd0606744efab3cf03243e02ccf277bfcf5dba91ea4e5f7e255be4",
+          "bytes": 1290,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "engine-headers/upstream-quickjs/quickjs.h.txt",
+          "path": "quickjs-ng-0.17.0.1/engine-headers/upstream-quickjs/quickjs.h.txt",
+          "input_sha256": "b28021f27437406dc438cc45da3fb023d338685b9d688f5244bf57ea0571dc7b",
+          "sha256": "d8f1986fd12e72b70a9ab81baf9086c0ec42c4c991cd948d3322b64bf4958d97",
+          "bytes": 1290,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "pyinstaller-6.22.3",
+      "version": "6.22.3",
+      "url": "https://files.pythonhosted.org/packages/63/41/f90302845945abd4ed647933ff5ee7c6ac93983187be67f897b6cb613331/pyinstaller-6.22.3.tar.gz",
+      "sha256": "05eb2f5615503e72939a7224d68b4aff572c6b0438ee4a17d0a4b481f399362d",
+      "expected_sha256": "05eb2f5615503e72939a7224d68b4aff572c6b0438ee4a17d0a4b481f399362d",
+      "gaps": [],
+      "files": [
+        {
+          "member": "bootloader/waflib/LICENSE",
+          "path": "pyinstaller-6.22.3/bootloader/waflib/LICENSE",
+          "input_sha256": "f1a08e9a6ef535799105fca437e0fb38dc64acb0f224b115ab38fdc458cede53",
+          "sha256": "f1a08e9a6ef535799105fca437e0fb38dc64acb0f224b115ab38fdc458cede53",
+          "bytes": 1338,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "bootloader/zlib/LICENSE",
+          "path": "pyinstaller-6.22.3/bootloader/zlib/LICENSE",
+          "input_sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "bytes": 1002,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "doc/license.rst",
+          "path": "pyinstaller-6.22.3/doc/license.rst",
+          "input_sha256": "98be0224c3df051092249a1b1387ef3f6fd01d6d87eb263266244a2237bb7ce3",
+          "sha256": "98be0224c3df051092249a1b1387ef3f6fd01d6d87eb263266244a2237bb7ce3",
+          "bytes": 1223,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "COPYING.txt",
+          "path": "pyinstaller-6.22.3/COPYING.txt",
+          "input_sha256": "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64",
+          "sha256": "0598064c7d2718e38d7914a7d08343b2fa008e3bea9ebba2aa7a6ffa5900dd64",
+          "bytes": 32604,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "pyinstaller-hooks-contrib-2026.8",
+      "version": "2026.8",
+      "url": "https://files.pythonhosted.org/packages/c9/3b/fab1a12a21bf9223af012e5dd002b7d4265683d21d9fabbd0ccb347316e4/pyinstaller_hooks_contrib-2026.8.tar.gz",
+      "sha256": "4d825786ad7a9b7dbcc52d612748a34562fe273461bcfd88f4d549c594bbf8f9",
+      "expected_sha256": "4d825786ad7a9b7dbcc52d612748a34562fe273461bcfd88f4d549c594bbf8f9",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "pyinstaller-hooks-contrib-2026.8/LICENSE",
+          "input_sha256": "91d0baaff00773038e72c0a1fc9d5d2d38706b7a2b9c04f34296608f931b9cd0",
+          "sha256": "91d0baaff00773038e72c0a1fc9d5d2d38706b7a2b9c04f34296608f931b9cd0",
+          "bytes": 27666,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-adler2-2.0.1",
+      "version": "2.0.1",
+      "url": "https://static.crates.io/crates/adler2/adler2-2.0.1.crate",
+      "sha256": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+      "expected_sha256": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa",
+      "license_expression": "0BSD OR MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-0BSD",
+          "path": "rust-adler2-2.0.1/LICENSE-0BSD",
+          "input_sha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17",
+          "sha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17",
+          "bytes": 665,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-adler2-2.0.1/LICENSE-APACHE",
+          "input_sha256": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb",
+          "sha256": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb",
+          "bytes": 10860,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-adler2-2.0.1/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-android_system_properties-0.1.5",
+      "version": "0.1.5",
+      "url": "https://static.crates.io/crates/android_system_properties/android_system_properties-0.1.5.crate",
+      "sha256": "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311",
+      "expected_sha256": "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311",
+      "license_expression": "MIT/Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-android_system_properties-0.1.5/LICENSE-APACHE",
+          "input_sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+          "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06",
+          "bytes": 554,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-android_system_properties-0.1.5/LICENSE-MIT",
+          "input_sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+          "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e",
+          "bytes": 1080,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-atoi_simd-0.18.1",
+      "version": "0.18.1",
+      "url": "https://static.crates.io/crates/atoi_simd/atoi_simd-0.18.1.crate",
+      "sha256": "f3cdb3708a128e559a30fb830e8a77a5022ee6902806925c216658652b452a44",
+      "expected_sha256": "f3cdb3708a128e559a30fb830e8a77a5022ee6902806925c216658652b452a44",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-atoi_simd-0.18.1/LICENSE-APACHE",
+          "input_sha256": "18d98423c078c531baafb7ed6248639fca1a45c718f2fd2bbf249c56127b2e3b",
+          "sha256": "18d98423c078c531baafb7ed6248639fca1a45c718f2fd2bbf249c56127b2e3b",
+          "bytes": 10842,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-atoi_simd-0.18.1/LICENSE-MIT",
+          "input_sha256": "f155f18a8148391a82157dae8f5a300bb32fec6a338ae19dcb52de6f2f3dbe21",
+          "sha256": "f155f18a8148391a82157dae8f5a300bb32fec6a338ae19dcb52de6f2f3dbe21",
+          "bytes": 1059,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-autocfg-1.5.1",
+      "version": "1.5.1",
+      "url": "https://static.crates.io/crates/autocfg/autocfg-1.5.1.crate",
+      "sha256": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
+      "expected_sha256": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-autocfg-1.5.1/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-autocfg-1.5.1/LICENSE-MIT",
+          "input_sha256": "27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac",
+          "sha256": "27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac",
+          "bytes": 1054,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-bumpalo-3.20.3",
+      "version": "3.20.3",
+      "url": "https://static.crates.io/crates/bumpalo/bumpalo-3.20.3.crate",
+      "sha256": "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649",
+      "expected_sha256": "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-bumpalo-3.20.3/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-bumpalo-3.20.3/LICENSE-MIT",
+          "input_sha256": "65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee",
+          "sha256": "65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee",
+          "bytes": 1059,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-byteorder-1.5.0",
+      "version": "1.5.0",
+      "url": "https://static.crates.io/crates/byteorder/byteorder-1.5.0.crate",
+      "sha256": "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b",
+      "expected_sha256": "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b",
+      "license_expression": "Unlicense OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "COPYING",
+          "path": "rust-byteorder-1.5.0/COPYING",
+          "input_sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
+          "bytes": 126,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-byteorder-1.5.0/LICENSE-MIT",
+          "input_sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+          "bytes": 1081,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-calamine-0.36.0",
+      "version": "0.36.0",
+      "url": "https://static.crates.io/crates/calamine/calamine-0.36.0.crate",
+      "sha256": "6975084f43060e56343ffba7f9731fa52a7dcf2e1cd8e2459fd4c6bf4a1bff59",
+      "expected_sha256": "6975084f43060e56343ffba7f9731fa52a7dcf2e1cd8e2459fd4c6bf4a1bff59",
+      "license_expression": "MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-MIT.md",
+          "path": "rust-calamine-0.36.0/LICENSE-MIT.md",
+          "input_sha256": "f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc",
+          "sha256": "f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc",
+          "bytes": 1082,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-cc-1.2.64",
+      "version": "1.2.64",
+      "url": "https://static.crates.io/crates/cc/cc-1.2.64.crate",
+      "sha256": "dad887fd958be91b5098c0248def011f4523ab786cd411be668777e55063501f",
+      "expected_sha256": "dad887fd958be91b5098c0248def011f4523ab786cd411be668777e55063501f",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-cc-1.2.64/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-cc-1.2.64/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-cfg-if-1.0.4",
+      "version": "1.0.4",
+      "url": "https://static.crates.io/crates/cfg-if/cfg-if-1.0.4.crate",
+      "sha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
+      "expected_sha256": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-cfg-if-1.0.4/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-cfg-if-1.0.4/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-chrono-0.4.45",
+      "version": "0.4.45",
+      "url": "https://static.crates.io/crates/chrono/chrono-0.4.45.crate",
+      "sha256": "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327",
+      "expected_sha256": "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE.txt",
+          "path": "rust-chrono-0.4.45/LICENSE.txt",
+          "input_sha256": "946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831",
+          "sha256": "946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831",
+          "bytes": 12307,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-codepage-0.1.2",
+      "version": "0.1.2",
+      "url": "https://static.crates.io/crates/codepage/codepage-0.1.2.crate",
+      "sha256": "48f68d061bc2828ae826206326e61251aca94c1e4a5305cf52d9138639c918b4",
+      "expected_sha256": "48f68d061bc2828ae826206326e61251aca94c1e4a5305cf52d9138639c918b4",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "COPYRIGHT",
+          "path": "rust-codepage-0.1.2/COPYRIGHT",
+          "input_sha256": "9cd0dc38d18929dc5c3dfc36ed2e96ab1a11d618a514a2e82de6b368b2c1604c",
+          "sha256": "9cd0dc38d18929dc5c3dfc36ed2e96ab1a11d618a514a2e82de6b368b2c1604c",
+          "bytes": 371,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-codepage-0.1.2/LICENSE-APACHE",
+          "input_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "bytes": 11358,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-codepage-0.1.2/LICENSE-MIT",
+          "input_sha256": "3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c",
+          "sha256": "3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c",
+          "bytes": 1053,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-core-foundation-sys-0.8.7",
+      "version": "0.8.7",
+      "url": "https://static.crates.io/crates/core-foundation-sys/core-foundation-sys-0.8.7.crate",
+      "sha256": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b",
+      "expected_sha256": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-core-foundation-sys-0.8.7/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-core-foundation-sys-0.8.7/LICENSE-MIT",
+          "input_sha256": "62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3",
+          "sha256": "62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3",
+          "bytes": 1067,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-crc32fast-1.5.0",
+      "version": "1.5.0",
+      "url": "https://static.crates.io/crates/crc32fast/crc32fast-1.5.0.crate",
+      "sha256": "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511",
+      "expected_sha256": "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-crc32fast-1.5.0/LICENSE-APACHE",
+          "input_sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+          "bytes": 11358,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-crc32fast-1.5.0/LICENSE-MIT",
+          "input_sha256": "61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf",
+          "sha256": "61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf",
+          "bytes": 1097,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-debug_unsafe-0.1.4",
+      "version": "0.1.4",
+      "url": "https://static.crates.io/crates/debug_unsafe/debug_unsafe-0.1.4.crate",
+      "sha256": "7eed2c4702fa172d1ce21078faa7c5203e69f5394d48cc436d25928394a867a2",
+      "expected_sha256": "7eed2c4702fa172d1ce21078faa7c5203e69f5394d48cc436d25928394a867a2",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-debug_unsafe-0.1.4/LICENSE-APACHE",
+          "input_sha256": "8286bf891c9503f40be70ddab1f3b83475d6bda0c5e2004e79928895b3cfa28b",
+          "sha256": "8286bf891c9503f40be70ddab1f3b83475d6bda0c5e2004e79928895b3cfa28b",
+          "bytes": 10842,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-debug_unsafe-0.1.4/LICENSE-MIT",
+          "input_sha256": "81c54baa1c7b9d422b9e28ec26d0d0062480cad4ee5737cacaefc473c6880e1c",
+          "sha256": "81c54baa1c7b9d422b9e28ec26d0d0062480cad4ee5737cacaefc473c6880e1c",
+          "bytes": 1059,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-encoding_rs-0.8.35",
+      "version": "0.8.35",
+      "url": "https://static.crates.io/crates/encoding_rs/encoding_rs-0.8.35.crate",
+      "sha256": "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3",
+      "expected_sha256": "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3",
+      "license_expression": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+      "gaps": [],
+      "files": [
+        {
+          "member": "COPYRIGHT",
+          "path": "rust-encoding_rs-0.8.35/COPYRIGHT",
+          "input_sha256": "11789f45bb180841cd362a5eee6789c68ddb573a11105e30768c308a6add0190",
+          "sha256": "11789f45bb180841cd362a5eee6789c68ddb573a11105e30768c308a6add0190",
+          "bytes": 713,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-encoding_rs-0.8.35/LICENSE-APACHE",
+          "input_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "bytes": 11358,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-encoding_rs-0.8.35/LICENSE-MIT",
+          "input_sha256": "3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c",
+          "sha256": "3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c",
+          "bytes": 1053,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-WHATWG",
+          "path": "rust-encoding_rs-0.8.35/LICENSE-WHATWG",
+          "input_sha256": "838118388fe5c2e7f1dbbaeed13e1c7f3ebf88be91319c7c1d77c18e987d1a50",
+          "sha256": "838118388fe5c2e7f1dbbaeed13e1c7f3ebf88be91319c7c1d77c18e987d1a50",
+          "bytes": 1501,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-equivalent-1.0.2",
+      "version": "1.0.2",
+      "url": "https://static.crates.io/crates/equivalent/equivalent-1.0.2.crate",
+      "sha256": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f",
+      "expected_sha256": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-equivalent-1.0.2/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-equivalent-1.0.2/LICENSE-MIT",
+          "input_sha256": "7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349",
+          "sha256": "7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349",
+          "bytes": 1049,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-fast-float2-0.2.3",
+      "version": "0.2.3",
+      "url": "https://static.crates.io/crates/fast-float2/fast-float2-0.2.3.crate",
+      "sha256": "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55",
+      "expected_sha256": "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-fast-float2-0.2.3/LICENSE-APACHE",
+          "input_sha256": "2aec41511a0274b6841a1d197ca5f8eecefa5f93faeb6dca48f8f9137398fd93",
+          "sha256": "2aec41511a0274b6841a1d197ca5f8eecefa5f93faeb6dca48f8f9137398fd93",
+          "bytes": 10832,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-fast-float2-0.2.3/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-find-msvc-tools-0.1.9",
+      "version": "0.1.9",
+      "url": "https://static.crates.io/crates/find-msvc-tools/find-msvc-tools-0.1.9.crate",
+      "sha256": "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582",
+      "expected_sha256": "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-find-msvc-tools-0.1.9/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-find-msvc-tools-0.1.9/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-flate2-1.1.9",
+      "version": "1.1.9",
+      "url": "https://static.crates.io/crates/flate2/flate2-1.1.9.crate",
+      "sha256": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
+      "expected_sha256": "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-flate2-1.1.9/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-flate2-1.1.9/LICENSE-MIT",
+          "input_sha256": "025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112",
+          "sha256": "025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112",
+          "bytes": 1062,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-futures-core-0.3.32",
+      "version": "0.3.32",
+      "url": "https://static.crates.io/crates/futures-core/futures-core-0.3.32.crate",
+      "sha256": "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d",
+      "expected_sha256": "7e3450815272ef58cec6d564423f6e755e25379b217b0bc688e295ba24df6b1d",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-futures-core-0.3.32/LICENSE-APACHE",
+          "input_sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "bytes": 10874,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-futures-core-0.3.32/LICENSE-MIT",
+          "input_sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "bytes": 1094,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-futures-task-0.3.32",
+      "version": "0.3.32",
+      "url": "https://static.crates.io/crates/futures-task/futures-task-0.3.32.crate",
+      "sha256": "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393",
+      "expected_sha256": "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-futures-task-0.3.32/LICENSE-APACHE",
+          "input_sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "bytes": 10874,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-futures-task-0.3.32/LICENSE-MIT",
+          "input_sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "bytes": 1094,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-futures-util-0.3.32",
+      "version": "0.3.32",
+      "url": "https://static.crates.io/crates/futures-util/futures-util-0.3.32.crate",
+      "sha256": "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6",
+      "expected_sha256": "389ca41296e6190b48053de0321d02a77f32f8a5d2461dd38762c0593805c6d6",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-futures-util-0.3.32/LICENSE-APACHE",
+          "input_sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+          "bytes": 10874,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-futures-util-0.3.32/LICENSE-MIT",
+          "input_sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd",
+          "bytes": 1094,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-hashbrown-0.17.1",
+      "version": "0.17.1",
+      "url": "https://static.crates.io/crates/hashbrown/hashbrown-0.17.1.crate",
+      "sha256": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a",
+      "expected_sha256": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-hashbrown-0.17.1/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-hashbrown-0.17.1/LICENSE-MIT",
+          "input_sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2",
+          "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2",
+          "bytes": 1060,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-heck-0.5.0",
+      "version": "0.5.0",
+      "url": "https://static.crates.io/crates/heck/heck-0.5.0.crate",
+      "sha256": "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea",
+      "expected_sha256": "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-heck-0.5.0/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-heck-0.5.0/LICENSE-MIT",
+          "input_sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+          "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+          "bytes": 1071,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-iana-time-zone-0.1.65",
+      "version": "0.1.65",
+      "url": "https://static.crates.io/crates/iana-time-zone/iana-time-zone-0.1.65.crate",
+      "sha256": "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470",
+      "expected_sha256": "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-iana-time-zone-0.1.65/LICENSE-APACHE",
+          "input_sha256": "696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9",
+          "sha256": "696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9",
+          "bytes": 10832,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-iana-time-zone-0.1.65/LICENSE-MIT",
+          "input_sha256": "da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9",
+          "sha256": "da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9",
+          "bytes": 1059,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-iana-time-zone-haiku-0.1.2",
+      "version": "0.1.2",
+      "url": "https://static.crates.io/crates/iana-time-zone-haiku/iana-time-zone-haiku-0.1.2.crate",
+      "sha256": "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f",
+      "expected_sha256": "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-iana-time-zone-haiku-0.1.2/LICENSE-APACHE",
+          "input_sha256": "696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9",
+          "sha256": "696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9",
+          "bytes": 10832,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-iana-time-zone-haiku-0.1.2/LICENSE-MIT",
+          "input_sha256": "da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9",
+          "sha256": "da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9",
+          "bytes": 1059,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-indexmap-2.14.0",
+      "version": "2.14.0",
+      "url": "https://static.crates.io/crates/indexmap/indexmap-2.14.0.crate",
+      "sha256": "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9",
+      "expected_sha256": "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-indexmap-2.14.0/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-indexmap-2.14.0/LICENSE-MIT",
+          "input_sha256": "ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055",
+          "sha256": "ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055",
+          "bytes": 1049,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-js-sys-0.3.102",
+      "version": "0.3.102",
+      "url": "https://static.crates.io/crates/js-sys/js-sys-0.3.102.crate",
+      "sha256": "03d04c30968dffe80775bd4d7fb676131cd04a1fb46d2686dbffbaec2d9dfd31",
+      "expected_sha256": "03d04c30968dffe80775bd4d7fb676131cd04a1fb46d2686dbffbaec2d9dfd31",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-js-sys-0.3.102/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-js-sys-0.3.102/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-libc-0.2.186",
+      "version": "0.2.186",
+      "url": "https://static.crates.io/crates/libc/libc-0.2.186.crate",
+      "sha256": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66",
+      "expected_sha256": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-libc-0.2.186/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-libc-0.2.186/LICENSE-MIT",
+          "input_sha256": "123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e",
+          "sha256": "123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e",
+          "bytes": 1066,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-log-0.4.32",
+      "version": "0.4.32",
+      "url": "https://static.crates.io/crates/log/log-0.4.32.crate",
+      "sha256": "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a",
+      "expected_sha256": "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-log-0.4.32/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-log-0.4.32/LICENSE-MIT",
+          "input_sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+          "bytes": 1071,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-memchr-2.8.2",
+      "version": "2.8.2",
+      "url": "https://static.crates.io/crates/memchr/memchr-2.8.2.crate",
+      "sha256": "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4",
+      "expected_sha256": "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4",
+      "license_expression": "Unlicense OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "COPYING",
+          "path": "rust-memchr-2.8.2/COPYING",
+          "input_sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
+          "bytes": 126,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-memchr-2.8.2/LICENSE-MIT",
+          "input_sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+          "bytes": 1081,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-miniz_oxide-0.8.9",
+      "version": "0.8.9",
+      "url": "https://static.crates.io/crates/miniz_oxide/miniz_oxide-0.8.9.crate",
+      "sha256": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
+      "expected_sha256": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316",
+      "license_expression": "MIT OR Zlib OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "rust-miniz_oxide-0.8.9/LICENSE",
+          "input_sha256": "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b",
+          "sha256": "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b",
+          "bytes": 1213,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-APACHE.md",
+          "path": "rust-miniz_oxide-0.8.9/LICENSE-APACHE.md",
+          "input_sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "bytes": 10174,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT.md",
+          "path": "rust-miniz_oxide-0.8.9/LICENSE-MIT.md",
+          "input_sha256": "799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d",
+          "sha256": "799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d",
+          "bytes": 1212,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-ZLIB.md",
+          "path": "rust-miniz_oxide-0.8.9/LICENSE-ZLIB.md",
+          "input_sha256": "0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39",
+          "sha256": "0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39",
+          "bytes": 984,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-num-traits-0.2.19",
+      "version": "0.2.19",
+      "url": "https://static.crates.io/crates/num-traits/num-traits-0.2.19.crate",
+      "sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+      "expected_sha256": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-num-traits-0.2.19/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-num-traits-0.2.19/LICENSE-MIT",
+          "input_sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+          "bytes": 1071,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-once_cell-1.21.4",
+      "version": "1.21.4",
+      "url": "https://static.crates.io/crates/once_cell/once_cell-1.21.4.crate",
+      "sha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+      "expected_sha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-once_cell-1.21.4/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-once_cell-1.21.4/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pin-project-lite-0.2.17",
+      "version": "0.2.17",
+      "url": "https://static.crates.io/crates/pin-project-lite/pin-project-lite-0.2.17.crate",
+      "sha256": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
+      "expected_sha256": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pin-project-lite-0.2.17/LICENSE-APACHE",
+          "input_sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "bytes": 10174,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pin-project-lite-0.2.17/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-portable-atomic-1.13.1",
+      "version": "1.13.1",
+      "url": "https://static.crates.io/crates/portable-atomic/portable-atomic-1.13.1.crate",
+      "sha256": "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49",
+      "expected_sha256": "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49",
+      "license_expression": "Apache-2.0 OR MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-portable-atomic-1.13.1/LICENSE-APACHE",
+          "input_sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "bytes": 10174,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-portable-atomic-1.13.1/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-proc-macro2-1.0.106",
+      "version": "1.0.106",
+      "url": "https://static.crates.io/crates/proc-macro2/proc-macro2-1.0.106.crate",
+      "sha256": "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934",
+      "expected_sha256": "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-proc-macro2-1.0.106/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-proc-macro2-1.0.106/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-0.29.0",
+      "version": "0.29.0",
+      "url": "https://static.crates.io/crates/pyo3/pyo3-0.29.0.crate",
+      "sha256": "cd274650b21d4bfc26a0a47587962c1edb425f69287324355cd040c3ea66071c",
+      "expected_sha256": "cd274650b21d4bfc26a0a47587962c1edb425f69287324355cd040c3ea66071c",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pyo3-0.29.0/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pyo3-0.29.0/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "pyo3-runtime/LICENSE-APACHE",
+          "path": "rust-pyo3-0.29.0/pyo3-runtime/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "pyo3-runtime/LICENSE-MIT",
+          "path": "rust-pyo3-0.29.0/pyo3-runtime/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-build-config-0.29.0",
+      "version": "0.29.0",
+      "url": "https://static.crates.io/crates/pyo3-build-config/pyo3-build-config-0.29.0.crate",
+      "sha256": "c5e2a7d2f0d013342f295c048ad19237add5154a55b1c5a254c0ec93d4109078",
+      "expected_sha256": "c5e2a7d2f0d013342f295c048ad19237add5154a55b1c5a254c0ec93d4109078",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pyo3-build-config-0.29.0/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pyo3-build-config-0.29.0/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-ffi-0.29.0",
+      "version": "0.29.0",
+      "url": "https://static.crates.io/crates/pyo3-ffi/pyo3-ffi-0.29.0.crate",
+      "sha256": "ca85c467da1bbc8d866eea5deff9cf29ea5f7785054a17da36e65bda9c05845b",
+      "expected_sha256": "ca85c467da1bbc8d866eea5deff9cf29ea5f7785054a17da36e65bda9c05845b",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pyo3-ffi-0.29.0/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pyo3-ffi-0.29.0/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-file-0.16.0",
+      "version": "0.16.0",
+      "url": "https://codeload.github.com/omerbenamram/pyo3-file/tar.gz/e88695f375ea3db95d96efc53707f4e8eb1def00",
+      "sha256": "38508b84c9732614759171adf6348c34ff404f253bddef72e2ca3c5d3e21c1e0",
+      "expected_sha256": null,
+      "revision": "e88695f375ea3db95d96efc53707f4e8eb1def00",
+      "gaps": [
+        "Pinned Git tree has no standalone LICENSE; manifest author and MIT/Apache-2.0 declaration retained verbatim"
+      ],
+      "files": [
+        {
+          "member": "Cargo.toml",
+          "path": "rust-pyo3-file-0.16.0/Cargo.toml",
+          "input_sha256": "72819ebfa4aa8ecb94cef4966a7f57437014a855edd66d915569893cb4d7bc68",
+          "sha256": "72819ebfa4aa8ecb94cef4966a7f57437014a855edd66d915569893cb4d7bc68",
+          "bytes": 416,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "README.md",
+          "path": "rust-pyo3-file-0.16.0/README.md",
+          "input_sha256": "dc529773f1f87c754488c0901076ea763106da8ce3287a71dc21967c2721b052",
+          "sha256": "dc529773f1f87c754488c0901076ea763106da8ce3287a71dc21967c2721b052",
+          "bytes": 2371,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-macros-0.29.0",
+      "version": "0.29.0",
+      "url": "https://static.crates.io/crates/pyo3-macros/pyo3-macros-0.29.0.crate",
+      "sha256": "9ac53762fd065daa3194dd09337a38bd793a188100fd1a9304c4ab312d901771",
+      "expected_sha256": "9ac53762fd065daa3194dd09337a38bd793a188100fd1a9304c4ab312d901771",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pyo3-macros-0.29.0/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pyo3-macros-0.29.0/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-pyo3-macros-backend-0.29.0",
+      "version": "0.29.0",
+      "url": "https://static.crates.io/crates/pyo3-macros-backend/pyo3-macros-backend-0.29.0.crate",
+      "sha256": "4ca3a1557399783172dc5bf39cfca835157732532cba56b71d2292161e53b362",
+      "expected_sha256": "4ca3a1557399783172dc5bf39cfca835157732532cba56b71d2292161e53b362",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-pyo3-macros-backend-0.29.0/LICENSE-APACHE",
+          "input_sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "sha256": "32c76dbe0e73d79100d5ece77c158399f2e2541bc5c78548a4ba45c1cb53c5c9",
+          "bytes": 9807,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-pyo3-macros-backend-0.29.0/LICENSE-MIT",
+          "input_sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "sha256": "afcbe3b2e6b37172b5a9ca869ee4c0b8cdc09316e5d4384864154482c33e5af6",
+          "bytes": 1107,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-quick-xml-0.41.0",
+      "version": "0.41.0",
+      "url": "https://static.crates.io/crates/quick-xml/quick-xml-0.41.0.crate",
+      "sha256": "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1",
+      "expected_sha256": "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1",
+      "license_expression": "MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-MIT.md",
+          "path": "rust-quick-xml-0.41.0/LICENSE-MIT.md",
+          "input_sha256": "5b2c207dcf571267ebe0bbdd5bf321f561ddc22ff597e7b363e96f4539507a29",
+          "sha256": "f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc",
+          "bytes": 1082,
+          "normalization": "CRLF to LF; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-quote-1.0.45",
+      "version": "1.0.45",
+      "url": "https://static.crates.io/crates/quote/quote-1.0.45.crate",
+      "sha256": "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924",
+      "expected_sha256": "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-quote-1.0.45/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-quote-1.0.45/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-rustversion-1.0.22",
+      "version": "1.0.22",
+      "url": "https://static.crates.io/crates/rustversion/rustversion-1.0.22.crate",
+      "sha256": "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d",
+      "expected_sha256": "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-rustversion-1.0.22/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-rustversion-1.0.22/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-serde-1.0.228",
+      "version": "1.0.228",
+      "url": "https://static.crates.io/crates/serde/serde-1.0.228.crate",
+      "sha256": "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e",
+      "expected_sha256": "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-serde-1.0.228/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-serde-1.0.228/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-serde_core-1.0.228",
+      "version": "1.0.228",
+      "url": "https://static.crates.io/crates/serde_core/serde_core-1.0.228.crate",
+      "sha256": "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad",
+      "expected_sha256": "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-serde_core-1.0.228/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-serde_core-1.0.228/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-serde_derive-1.0.228",
+      "version": "1.0.228",
+      "url": "https://static.crates.io/crates/serde_derive/serde_derive-1.0.228.crate",
+      "sha256": "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79",
+      "expected_sha256": "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-serde_derive-1.0.228/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-serde_derive-1.0.228/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-shlex-2.0.1",
+      "version": "2.0.1",
+      "url": "https://static.crates.io/crates/shlex/shlex-2.0.1.crate",
+      "sha256": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+      "expected_sha256": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-shlex-2.0.1/LICENSE-APACHE",
+          "input_sha256": "553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583",
+          "sha256": "553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583",
+          "bytes": 566,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-shlex-2.0.1/LICENSE-MIT",
+          "input_sha256": "4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1",
+          "sha256": "4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1",
+          "bytes": 1092,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-simd-adler32-0.3.9",
+      "version": "0.3.9",
+      "url": "https://static.crates.io/crates/simd-adler32/simd-adler32-0.3.9.crate",
+      "sha256": "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214",
+      "expected_sha256": "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214",
+      "license_expression": "MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE.md",
+          "path": "rust-simd-adler32-0.3.9/LICENSE.md",
+          "input_sha256": "42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d",
+          "sha256": "42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d",
+          "bytes": 1078,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-slab-0.4.12",
+      "version": "0.4.12",
+      "url": "https://static.crates.io/crates/slab/slab-0.4.12.crate",
+      "sha256": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
+      "expected_sha256": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5",
+      "license_expression": "MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "rust-slab-0.4.12/LICENSE",
+          "input_sha256": "8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18",
+          "sha256": "8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18",
+          "bytes": 1055,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-syn-2.0.118",
+      "version": "2.0.118",
+      "url": "https://static.crates.io/crates/syn/syn-2.0.118.crate",
+      "sha256": "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422",
+      "expected_sha256": "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-syn-2.0.118/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-syn-2.0.118/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-target-lexicon-0.13.5",
+      "version": "0.13.5",
+      "url": "https://static.crates.io/crates/target-lexicon/target-lexicon-0.13.5.crate",
+      "sha256": "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca",
+      "expected_sha256": "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca",
+      "license_expression": "Apache-2.0 WITH LLVM-exception",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "rust-target-lexicon-0.13.5/LICENSE",
+          "input_sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+          "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+          "bytes": 12243,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-typed-path-0.12.3",
+      "version": "0.12.3",
+      "url": "https://static.crates.io/crates/typed-path/typed-path-0.12.3.crate",
+      "sha256": "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e",
+      "expected_sha256": "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-typed-path-0.12.3/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-typed-path-0.12.3/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-unicode-ident-1.0.24",
+      "version": "1.0.24",
+      "url": "https://static.crates.io/crates/unicode-ident/unicode-ident-1.0.24.crate",
+      "sha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
+      "expected_sha256": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75",
+      "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-unicode-ident-1.0.24/LICENSE-APACHE",
+          "input_sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+          "bytes": 9723,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-unicode-ident-1.0.24/LICENSE-MIT",
+          "input_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "bytes": 1023,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-UNICODE",
+          "path": "rust-unicode-ident-1.0.24/LICENSE-UNICODE",
+          "input_sha256": "f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1",
+          "sha256": "f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1",
+          "bytes": 1995,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-wasm-bindgen-0.2.125",
+      "version": "0.2.125",
+      "url": "https://static.crates.io/crates/wasm-bindgen/wasm-bindgen-0.2.125.crate",
+      "sha256": "8ddb3f79143bced6de84270411622a2699cee572fc0875aeaf1e7867cf9fca1a",
+      "expected_sha256": "8ddb3f79143bced6de84270411622a2699cee572fc0875aeaf1e7867cf9fca1a",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-wasm-bindgen-0.2.125/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-wasm-bindgen-0.2.125/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-wasm-bindgen-macro-0.2.125",
+      "version": "0.2.125",
+      "url": "https://static.crates.io/crates/wasm-bindgen-macro/wasm-bindgen-macro-0.2.125.crate",
+      "sha256": "4e21a184b13fb19e157296e2c46056aec9092264fab83e4ba59e68c61b323c3d",
+      "expected_sha256": "4e21a184b13fb19e157296e2c46056aec9092264fab83e4ba59e68c61b323c3d",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-wasm-bindgen-macro-0.2.125/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-wasm-bindgen-macro-0.2.125/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-wasm-bindgen-macro-support-0.2.125",
+      "version": "0.2.125",
+      "url": "https://static.crates.io/crates/wasm-bindgen-macro-support/wasm-bindgen-macro-support-0.2.125.crate",
+      "sha256": "fecefd9c35bd935a20fc3fc344b5f29138961e4f47fb03297d88f2587afb5ebd",
+      "expected_sha256": "fecefd9c35bd935a20fc3fc344b5f29138961e4f47fb03297d88f2587afb5ebd",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-wasm-bindgen-macro-support-0.2.125/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-wasm-bindgen-macro-support-0.2.125/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-wasm-bindgen-shared-0.2.125",
+      "version": "0.2.125",
+      "url": "https://static.crates.io/crates/wasm-bindgen-shared/wasm-bindgen-shared-0.2.125.crate",
+      "sha256": "23939e44bb9a5d7576fa2b563dc2e136628f1224e88a8deed09e04858b77871f",
+      "expected_sha256": "23939e44bb9a5d7576fa2b563dc2e136628f1224e88a8deed09e04858b77871f",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE-APACHE",
+          "path": "rust-wasm-bindgen-shared-0.2.125/LICENSE-APACHE",
+          "input_sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "bytes": 10847,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE-MIT",
+          "path": "rust-wasm-bindgen-shared-0.2.125/LICENSE-MIT",
+          "input_sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397",
+          "bytes": 1057,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-core-0.62.2",
+      "version": "0.62.2",
+      "url": "https://static.crates.io/crates/windows-core/windows-core-0.62.2.crate",
+      "sha256": "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb",
+      "expected_sha256": "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-core-0.62.2/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-core-0.62.2/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-implement-0.60.2",
+      "version": "0.60.2",
+      "url": "https://static.crates.io/crates/windows-implement/windows-implement-0.60.2.crate",
+      "sha256": "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf",
+      "expected_sha256": "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-implement-0.60.2/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-implement-0.60.2/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-interface-0.59.3",
+      "version": "0.59.3",
+      "url": "https://static.crates.io/crates/windows-interface/windows-interface-0.59.3.crate",
+      "sha256": "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358",
+      "expected_sha256": "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-interface-0.59.3/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-interface-0.59.3/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-link-0.2.1",
+      "version": "0.2.1",
+      "url": "https://static.crates.io/crates/windows-link/windows-link-0.2.1.crate",
+      "sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+      "expected_sha256": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-link-0.2.1/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-link-0.2.1/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-result-0.4.1",
+      "version": "0.4.1",
+      "url": "https://static.crates.io/crates/windows-result/windows-result-0.4.1.crate",
+      "sha256": "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5",
+      "expected_sha256": "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-result-0.4.1/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-result-0.4.1/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-windows-strings-0.5.1",
+      "version": "0.5.1",
+      "url": "https://static.crates.io/crates/windows-strings/windows-strings-0.5.1.crate",
+      "sha256": "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091",
+      "expected_sha256": "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091",
+      "license_expression": "MIT OR Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "license-apache-2.0",
+          "path": "rust-windows-strings-0.5.1/license-apache-2.0",
+          "input_sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+          "bytes": 11351,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "license-mit",
+          "path": "rust-windows-strings-0.5.1/license-mit",
+          "input_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-zip-8.6.0",
+      "version": "8.6.0",
+      "url": "https://static.crates.io/crates/zip/zip-8.6.0.crate",
+      "sha256": "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b",
+      "expected_sha256": "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b",
+      "license_expression": "MIT",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "rust-zip-8.6.0/LICENSE",
+          "input_sha256": "58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79",
+          "sha256": "58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79",
+          "bytes": 1085,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-zlib-rs-0.6.3",
+      "version": "0.6.3",
+      "url": "https://static.crates.io/crates/zlib-rs/zlib-rs-0.6.3.crate",
+      "sha256": "3be3d40e40a133f9c916ee3f9f4fa2d9d63435b5fbe1bfc6d9dae0aa0ada1513",
+      "expected_sha256": "3be3d40e40a133f9c916ee3f9f4fa2d9d63435b5fbe1bfc6d9dae0aa0ada1513",
+      "license_expression": "Zlib",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "rust-zlib-rs-0.6.3/LICENSE",
+          "input_sha256": "e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba",
+          "sha256": "e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba",
+          "bytes": 856,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "rust-zopfli-0.8.3",
+      "version": "0.8.3",
+      "url": "https://static.crates.io/crates/zopfli/zopfli-0.8.3.crate",
+      "sha256": "f05cd8797d63865425ff89b5c4a48804f35ba0ce8d125800027ad6017d2b5249",
+      "expected_sha256": "f05cd8797d63865425ff89b5c4a48804f35ba0ce8d125800027ad6017d2b5249",
+      "license_expression": "Apache-2.0",
+      "gaps": [],
+      "files": [
+        {
+          "member": "COPYING",
+          "path": "rust-zopfli-0.8.3/COPYING",
+          "input_sha256": "018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513",
+          "sha256": "018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513",
+          "bytes": 11341,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "python-build-standalone-20260929",
+      "version": "20260929",
+      "url": "https://codeload.github.com/astral-sh/python-build-standalone/tar.gz/b498734a5791d0e6786695a226fd398a41c6f7f6",
+      "sha256": "15c1d82ae8c22a4d0df89404927726f3f4ebdd56ac4d4a0716979ae79566e2b3",
+      "expected_sha256": null,
+      "revision": "b498734a5791d0e6786695a226fd398a41c6f7f6",
+      "gaps": [],
+      "files": [
+        {
+          "member": "LICENSE",
+          "path": "python-build-standalone-20260929/LICENSE",
+          "input_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+          "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+          "bytes": 16725,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.bdb.txt",
+          "path": "python-build-standalone-20260929/LICENSE.bdb.txt",
+          "input_sha256": "3bdff06e69991c94664f2ef5c5f8096f60b7dbec071756ea6cc26b445e06ec5b",
+          "sha256": "3bdff06e69991c94664f2ef5c5f8096f60b7dbec071756ea6cc26b445e06ec5b",
+          "bytes": 7293,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.bzip2.txt",
+          "path": "python-build-standalone-20260929/LICENSE.bzip2.txt",
+          "input_sha256": "1f38bbc7caacafd65169276d759c0d88c991b753b643ce35d0e45ea1971dd441",
+          "sha256": "1f38bbc7caacafd65169276d759c0d88c991b753b643ce35d0e45ea1971dd441",
+          "bytes": 1743,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.cpython.txt",
+          "path": "python-build-standalone-20260929/LICENSE.cpython.txt",
+          "input_sha256": "86e61415828a8b5b06ec8d024e6f086ce155a8b85fd0c419c0ba4dc004e74fdd",
+          "sha256": "86e61415828a8b5b06ec8d024e6f086ce155a8b85fd0c419c0ba4dc004e74fdd",
+          "bytes": 36164,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.expat.txt",
+          "path": "python-build-standalone-20260929/LICENSE.expat.txt",
+          "input_sha256": "122f2c27000472a201d337b9b31f7eb2b52d091b02857061a8880371612d9534",
+          "sha256": "122f2c27000472a201d337b9b31f7eb2b52d091b02857061a8880371612d9534",
+          "bytes": 1144,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libX11.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libX11.txt",
+          "input_sha256": "2daec087a88e7c9b8082557cdeebad5bbb8155a4137472f0b22e269cd99d0c1e",
+          "sha256": "2daec087a88e7c9b8082557cdeebad5bbb8155a4137472f0b22e269cd99d0c1e",
+          "bytes": 47018,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libXau.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libXau.txt",
+          "input_sha256": "56abe29bb1d9806a9e04fa9f80fed2c0f18027594df3f098148d814aef6bddfa",
+          "sha256": "56abe29bb1d9806a9e04fa9f80fed2c0f18027594df3f098148d814aef6bddfa",
+          "bytes": 1148,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libedit.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libedit.txt",
+          "input_sha256": "29cea33c32bbc9785142386377915612a2fa786482c46843383384aded2e09b1",
+          "sha256": "29cea33c32bbc9785142386377915612a2fa786482c46843383384aded2e09b1",
+          "bytes": 1614,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libffi.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libffi.txt",
+          "input_sha256": "deaf3a42effb551a5b140fa9afefed183a27f1341c6d1bf430d106a5e6931fc0",
+          "sha256": "deaf3a42effb551a5b140fa9afefed183a27f1341c6d1bf430d106a5e6931fc0",
+          "bytes": 1132,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.liblzma.txt",
+          "path": "python-build-standalone-20260929/LICENSE.liblzma.txt",
+          "input_sha256": "9a4062de0a2c388a98cf35a35d348b62fa97c838a71c3c28ee1a2d7d0a565b02",
+          "sha256": "9a4062de0a2c388a98cf35a35d348b62fa97c838a71c3c28ee1a2d7d0a565b02",
+          "bytes": 660,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libuuid.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libuuid.txt",
+          "input_sha256": "122ee1f7e258f2c3c0e538a75c037684f420454bf3850ddc74ce750bbf5fe86b",
+          "sha256": "122ee1f7e258f2c3c0e538a75c037684f420454bf3850ddc74ce750bbf5fe86b",
+          "bytes": 1432,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.libxcb.txt",
+          "path": "python-build-standalone-20260929/LICENSE.libxcb.txt",
+          "input_sha256": "c5ffbfeaa501071ceeb97b7de2c0d703fdaa35de01c0fb6cbac1c28453a3e9fd",
+          "sha256": "c5ffbfeaa501071ceeb97b7de2c0d703fdaa35de01c0fb6cbac1c28453a3e9fd",
+          "bytes": 1337,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.mpdecimal.txt",
+          "path": "python-build-standalone-20260929/LICENSE.mpdecimal.txt",
+          "input_sha256": "669512af7219f58be03a398766d7c9da11a3b3df9d3f05cb74c5ceca25c8da3b",
+          "sha256": "669512af7219f58be03a398766d7c9da11a3b3df9d3f05cb74c5ceca25c8da3b",
+          "bytes": 1284,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.ncurses.txt",
+          "path": "python-build-standalone-20260929/LICENSE.ncurses.txt",
+          "input_sha256": "87a4c4442337b8968ef956031c406b74f9cb7149b7ba87311bdaba534816201c",
+          "sha256": "87a4c4442337b8968ef956031c406b74f9cb7149b7ba87311bdaba534816201c",
+          "bytes": 1447,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.openssl-1.1.txt",
+          "path": "python-build-standalone-20260929/LICENSE.openssl-1.1.txt",
+          "input_sha256": "9c04cce50c4989d5601dd8b07f6ab922c40388b66ac736c9007cb1ed9d9dd560",
+          "sha256": "9c04cce50c4989d5601dd8b07f6ab922c40388b66ac736c9007cb1ed9d9dd560",
+          "bytes": 6120,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.openssl-3.txt",
+          "path": "python-build-standalone-20260929/LICENSE.openssl-3.txt",
+          "input_sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "bytes": 10175,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.sqlite.txt",
+          "path": "python-build-standalone-20260929/LICENSE.sqlite.txt",
+          "input_sha256": "38bef3d28b24f145ea293bd3b6eb4b20396982abc8303128fb493986ea5bc719",
+          "sha256": "38bef3d28b24f145ea293bd3b6eb4b20396982abc8303128fb493986ea5bc719",
+          "bytes": 1481,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.tcl.txt",
+          "path": "python-build-standalone-20260929/LICENSE.tcl.txt",
+          "input_sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+          "sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+          "bytes": 2255,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.tix.txt",
+          "path": "python-build-standalone-20260929/LICENSE.tix.txt",
+          "input_sha256": "3ac5cdd0bef6c43ce34c6a7ced452081d9e5a0bf94082b9f9147d23ec9e214f5",
+          "sha256": "3ac5cdd0bef6c43ce34c6a7ced452081d9e5a0bf94082b9f9147d23ec9e214f5",
+          "bytes": 2826,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        },
+        {
+          "member": "LICENSE.zlib.txt",
+          "path": "python-build-standalone-20260929/LICENSE.zlib.txt",
+          "input_sha256": "818922b2620f12801a12bf78e399644a30990e66824abd8ca8ec24d451d6f92c",
+          "sha256": "818922b2620f12801a12bf78e399644a30990e66824abd8ca8ec24d451d6f92c",
+          "bytes": 995,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ]
+    },
+    {
+      "component": "Apache-2.0-license-text",
+      "version": "SPDX Apache-2.0",
+      "url": "https://spdx.org/licenses/Apache-2.0.txt",
+      "sha256": "c274f80372d90c012937370f0e1f15087d22e308ef98b27cea5dc0d2d088366c",
+      "files": [
+        {
+          "member": "declared-license/Apache-2.0.txt",
+          "path": "rust-pyo3-file-0.16.0/declared-license/Apache-2.0.txt",
+          "input_sha256": "c274f80372d90c012937370f0e1f15087d22e308ef98b27cea5dc0d2d088366c",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+          "bytes": 10280,
+          "normalization": "Add final LF when absent; license text otherwise unchanged"
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "component": "openssl-3.5.9",
+      "version": "3.5.9",
+      "url": "https://raw.githubusercontent.com/openssl/openssl/45e844fa2a14ec92d146bd8f5778ac130b6625fb/README.md",
+      "sha256": "f68c351048c11bd8499b9d6ef8b283386d4544cc556fd2679a2ff2b1c50a378b",
+      "expected_sha256": "f68c351048c11bd8499b9d6ef8b283386d4544cc556fd2679a2ff2b1c50a378b",
+      "gaps": [],
+      "files": [
+        {
+          "member": "README.md",
+          "path": "openssl/3.5.9/README-copyright.txt",
+          "input_sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "bytes": 150,
+          "normalization": "Extract bytes from Copyright heading through the blank line before <!-- Links; preserve section bytes unchanged"
+        }
+      ]
+    },
+    {
+      "component": "openssl-4.0.3",
+      "version": "4.0.3",
+      "url": "https://raw.githubusercontent.com/openssl/openssl/af1775b60dfa141a4ad762585052cabeb9f37e9e/README.md",
+      "sha256": "ae4d7773db05353b31ce1a022bac002df03506d818e94ea087b23a80c8e4084f",
+      "expected_sha256": "ae4d7773db05353b31ce1a022bac002df03506d818e94ea087b23a80c8e4084f",
+      "gaps": [],
+      "files": [
+        {
+          "member": "README.md",
+          "path": "openssl/4.0.3/README-copyright.txt",
+          "input_sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "bytes": 150,
+          "normalization": "Extract bytes from Copyright heading through the blank line before <!-- Links; preserve section bytes unchanged"
+        }
+      ]
+    }
+  ]
+}
