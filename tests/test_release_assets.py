@@ -264,7 +264,7 @@ def ci_smoke_artifacts(tmp_path, monkeypatch):
                     {"total_count": 1, "workflow_runs": [run]}, "actions/runs/17": run,
                  "actions/runs/17/artifacts?per_page=100": {"total_count": len(rows), "artifacts": rows}}
     monkeypatch.setattr(RELEASE, "api", lambda endpoint, **kwargs: responses[endpoint])
-    monkeypatch.setattr(RELEASE, "authenticated_download", lambda endpoint, destination, size:
+    monkeypatch.setattr(RELEASE, "authenticated_download", lambda endpoint, destination, size, *, accept:
                         shutil.copyfile(transports[int(endpoint.split("/")[2])], destination))
     return checkout, rows, transports, responses
 
@@ -274,6 +274,83 @@ def zip_directory(directory, destination):
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for item in sorted(path for path in directory.rglob("*") if path.is_file()):
             archive.write(item, item.relative_to(directory).as_posix())
+
+
+def download_process(monkeypatch, payload, accept, *, status=0):
+    """Fake gh transport only, refusing unsupported media headers before byte admission."""
+    calls = []
+
+    class Process:
+        """Expose the lifecycle used by the existing bounded authenticated byte reader."""
+
+        def __init__(self, arguments, **options):
+            calls.append((arguments, options))
+            admitted = "Accept: " + accept in arguments
+            self.stdout = io.BytesIO(payload if admitted else b'{"status":"415"}')
+            self.returncode = status if admitted else 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stdout.close()
+
+        def wait(self, **kwargs):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = 1
+
+    monkeypatch.setattr(RELEASE.subprocess, "Popen", Process)
+    return calls
+
+
+def test_actions_zip_download_uses_json_accept_and_retains_exact_transport_digest(tmp_path, monkeypatch):
+    # GIVEN an actual ZIP transport whose API refuses binary-media request headers
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "manifest.json").write_bytes(b'{"exact":"artifact bytes"}\n')
+    archive = tmp_path / "transport.zip"
+    zip_directory(source, archive)
+    payload = archive.read_bytes()
+    calls = download_process(monkeypatch, payload, "application/json")
+    row = {"id": 17, "size_in_bytes": len(payload), "digest": "sha256:" + hashlib.sha256(payload).hexdigest()}
+    assert len(calls) == 0, "the server receives no request before artifact admission"
+    # WHEN existing transport and safe ZIP extraction admit the original download
+    RELEASE.download_ci_artifact(row, tmp_path / "downloaded")
+    # THEN the artifact endpoint receives its required media header and exact verified file bytes
+    assert calls == [(["gh", "api", f"repos/{RELEASE.REPOSITORY}/actions/artifacts/17/zip", "--header", "Accept: application/json"],
+                     {"stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL})], "Actions archive requests require JSON Accept"
+    assert (tmp_path / "downloaded/manifest.json").read_bytes() == b'{"exact":"artifact bytes"}\n', (
+        "changing the media header must preserve original ZIP digest and extracted payload")
+
+
+def test_release_asset_byte_download_keeps_octet_stream_accept(tmp_path, monkeypatch):
+    # GIVEN an admitted release asset whose byte API requires binary media
+    payload = b"exact release bytes"
+    calls = download_process(monkeypatch, payload, "application/octet-stream")
+    assert len(payload) == 19, "the accepted release file has an exact byte ceiling"
+    # WHEN draft readback uses its original authenticated byte boundary
+    RELEASE.draft_download(23, tmp_path / "release.bin", {"bytes": len(payload)})
+    # THEN release-asset downloads preserve the binary header and original bounded file bytes
+    assert calls == [(["gh", "api", f"repos/{RELEASE.REPOSITORY}/releases/assets/23", "--header", "Accept: application/octet-stream"],
+                     {"stdout": subprocess.PIPE, "stderr": subprocess.DEVNULL})], "release byte requests retain octet-stream Accept"
+    assert (tmp_path / "release.bin").read_bytes() == payload, "release-asset bytes are not interpreted as JSON metadata"
+
+
+@pytest.mark.parametrize("status,payload", [(1, b"accepted"), (0, b"oversized")])
+def test_endpoint_media_selection_preserves_failure_and_byte_ceiling_guards(tmp_path, monkeypatch, status, payload):
+    # GIVEN an authenticated release stream with a failed process or one excess byte
+    calls = download_process(monkeypatch, payload, "application/octet-stream", status=status)
+    assert len(calls) == 0, "guard refusal starts without any transport call"
+    # WHEN the original bounded byte reader receives the unacceptable response
+    with pytest.raises(ValueError, match="exceeds|unavailable"):
+        RELEASE.draft_download(23, tmp_path / "refused.bin", {"bytes": 8})
+    # THEN refusal never issues another request or switches the endpoint's media contract
+    assert len(calls) == 1, "transport failures have no fallback header or retry path"
 
 
 def test_ci_reuse_preserves_exact_synthetic_transport_bytes_and_original_attempt(tmp_path, monkeypatch):

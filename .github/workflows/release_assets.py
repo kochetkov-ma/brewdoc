@@ -103,7 +103,8 @@ def download_ci_artifact(row: dict, destination: Path) -> None:
     """Verify GitHub ZIP transport before extracting bounded ordinary members."""
     with tempfile.TemporaryDirectory(prefix="brewdoc-ci-download-") as temporary:
         archive = Path(temporary) / "artifact.zip"
-        authenticated_download(f"actions/artifacts/{row['id']}/zip", archive, row["size_in_bytes"])
+        authenticated_download(f"actions/artifacts/{row['id']}/zip", archive, row["size_in_bytes"],
+                               accept="application/json")
         if identity(archive) != {"bytes": row["size_in_bytes"], "sha256": row["digest"].removeprefix("sha256:")}:
             raise ValueError("CI artifact transport digest differs")
         destination.mkdir(parents=True, exist_ok=False)
@@ -407,13 +408,13 @@ def verify_downloads(folder: Path, manifest: dict, release: dict, assets: dict) 
 
 def draft_download(asset_id: int, path: Path, expected: dict) -> None:
     """Bound authenticated gh output by accepted bytes and a total deadline."""
-    authenticated_download(f"releases/assets/{asset_id}", path, expected["bytes"])
+    authenticated_download(f"releases/assets/{asset_id}", path, expected["bytes"], accept="application/octet-stream")
 
 
-def authenticated_download(endpoint: str, path: Path, size: int) -> None:
-    """Read one authenticated artifact under a byte ceiling and process watchdog."""
+def authenticated_download(endpoint: str, path: Path, size: int, *, accept: str) -> None:
+    """Use the caller's media contract under the existing byte ceiling and watchdog."""
     with subprocess.Popen(["gh", "api", f"repos/{REPOSITORY}/{endpoint}",
-                           "--header", "Accept: application/octet-stream"], stdout=subprocess.PIPE,
+                           "--header", "Accept: " + accept], stdout=subprocess.PIPE,
                           stderr=subprocess.DEVNULL) as process:
         watchdog = threading.Timer(120, process.kill)
         watchdog.start()
