@@ -174,13 +174,41 @@ again or writing tags. The current controller commit/run and actual npm provenan
 are recorded separately from the original package source; neither identity is relabelled.
 
 Admission rechecks the fixed tag, manifest, public PyPI bytes and existing draft
-`409891511`. npm reuses existing versions only after their metadata and actual
-tarballs match accepted bytes/integrity; missing platforms publish before main.
-Pending stages, unknown registry state or mismatches require investigation, not a
-blind retry. GitHub continues the unique exact draft after its body and complete
-asset bytes match. Public native/npm/npx consumers on all three hosts and final
-guide admission still gate completion. A dispatched or successful publisher job
-alone does not establish accepted recovery.
+`409891511`. The separate main-only `continuation-admit` job uses `contents: write`
+for authenticated draft admission; normal `distribution-admit` keeps read access.
+npm reuses existing versions only after their metadata and actual tarballs match
+accepted bytes/integrity; missing platforms publish before main. Pending stages,
+unknown registry state or mismatches require investigation, not a blind retry.
+
+The workflow's `GITHUB_TOKEN` cannot update an old release target whose workflows
+differ because it lacks workflow-write permission. Fixed continuation therefore
+uses the following operator steps; normal tag-push publication remains automatic:
+
+1. After all four public npm packages match accepted bytes, the release maintainer
+   uses existing authorized `gh` access with repo and workflow scopes to publish the
+   exact admitted draft. Download this controller's sealed `release-assets` first:
+
+   ```sh
+   python .github/workflows/release_assets.py publish --input release-assets --tag v0.3.1 --source-sha 7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7
+   ```
+
+2. Continuation `github-release` only runs `verify-public`. If it failed while
+   waiting for the private draft, rerun that failed job and its dependents in the
+   new corrected controller dispatch after publication. Use its run ID, never the
+   original tag workflow or an earlier faulty controller.
+
+3. After public native/npm/npx consumers on all three hosts pass, continuation
+   `release-complete` admits their evidence, renders the final guide and uploads
+   notes/proof. It does not update the release body. Download that controller's
+   admitted evidence into `public-evidence` and its guide as `public-body.md`, then
+   the release maintainer finalizes with the same authorized access:
+
+   ```sh
+   python .github/workflows/release_assets.py finalize --input release-assets --tag v0.3.1 --source-sha 7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7 --evidence public-evidence --body public-body.md
+   ```
+
+Verify actual public body/asset readback before declaring completion. A dispatched
+or successful publisher job alone does not establish accepted recovery.
 
 ## Original 0.2.0 recovery
 
