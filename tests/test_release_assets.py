@@ -21,6 +21,11 @@ RELEASE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RELEASE)
 SOURCE = "a" * 40
 VERSION = "0.3.0"
+V031_STAGED_AVAILABILITY = ("This release is staged. The commands and download links below apply only after this exact "
+                           "version and channel are published and verified.")
+V031_PARTIAL_AVAILABILITY = ("Python distributions and standalone downloads are public. npm registry publication is pending. "
+                            "Use the pip, uv, pipx or standalone installation commands below. "
+                            "The npm and npx registry commands below are unavailable.")
 
 
 def producer_run():
@@ -637,6 +642,90 @@ def v031_continuation_fixture(tmp_path, monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(RELEASE, "command", lambda *args, **kwargs: ("c" * 40 + "\n").encode())
     return folder, manifest, responses, calls, event, digest
+
+
+def v031_channel_fixture(tmp_path, monkeypatch):
+    """Keep fixed-source bytes while giving the staged body one canonical availability paragraph."""
+    folder, manifest, responses, calls, event, _digest = v031_continuation_fixture(tmp_path, monkeypatch)
+    prefix, suffix = "# Brewdoc 0.3.1\n\n", "\n\n## Install\n\npip install brewdoc==0.3.1\n"
+    staged, partial = prefix + V031_STAGED_AVAILABILITY + suffix, prefix + V031_PARTIAL_AVAILABILITY + suffix
+    payload = staged.encode("utf-8")
+    (folder / "staged-body.md").write_bytes(payload)
+    manifest["body"] = {"bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+    RELEASE.write_json(folder / "release-manifest.json", manifest)
+    digest = hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest()
+    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", digest)
+    responses["releases/tags/v0.3.1"]["body"] = staged
+    for row in responses["releases/409891511/assets?per_page=100"]:
+        row["size"] = (folder / row["name"]).stat().st_size
+    return folder, manifest, responses, calls, event, digest, staged, partial
+
+
+@pytest.mark.parametrize("operation,body_kind,draft", [
+    ("verify-v031-binaries", "staged", True), ("resume-v031", "partial", False),
+    ("verify-v031-binaries", "partial", False),
+], ids=["verify-staged", "resume-public-partial", "verify-public-partial"])
+def test_fixed_v031_operations_admit_staged_or_exact_public_partial_body_and_record_actual_operation(tmp_path, monkeypatch, operation, body_kind, draft):
+    # GIVEN exact original fixed-source bytes and an accepted staged or public partial body
+    folder, manifest, responses, calls, event, digest, staged, partial = v031_channel_fixture(tmp_path, monkeypatch)
+    release = responses["releases/tags/v0.3.1"]
+    release.update(draft=draft, body={"staged": staged, "partial": partial}[body_kind])
+    event.write_text(json.dumps({"inputs": {"operation": operation}}), encoding="utf-8")
+    assert RELEASE.admit(folder, "v0.3.1", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7") == manifest, "the original sealed source and staged body remain admissible"
+    # WHEN the fixed controller admits the exact requested operation and existing release
+    actual = RELEASE.admit_v031(folder, tmp_path / "receipt.json")
+    # THEN the receipt preserves immutable package provenance and records the actual operation
+    expected = {"schema": 1, "operation": operation, "tag": "v0.3.1",
+        "source_sha": "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", "manifest_sha256": digest,
+        "producer_run_id": 38169296455, "producer_run_attempt": 1, "release_id": 409891511,
+        "controller": {"source_sha": "c" * 40, "run_id": 73, "run_attempt": 2,
+                       "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
+    assert (actual, RELEASE.read_json(tmp_path / "receipt.json")) == (expected, expected), "partial-channel admission cannot relabel source or operation"
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "admission never publishes or changes release assets"
+
+
+@pytest.mark.parametrize("operation,draft,body_kind,legacy,reason", [
+    ("resume-v031", True, "partial", {}, "existing release or staged body differs"),
+    ("verify-v031-binaries", False, "changed", {}, "existing release or staged body differs"),
+    ("publish", False, "partial", {}, "inputs differ"),
+    ("verify-v031-binaries", False, "partial", {"prepared_run_id": "17"}, "inputs differ"),
+], ids=["private-partial", "changed-public-body", "invalid-operation", "legacy-input"])
+def test_fixed_v031_operations_refuse_private_partial_changed_body_or_invalid_inputs(tmp_path, monkeypatch, operation, draft, body_kind, legacy, reason):
+    # GIVEN original fixed-source bytes with a conflicting body state or controller input
+    folder, _manifest, responses, calls, event, _digest, staged, partial = v031_channel_fixture(tmp_path, monkeypatch)
+    release = responses["releases/tags/v0.3.1"]
+    assert (release["id"], release["body"]) == (409891511, staged), "the existing release starts with its exact original staged body"
+    release.update(draft=draft, body={"partial": partial, "changed": partial + "Unexpected public claim.\n"}[body_kind])
+    event.write_text(json.dumps({"inputs": {"operation": operation, **legacy}}), encoding="utf-8")
+    # WHEN the fixed controller checks partial-channel admission
+    with pytest.raises(ValueError, match=reason):
+        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
+    # THEN rejected state cannot produce a controller receipt or mutate any remote asset
+    assert ([call for call in calls if "--method" in call or call[1] == "release"],
+            (tmp_path / "receipt.json").exists()) == ([], False), "private or changed partial state must refuse before publication"
+
+
+def test_partial_v031_body_replaces_only_one_exact_availability_paragraph():
+    # GIVEN the staged paragraph between unchanged heading and installation commands
+    staged = "# Brewdoc 0.3.1\n\n" + V031_STAGED_AVAILABILITY + "\n\n## Install\n\npip install brewdoc==0.3.1\n"
+    assert staged.count(V031_STAGED_AVAILABILITY) == 1, "the body contains one complete staged availability paragraph"
+    # WHEN partial-channel rendering updates the availability paragraph
+    actual = RELEASE.partial_v031_body(staged)
+    # THEN all other bytes and the final newline remain identical
+    assert actual == "# Brewdoc 0.3.1\n\n" + V031_PARTIAL_AVAILABILITY + "\n\n## Install\n\npip install brewdoc==0.3.1\n", "partial rendering changes only the deterministic availability paragraph"
+
+
+@pytest.mark.parametrize("staged,occurrences", [("# Brewdoc 0.3.1\n\nNo staged paragraph.\n", 0),
+                                               (V031_STAGED_AVAILABILITY + "\n\n" + V031_STAGED_AVAILABILITY, 2),
+                                               ("Embedded prefix " + V031_STAGED_AVAILABILITY, 1)], ids=["missing", "duplicate", "embedded-prefix"])
+def test_partial_v031_body_refuses_missing_duplicate_or_embedded_availability(staged, occurrences):
+    # GIVEN a body without exactly one isolated canonical staged availability paragraph
+    assert staged.count(V031_STAGED_AVAILABILITY) == occurrences, "the fixture preserves the intended missing, duplicated or embedded shape"
+    # WHEN the renderer tries to produce deterministic partial-channel guidance
+    with pytest.raises(ValueError) as failure:
+        RELEASE.partial_v031_body(staged)
+    # THEN malformed body structure produces the exact deterministic refusal
+    assert failure.value.args == ("Expected exactly one staged availability paragraph",), "invalid body structure must refuse rather than produce partial release prose"
 
 
 def test_fixed_v031_continuation_rejects_wrong_original_seal_before_any_remote_io(tmp_path, monkeypatch):

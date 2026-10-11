@@ -345,6 +345,20 @@ def checksums(assets: dict) -> str:
     return "".join(f"{row['sha256']}  {name}\n" for name, row in sorted(assets.items()))
 
 
+def partial_v031_body(staged_body: str) -> str:
+    """Replace the single staged availability paragraph, preserving all other text."""
+    staged = ("This release is staged. The commands and download links below apply only after "
+              "this exact version and channel are published and verified.")
+    partial = ("Python distributions and standalone downloads are public. npm registry publication is pending. "
+               "Use the pip, uv, pipx or standalone installation commands below. "
+               "The npm and npx registry commands below are unavailable.")
+    paragraphs = staged_body.split("\n\n")
+    if paragraphs.count(staged) != 1:
+        raise ValueError("Expected exactly one staged availability paragraph")
+    paragraphs[paragraphs.index(staged)] = partial
+    return "\n\n".join(paragraphs)
+
+
 def admit_v031(folder: Path, output: Path) -> dict:
     """Bind the fixed published package bytes to a separate actual main controller."""
     if output.resolve().is_relative_to(folder.resolve()) or output.exists() or output.is_symlink():
@@ -355,7 +369,7 @@ def admit_v031(folder: Path, output: Path) -> dict:
     if (manifest["producer"]["run_id"], manifest["producer"]["run_attempt"]) != (V031_PRODUCER_RUN_ID, 1):
         raise ValueError("Fixed 0.3.1 original producer differs")
     inputs = github_event().get("inputs", {})
-    if (not isinstance(inputs, dict) or inputs.get("operation") != "resume-v031"
+    if (not isinstance(inputs, dict) or inputs.get("operation") not in ("resume-v031", "verify-v031-binaries")
             or any(inputs.get(name, "") != "" for name in
                    ("prepared_run_id", "approved_wheel_sha256", "approved_sdist_sha256"))):
         raise ValueError("Fixed continuation inputs differ")
@@ -376,10 +390,14 @@ def admit_v031(folder: Path, output: Path) -> dict:
     tag_preflight(manifest)
     pypi_public(folder, manifest)
     release, assets = release_state(folder, manifest)
-    if release["id"] != V031_RELEASE_ID or release["body"] != (folder / "staged-body.md").read_text(encoding="utf-8"):
+    staged_body = (folder / "staged-body.md").read_text(encoding="utf-8")
+    accepted_body = release["body"] == staged_body
+    if not accepted_body and release["draft"] is False:
+        accepted_body = release["body"] == partial_v031_body(staged_body)
+    if release["id"] != V031_RELEASE_ID or not accepted_body:
         raise ValueError("Fixed 0.3.1 existing release or staged body differs")
     require_complete(folder, manifest, release, assets)
-    record = {"schema": 1, "operation": "resume-v031", "tag": "v0.3.1", "source_sha": V031_SOURCE,
+    record = {"schema": 1, "operation": inputs["operation"], "tag": "v0.3.1", "source_sha": V031_SOURCE,
               "manifest_sha256": V031_MANIFEST_SHA256, "producer_run_id": V031_PRODUCER_RUN_ID,
               "producer_run_attempt": 1, "release_id": V031_RELEASE_ID,
               "controller": {"source_sha": controller_sha, "run_id": int(run_id), "run_attempt": int(attempt),
