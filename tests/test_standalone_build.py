@@ -1,6 +1,7 @@
 """Artifact admission rejects unsafe paths and stale native acceptance."""
 
 import importlib.util
+import base64
 import json
 import os
 import stat
@@ -156,7 +157,7 @@ def test_zip_special_file_type_is_refused_before_extraction(tmp_path):
     ({'python': '3.12.3'}, 'manifest identity'),
     ({'source_sha': 'f' * 39}, 'source or artifact hash'),
     ({'archive': {'filename': '../external', 'bytes': 1, 'sha256': 'a' * 64}}, 'archive identity'),
-    ({'oracle': []}, 'eleven selected'),
+    ({'oracle': []}, 'oracle differs'),
 ])
 def test_manifest_rejects_unreviewed_target_interpreter_identity_and_archive_path(tmp_path, delta, reason):
     # GIVEN a valid sealed artifact record and one unsupported change
@@ -254,3 +255,101 @@ def test_windows_frozen_dns_gate_records_exact_exited_owner_refusal(tmp_path, mo
     # THEN the receipt retains live-owner DNS and records only the observed exited-owner result
     assert result == {'dns': ['127.0.0.1'], 'exited_owner': {'code': 1, 'stdout_bytes': 0, 'stderr_bytes': 0}}, \
         'the exact refusal is recorded without changing the existing DNS field'
+
+
+def smoke_record(tmp_path, target='linux-x64'):
+    """Seal synthetic source identities without any licensed document input."""
+    directory, manifest = native_record(tmp_path, target)
+    probes = []
+    for name, path, route in [('epub2', 'sample.epub', 'epub'), ('formula', 'formulas.xlsx', 'sheet')]:
+        payload = name.encode('ascii')
+        probes.append({'probe': name, 'path': path, 'receipt': {'out': None, 'route': route}, 'code': 0,
+                       'bytes_base64': base64.b64encode(payload).decode('ascii'),
+                       'source_sha256': BUILDER.hashlib.sha256(payload).hexdigest(),
+                       'markdown_bytes': 1, 'markdown_sha256': 'b' * 64})
+    probes[1]['artifact'] = {'key': 'formula/sheet/000002', 'bytes': 1, 'sha256': 'c' * 64}
+    manifest.update(verification_scope='smoke', oracle=[], probes=probes)
+    BUILDER.write_json(directory / 'manifest.json', manifest)
+    verification = json.loads((directory / 'verification.json').read_text())
+    BUILDER.write_json(directory / 'verification.json', {**verification, 'verification_scope': 'smoke',
+                       'schema': 1, 'self_check': 38, 'fixtures': [], 'probes': ['epub2', 'formula']})
+    return directory, manifest
+
+
+def test_explicit_native_smoke_admits_only_two_sealed_synthetic_probes(tmp_path):
+    # GIVEN two generated source payloads and a complete archive identity
+    directory, manifest = smoke_record(tmp_path)
+    assert manifest['oracle'] == [], 'native smoke contains no licensed oracle rows'
+    # WHEN native admission verifies bytes and explicit smoke scope
+    actual = BUILDER.admit_manifest(directory / 'manifest.json')
+    # THEN synthetic-only evidence is admitted without being labeled full
+    assert (actual['verification_scope'], [row['probe'] for row in actual['probes']]) == (
+        'smoke', ['epub2', 'formula']), 'the exact two-probe scope remains explicit'
+
+
+@pytest.mark.parametrize('delta', [{'verification_scope': 'unknown'}, {'verification_scope': 'full'},
+                                  {'probes': []}, {'oracle': [{'path': 'tests/fixtures/corpus.pdf'}]}])
+def test_native_smoke_rejects_wrong_scope_or_missing_synthetic_coverage(tmp_path, delta):
+    # GIVEN an admissible synthetic-only native seal
+    directory, manifest = smoke_record(tmp_path)
+    assert BUILDER.admit_manifest(directory / 'manifest.json') == manifest, 'the complete smoke seal passes first'
+    # WHEN required scope or probe coverage is altered
+    manifest.update(delta)
+    # THEN admission fails before any replay or archive access
+    with pytest.raises(ValueError, match='scope|oracle|probes'):
+        BUILDER.validate_manifest(manifest)
+
+
+def test_native_smoke_rejects_legacy_full_verification_for_a_smoke_manifest(tmp_path):
+    # GIVEN a smoke manifest paired with old full evidence lacking an explicit scope
+    directory, manifest = smoke_record(tmp_path)
+    report = json.loads((directory / 'verification.json').read_text())
+    report.pop('verification_scope')
+    BUILDER.write_json(directory / 'verification.json', report)
+    assert BUILDER.verification_scope(report) == 'full', 'missing scope deliberately means legacy full coverage'
+    # WHEN smoke archive admission compares the report and manifest
+    with pytest.raises(ValueError, match='scope differs'):
+        BUILDER.admit_manifest(directory / 'manifest.json')
+    # THEN the explicit smoke manifest retains its original scope
+    assert manifest['verification_scope'] == 'smoke', 'legacy evidence is never silently relabeled smoke'
+
+
+def test_native_aggregation_exports_uniform_smoke_reports_without_duplicate_archives(tmp_path):
+    # GIVEN one admitted smoke bundle for each target
+    for target in ('linux-x64', 'windows-x64', 'macos-arm64'):
+        smoke_record(tmp_path, target)
+    assert len(list(tmp_path.glob('*/manifest.json'))) == 3, 'all three target seals exist'
+    # WHEN aggregation stages the single complete archive set and compact reports
+    output = tmp_path / 'release'
+    BUILDER.aggregate(tmp_path, output)
+    # THEN downstream release admission receives scope-bound evidence beside unchanged archives
+    aggregate = json.loads((output / 'binaries.json').read_text())
+    assert aggregate['verification_scope'] == 'smoke', 'aggregation binds one verification scope'
+    assert sorted(path.name for path in (output / 'verification').iterdir()) == [
+        'linux-x64.json', 'macos-arm64.json', 'windows-x64.json'], 'compact reports replace duplicate archive downloads'
+
+
+def test_native_aggregation_rejects_mixed_full_and_smoke_targets(tmp_path):
+    # GIVEN matching source identities but different conversion coverage on one target
+    smoke_record(tmp_path, 'linux-x64')
+    smoke_record(tmp_path, 'windows-x64')
+    native_record(tmp_path, 'macos-arm64')
+    assert len(list(tmp_path.glob('*/manifest.json'))) == 3, 'the complete matrix differs only in verification scope'
+    # WHEN release aggregation compares the target seals
+    with pytest.raises(ValueError, match='one source identity'):
+        BUILDER.aggregate(tmp_path, tmp_path / 'release')
+    # THEN mixed coverage cannot be published as one accepted smoke set
+    assert (tmp_path / 'release').exists() is False, 'scope disagreement fails before staging any archive'
+
+
+@pytest.mark.parametrize('delta', [{'self_check': 37}, {'fixtures': [{'path': 'corpus.pdf'}]}, {'probes': ['epub2']}])
+def test_native_smoke_refuses_incomplete_consumer_coverage(tmp_path, delta):
+    # GIVEN an admitted complete synthetic consumer report
+    directory, manifest = smoke_record(tmp_path)
+    report = json.loads((directory / 'verification.json').read_text())
+    assert BUILDER.validate_verification(manifest, report) is None, 'the full synthetic consumer report is accepted'
+    # WHEN an essential recorded result is missing or claims corpus replay
+    report.update(delta)
+    # THEN native and packed npm admission reject incomplete smoke evidence
+    with pytest.raises(ValueError, match='verification is incomplete'):
+        BUILDER.validate_verification(manifest, report)

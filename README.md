@@ -1,5 +1,10 @@
 # brewdoc
 
+[![PyPI](https://img.shields.io/pypi/v/brewdoc)](https://pypi.org/project/brewdoc/)
+[![CI](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/releases/latest)
+[![MIT](https://img.shields.io/github/license/kochetkov-ma/brewdoc)](LICENSE)
+
 Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets, EPUB and static
 HTML in, one Markdown file plus a JSON receipt out. No models or OCR. Local conversion
 is offline and deterministic (same file, same bytes). Explicit `--url` acquires a page.
@@ -8,23 +13,115 @@ what was dropped and what the route structurally cannot carry.
 
 ## Install
 
-Version 0.3.0 is prepared for publication. These registry commands apply only after
-0.3.0 is published on PyPI. Original 0.2.0 publication is tracked separately.
+Choose one method. [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest)
+contains its complete installation guide. Python releases 0.2.0 and 0.3.0 are public.
+These commands select 0.3.1 and apply when that version is published; its
+[release guide](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.1)
+records accepted channels. Badges show published versions and main CI, not universal OS support.
 
 | channel | command |
 |---|---|
-| pip | `pip install brewdoc==0.3.0` |
-| uvx | `uvx brewdoc==0.3.0 file.pdf` |
-| uv tool | `uv tool install brewdoc==0.3.0` |
-| Docker | `RUN pip install brewdoc==0.3.0` |
+| pip | `python -m pip install "brewdoc==0.3.1"` in a dedicated virtual environment |
+| uvx, temporary | `uvx --python 3.12 --from "brewdoc==0.3.1" brewdoc file.pdf --out file.md` |
+| uv tool, installed | `uv tool install --python 3.12 "brewdoc==0.3.1"` |
+| pipx, installed | `pipx install --python 3.12 "brewdoc==0.3.1"` |
+| Container recipe (pip) | `RUN pip install brewdoc==0.3.1` |
 
-The existing original source tag can be installed now. It predates EPUB and URL acquisition:
+pip needs an installed Python 3.12. Use explicit environment paths without activation.
+Linux/macOS:
 
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install "brewdoc==0.3.1"
+.venv/bin/python -c "from importlib.metadata import version; print(version('brewdoc'))"
+.venv/bin/brewdoc --self-check
+.venv/bin/brewdoc file.pdf --out file.md
 ```
-uvx --from git+https://github.com/kochetkov-ma/brewdoc@v0.2.0 brewdoc file.pdf
+
+Windows PowerShell:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "brewdoc==0.3.1"
+.\.venv\Scripts\python.exe -c "from importlib.metadata import version; print(version('brewdoc'))"
+.\.venv\Scripts\brewdoc.exe --self-check
+.\.venv\Scripts\brewdoc.exe file.pdf --out file.md
 ```
 
-Requires Python >= 3.12. Base runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
+uv and pipx must already be installed. After installation, run `uv tool update-shell`
+or `pipx ensurepath`, open a new terminal, then run `brewdoc --self-check` and
+`brewdoc file.pdf --out file.md`. `uv tool list` or `pipx list` shows the managed version.
+Check PATH selection with `command -v brewdoc` on Unix or `Get-Command brewdoc` in PowerShell.
+
+For an exact published version X.Y.Z, update with the environment's Python and
+`-m pip install --upgrade "brewdoc==X.Y.Z"`,
+`uv tool install --force --python 3.12 "brewdoc==X.Y.Z"` or
+`pipx install --force --python 3.12 "brewdoc==X.Y.Z"`. Replace X.Y.Z before running.
+Remove with the same Python's `-m pip uninstall brewdoc`, `uv tool uninstall brewdoc`
+or `pipx uninstall brewdoc`. pip leaves dependencies; remove the dedicated virtual
+environment when no longer needed. uvx uses temporary cached environments, adds no
+persistent PATH command and needs no tool uninstall. Choose another exact version to update.
+
+### Standalone and npm
+
+The links and commands below work when the named release is published and its
+native/public consumer checks pass. Check the
+[release guide](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.1)
+for that version's accepted channels and targets. Download badges select assets;
+they do not establish runtime acceptance. The npm badge shows the registry version.
+Existing 0.2.0/0.3.0 releases contain Python wheel/sdist archives only.
+
+[![npm](https://img.shields.io/npm/v/brewdoc)](https://www.npmjs.com/package/brewdoc)
+[![Linux x64 download](https://img.shields.io/badge/Linux_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-linux-x64.tar.gz)
+[![Windows x64 download](https://img.shields.io/badge/Windows_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-windows-x64.zip)
+[![macOS ARM64 download](https://img.shields.io/badge/macOS_ARM64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-macos-arm64.tar.gz)
+
+| Native target | Version-specific download | Verification target | JavaScript |
+|---|---|---|---|
+| Linux x86_64, glibc | [Linux archive](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-linux-x64.tar.gz) | Ubuntu 22.04, glibc 2.35 | Bundled; requires target acceptance |
+| Windows x86_64 | [Windows archive](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-windows-x64.zip) | Windows Server 2025 | Refused before requests |
+| macOS ARM64 | [macOS archive](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/brewdoc-0.3.1-macos-arm64.tar.gz) | macOS 15, Apple Silicon | Bundled; requires target acceptance |
+
+Download [SHA256SUMS](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.3.1/SHA256SUMS)
+beside the archive. Compare its SHA-256 before extraction with `sha256sum ARCHIVE`
+on Linux, `shasum -a 256 ARCHIVE` on macOS or `Get-FileHash ARCHIVE -Algorithm SHA256`
+in PowerShell. Keep the complete brewdoc directory, including _internal and licenses.
+Read brewdoc/version.json for version/source/target, then run
+`./brewdoc/brewdoc --self-check` or `.\brewdoc\brewdoc.exe --self-check` and use that
+executable with `file.pdf --out file.md`. Add its absolute directory to your shell
+profile or Windows user PATH for persistent use. Update by verifying and extracting
+a fresh complete release directory, self-checking it, then repointing PATH. Remove
+the dedicated directory and PATH entry to uninstall. Full download/extraction commands
+are in the generated guide attached to the published release.
+
+Verification targets do not establish older OS support. Linux musl/ARM64 and macOS
+Intel are outside this initial binary set. Windows is unsigned; macOS uses an ad hoc
+build signature without Developer ID/notarization. Linux uses checksums without a
+detached publisher signature. OS policy may prevent launch.
+
+npm requires Node 24.21.0/npm 12.2.0 for the tested flow; Python is bundled on admitted
+targets. Once this exact npm release is publicly verified:
+
+```sh
+npm install --global brewdoc@0.3.1
+npm list --global brewdoc --depth=0
+brewdoc --self-check
+brewdoc file.pdf --out file.md
+```
+
+Temporary cached invocation:
+
+```sh
+npx --yes --package brewdoc@0.3.1 brewdoc --self-check
+npx --yes --package brewdoc@0.3.1 brewdoc file.pdf --out file.md
+```
+
+Update with `npm install --global brewdoc@X.Y.Z` for an exact published version;
+remove with `npm uninstall --global brewdoc`. npx installs no persistent global tool;
+choose another exact version to update. Keep optional platform packages enabled.
+Missing packages or unsupported platforms refuse. The launcher adds no runtime downloads.
+
+Python package installations require Python >= 3.12. Base runtime dependencies: `pdfplumber` (pulls pypdfium2, Pillow,
 cryptography) and `python-calamine`. HTML requires CPython 3.12-3.14 and the native Lexbor
 parser from this exact conditional dependency:
 
@@ -36,12 +133,13 @@ Other runtimes retain the `.html` route and Python API but explicitly refuse HTM
 CPython, a missing or broken parser is an environment failure and `--self-check` exits 1.
 On an unsupported HTML runtime, self-check verifies HTML refusal and checks all other formats.
 
-Version 0.3.0 includes URL acquisition and optional JavaScript capture. After publication,
-install the extra with `pip install 'brewdoc[render-js]==0.3.0'`. It uses QuickJS-ng 0.17.0.1
+Version 0.3.0 includes URL acquisition and optional JavaScript capture.
+Install the extra with `python -m pip install 'brewdoc[render-js]==0.3.1'`. It uses QuickJS-ng 0.17.0.1
 and bundled LinkeDOM 0.18.13. From this source checkout, install the locked extra
 with `uv sync --locked --extra render-js`. Run it with
 `uv run --locked --extra render-js brewdoc --url URL --render-js`.
-No Node, browser engine or invocation-time component download is used.
+Python and standalone invocations need no Node or browser engine. npm/npx use Node
+as a launcher; no invocation downloads runtime components.
 
 ## Usage
 
@@ -64,8 +162,8 @@ keeping each sheet's full-workbook ordinal. `--artifact` is also repeatable. Use
 Markdown artifact table. Both options are workbook-only. brewdoc validates every request and
 output collision before writing.
 
-URL mode accepts one public HTTP(S) HTML page with strict UTF-8 decoding. It uses
-GET, verified TLS and default ports only. Private destinations, URL credentials
+URL mode accepts one public HTTP(S) HTML page with strict UTF-8 decoding. Initial
+page acquisition uses GET, verified TLS and default ports only. Private destinations, URL credentials
 and HTTPS downgrades are refused; proxy environment settings are ignored. Each redirect and
 resource is validated. Acquisition allows at most five redirects and an 8 MiB
 body limit. `--timeout SECONDS` sets one maximum waiting budget for loading and
@@ -277,6 +375,8 @@ outputs and known failures; capture completion does not mean content quality pas
 ## Releasing
 
 Tag-triggered, see `RELEASING.md`.
+Coding agents can start with the compact [llms.txt](llms.txt) guide. It does not imply
+automatic discovery by any client.
 
 ## License
 

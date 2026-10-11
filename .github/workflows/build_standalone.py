@@ -81,6 +81,14 @@ def relative_name(value: str) -> str:
     return value
 
 
+def verification_scope(record: dict) -> str:
+    """Treat legacy records as full coverage and reject unknown verification scopes."""
+    scope = record.get('verification_scope', 'full')
+    if scope not in ('full', 'smoke'):
+        raise ValueError('Unknown standalone verification scope')
+    return scope
+
+
 def validate_manifest(manifest: dict) -> None:
     """Reject mutable identities and untrusted filenames before any artifact access."""
     formats = {'linux-x64': 'tar.gz', 'windows-x64': 'zip', 'macos-arm64': 'tar.gz'}
@@ -118,9 +126,11 @@ def validate_manifest(manifest: dict) -> None:
             raise ValueError('Unsupported standalone inventory kind')
     if records.get(manifest['executable'], {}).get('kind') != 'file':
         raise ValueError('Standalone inventory has no executable')
+    scope = verification_scope(manifest)
     rows = manifest['oracle']
-    if len(rows) != 11 or len({row['path'] for row in rows}) != 11:
-        raise ValueError('Standalone oracle must contain the eleven selected licensed inputs')
+    count = 0 if scope == 'smoke' else 11
+    if len(rows) != count or len({row['path'] for row in rows}) != count:
+        raise ValueError('Standalone oracle differs from its verification scope')
     for row in rows:
         path = PurePosixPath(row['path'])
         if (not path.is_relative_to('tests/fixtures') or '..' in path.parts or '\\' in row['path']
@@ -129,10 +139,26 @@ def validate_manifest(manifest: dict) -> None:
                 or not re.fullmatch('[0-9a-f]{64}', row['source_sha256'])):
             raise ValueError('Invalid standalone sealed oracle')
     probes = manifest.get('probes', [])
-    if len(probes) != 4 or {row['probe'] for row in probes} != {'sheet-order', 'vba', 'epub2', 'formula'}:
+    required = {'epub2', 'formula'} if scope == 'smoke' else {'sheet-order', 'vba', 'epub2', 'formula'}
+    if len(probes) != len(required) or {row['probe'] for row in probes} != required:
         raise ValueError('Standalone supplementary probes are incomplete')
     for row in probes:
         path = PurePosixPath(row['path'])
+        if scope == 'smoke':
+            expected_path = {'epub2': 'sample.epub', 'formula': 'formulas.xlsx'}[row['probe']]
+            payload = base64.b64decode(row.get('bytes_base64', ''), validate=True)
+            if (row['path'] != expected_path or not payload
+                    or hashlib.sha256(payload).hexdigest() != row.get('source_sha256')
+                    or row.get('code') != 0 or row.get('receipt', {}).get('out') is not None
+                    or row.get('receipt', {}).get('route') != {'epub2': 'epub', 'formula': 'sheet'}[row['probe']]
+                    or row.get('markdown_bytes', 0) <= 0
+                    or not re.fullmatch('[0-9a-f]{64}', row.get('markdown_sha256', ''))):
+                raise ValueError('Invalid standalone synthetic smoke probe')
+            if row['probe'] == 'formula':
+                artifact = row.get('artifact', {})
+                if (artifact.get('key') != 'formula/sheet/000002' or artifact.get('bytes', 0) <= 0
+                        or not re.fullmatch('[0-9a-f]{64}', artifact.get('sha256', ''))):
+                    raise ValueError('Invalid standalone synthetic formula artifact')
         if 'bytes_base64' in row:
             if row['path'] not in ('sample.epub', 'formulas.xlsx'):
                 raise ValueError('Invalid generated standalone probe path')
@@ -140,15 +166,27 @@ def validate_manifest(manifest: dict) -> None:
             raise ValueError('Invalid standalone supplementary source path')
 
 
+def validate_verification(manifest: dict, verification: dict) -> None:
+    """Bind native consumer identities and explicit synthetic coverage to their seal."""
+    if verification_scope(verification) != verification_scope(manifest):
+        raise ValueError('Standalone verification scope differs from its manifest')
+    if (verification['verdict'], verification['source_sha'], verification['version'],
+        verification['target'], verification['archive_sha256']) != (
+            'PASS', manifest['source_sha'], manifest['version'], manifest['target'], manifest['archive']['sha256']):
+        raise ValueError('Standalone artifact lacks matching native acceptance')
+    if verification_scope(manifest) == 'smoke':
+        expected = {'schema': 1, 'self_check': 38, 'fixtures': [],
+                    'probes': [row['probe'] for row in manifest['probes']]}
+        if {key: verification.get(key) for key in expected} != expected:
+            raise ValueError('Standalone synthetic smoke verification is incomplete')
+
+
 def admit_manifest(path: Path) -> dict:
     """Bind a sealed archive manifest to its actual native acceptance and bytes."""
     manifest = json.loads(path.read_text(encoding='utf-8'))
     validate_manifest(manifest)
     verification = json.loads(path.with_name('verification.json').read_text(encoding='utf-8'))
-    if (verification['verdict'], verification['source_sha'], verification['version'],
-        verification['target'], verification['archive_sha256']) != (
-            'PASS', manifest['source_sha'], manifest['version'], manifest['target'], manifest['archive']['sha256']):
-        raise ValueError('Standalone artifact lacks matching native acceptance')
+    validate_verification(manifest, verification)
     asset = path.parent / manifest['archive']['filename']
     if asset.is_symlink() or (asset.stat().st_size, digest(asset)) != (manifest['archive']['bytes'], manifest['archive']['sha256']):
         raise ValueError('Standalone accepted archive changed')
@@ -302,7 +340,7 @@ def observe(source,options=None):
  body=markdown.encode('utf-8' if receipt['route'] in ('html','epub') else 'ascii')
  return {'path':source.name,'source_sha256':helper.digest(source),'receipt':receipt,'code':code,
          'markdown_sha256':hashlib.sha256(body).hexdigest(),'markdown_bytes':len(body)}
-for document,expected in helper.select_inputs(checkout):
+for document,expected in ([] if sys.argv[4]=='smoke' else helper.select_inputs(checkout)):
  source=checkout/document['path'];actual=brewdoc.run(source)
  code,receipt,markdown=actual
  if code!=0: raise ValueError('Accepted installed engine refused '+str(source))
@@ -388,7 +426,7 @@ print(json.dumps({'python':'.'.join(map(str,sys.version_info[:3])),'base':str(ba
 '''
 
 
-def build(checkout: Path, bundle: Path, output: Path, target: str) -> None:
+def build(checkout: Path, bundle: Path, output: Path, target: str, *, smoke: bool = False) -> None:
     """Freeze the accepted wheel in an isolated managed interpreter and seal its oracle."""
     data = facts(checkout, target)
     helper = verifier()
@@ -427,7 +465,8 @@ def build(checkout: Path, bundle: Path, output: Path, target: str) -> None:
     inputs = output / 'probe-inputs.json'
     write_json(inputs, synthetic_cases(checkout, output))
     observed = json.loads(command([str(python), '-I', '-c', ORACLE_CODE,
-                                   str(checkout / '.github/workflows/verify_install.py'), str(checkout), str(inputs)]).stdout)
+                                   str(checkout / '.github/workflows/verify_install.py'), str(checkout), str(inputs),
+                                   'smoke' if smoke else 'full']).stdout)
     if observed['version'] != producer['version'] or not Path(observed['origin']).is_relative_to(environment):
         raise ValueError('Standalone oracle did not use the accepted installed wheel')
     entry = Path(observed['origin']).with_name('_standalone.py')
@@ -473,6 +512,7 @@ collection=COLLECT(executable,analysis.binaries,analysis.datas,strip=False,upx=F
         raise ValueError('Unused selectolax parser entered the standalone bundle')
     executable = 'brewdoc/brewdoc' + ('.exe' if target == 'windows-x64' else '')
     manifest = {'schema': 1, 'source_sha': producer['checkout_sha'], 'version': version,
+                'verification_scope': 'smoke' if smoke else 'full',
                 'python': data['python'], 'target': target, 'wheel_sha256': digest(wheel),
                 'lock_sha256': digest(checkout / 'uv.lock'), 'executable': executable,
                 'archive': {'filename': asset.name, 'bytes': asset.stat().st_size, 'sha256': digest(asset)},
@@ -572,16 +612,20 @@ def child_checks(binary: Path, work: Path, environment: dict, javascript: bool) 
     return result
 
 
-def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Path | None = None) -> None:
+def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Path | None = None,
+           *, smoke: bool = False) -> None:
     """Launch a relocated extracted asset outside checkout with no Python on its PATH."""
     data = facts(checkout, target)
     manifest = json.loads((output / 'manifest.json').read_text(encoding='utf-8'))
     validate_manifest(manifest)
+    scope = 'smoke' if smoke else 'full'
+    if verification_scope(manifest) != scope:
+        raise ValueError('Requested standalone verification scope differs from its manifest')
     producer = json.loads((bundle / 'ci-package/manifest.json').read_text(encoding='utf-8'))
     if (manifest['schema'], manifest['source_sha'], manifest['version'], manifest['target'], manifest['python']) != (
             1, producer['checkout_sha'], producer['version'], target, data['python']):
         raise ValueError('Standalone source, target, version or interpreter identity changed')
-    selected = verifier().select_inputs(checkout)
+    selected = [] if smoke else verifier().select_inputs(checkout)
     if {row['path'] for row in manifest['oracle']} != {document['path'] for document, _expected in selected}:
         raise ValueError('Standalone oracle selection differs from the accepted smoke inputs')
     for document, expected in selected:
@@ -620,8 +664,6 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
                              cwd=work, env=environment, timeout=60)
             check_output(result, row, destination)
             fixture_results.append({'path': row['path'], 'markdown_sha256': row['markdown_sha256']})
-        if {row['probe'] for row in manifest['probes']} != {'sheet-order', 'vba', 'epub2', 'formula'}:
-            raise ValueError('Standalone essential workbook/EPUB2 probes are incomplete')
         for row in manifest['probes']:
             source = work / Path(row['path']).name
             if 'bytes_base64' in row:
@@ -639,6 +681,10 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
                 arguments += ['--artifact', row['artifact']['key'] + '=' + str(artifact_output)]
             result = command(arguments, cwd=work, env=environment, timeout=60)
             check_output(result, row, artifact_output=artifact_output)
+            if smoke:
+                destination = work / (row['probe'] + '.md')
+                result = command([*arguments, '--out', str(destination)], cwd=work, env=environment, timeout=60)
+                check_output(result, row, destination, artifact_output)
             if artifact_output is not None and (artifact_output.stat().st_size, digest(artifact_output)) != (
                     row['artifact']['bytes'], row['artifact']['sha256']):
                 raise ValueError('Standalone formula/VBA artifact differs from its sealed source bytes')
@@ -673,6 +719,7 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
               js_receipt['acquisition']['counts']['requests']) != (1, 'prerequisites', 0):
             raise ValueError('Frozen unsupported JavaScript did not refuse before HTTP')
         write_json(output / 'verification.json', {'schema': 1, 'source_sha': manifest['source_sha'],
+                   'verification_scope': scope,
                    'version': manifest['version'], 'target': target, 'archive_sha256': digest(asset),
                    'verdict': 'PASS', 'host': platform.platform(), 'consumer_environment_keys': sorted(environment),
                    'self_check': 38, 'fixtures': fixture_results, 'children': children,
@@ -692,11 +739,13 @@ def aggregate(source: Path, output: Path) -> None:
         target = manifest['target']
         if target not in expected_targets or target in records:
             raise ValueError('Unknown or duplicated standalone target')
-        identities.add((manifest['source_sha'], manifest['version'], manifest['python'], manifest['wheel_sha256'], manifest['lock_sha256']))
+        identities.add((manifest['source_sha'], manifest['version'], manifest['python'], manifest['wheel_sha256'],
+                        manifest['lock_sha256'], verification_scope(manifest)))
         records[target] = manifest
     if set(records) != expected_targets or len(identities) != 1:
         raise ValueError('Standalone release requires three native targets with one source identity')
     output.mkdir(parents=True, exist_ok=False)
+    (output / 'verification').mkdir()
     checksums = []
     for target, manifest in records.items():
         filename = manifest['archive']['filename']
@@ -704,9 +753,11 @@ def aggregate(source: Path, output: Path) -> None:
         if len(candidates) != 1:
             raise ValueError('Standalone release archive location is ambiguous')
         shutil.copyfile(candidates[0], output / filename)
+        shutil.copyfile(candidates[0].with_name('verification.json'), output / 'verification' / (target + '.json'))
         checksums.append(manifest['archive']['sha256'] + '  ' + filename)
     write_json(output / 'binaries.json', {'schema': 1, 'source_sha': next(iter(identities))[0],
-                                        'version': next(iter(identities))[1], 'targets': records})
+                                        'version': next(iter(identities))[1],
+                                        'verification_scope': next(iter(identities))[5], 'targets': records})
     (output / 'SHA256SUMS').write_text('\n'.join(sorted(checksums)) + '\n', encoding='ascii')
 
 
@@ -720,6 +771,7 @@ def main(argv: list[str] | None = None) -> int:
         subparser.add_argument('--bundle', type=Path, required=True)
         subparser.add_argument('--output', type=Path, required=True)
         subparser.add_argument('--target', choices=('linux-x64', 'windows-x64', 'macos-arm64'), required=True)
+        subparser.add_argument('--smoke', action='store_true', help='Use only the two synthetic CI probes')
         if operation == 'verify':
             subparser.add_argument('--archive', type=Path)
     subparser = subparsers.add_parser('aggregate')
@@ -727,10 +779,11 @@ def main(argv: list[str] | None = None) -> int:
     subparser.add_argument('--output', type=Path, required=True)
     arguments = parser.parse_args(argv)
     if arguments.operation == 'build':
-        build(arguments.checkout.resolve(), arguments.bundle.resolve(), arguments.output.resolve(), arguments.target)
+        build(arguments.checkout.resolve(), arguments.bundle.resolve(), arguments.output.resolve(), arguments.target,
+              smoke=arguments.smoke)
     elif arguments.operation == 'verify':
         verify(arguments.checkout.resolve(), arguments.bundle.resolve(), arguments.output.resolve(),
-               arguments.target, arguments.archive.resolve() if arguments.archive else None)
+               arguments.target, arguments.archive.resolve() if arguments.archive else None, smoke=arguments.smoke)
     else:
         aggregate(arguments.input.resolve(), arguments.output.resolve())
     return 0

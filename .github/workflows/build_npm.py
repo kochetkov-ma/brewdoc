@@ -12,6 +12,7 @@ import os
 from pathlib import Path, PurePosixPath
 import posixpath
 import platform
+import queue
 import re
 import shutil
 import signal
@@ -63,6 +64,14 @@ def read_json(path: Path) -> dict:
     if not isinstance(value, dict):
         raise ValueError(f"Expected a JSON object: {path.name}")
     return value
+
+
+def verification_scope(record: dict) -> str:
+    """Treat missing scope only as the legacy full verification contract."""
+    scope = record.get("verification_scope", "full")
+    if scope not in {"smoke", "full"}:
+        raise ValueError("Invalid npm verification scope")
+    return scope
 
 
 def native_builder():
@@ -269,13 +278,14 @@ def verify_tarball(path: Path, record: dict) -> None:
         if "target" in record:
             native = json.loads(archive.extractfile("package/native-manifest.json").read())
             verified = json.loads(archive.extractfile("package/native-verification.json").read())
-            native_builder().validate_manifest(native)
+            helper = native_builder()
+            helper.validate_manifest(native)
+            helper.validate_verification(native, verified)
+            if len({verification_scope(value) for value in (native, verified, record)}) != 1:
+                raise ValueError("npm native verification scope differs")
             if (native["target"], native["version"], native["source_sha"], native["archive"]) != (
                     record["target"], record["version"], record["source_sha"], record["native_archive"]):
                 raise ValueError("npm package native source binding differs")
-            if (verified["verdict"], verified["target"], verified["version"], verified["source_sha"], verified["archive_sha256"]) != (
-                    "PASS", native["target"], native["version"], native["source_sha"], native["archive"]["sha256"]):
-                raise ValueError("npm native verification does not match its source")
             binary_files, mappings = {}, {}
             for name, entry in native["inventory"].items():
                 if entry["kind"] == "directory":
@@ -343,7 +353,8 @@ def pack_native(native_dir: Path, output: Path) -> None:
         write_json(folder / "native-manifest.json", manifest)
         write_json(folder / "native-verification.json", verification)
         record = pack_directory(folder, output, {"target": target, "version": version, "source_sha": manifest["source_sha"],
-                                "native_archive": archive, "links": mappings})
+                                "native_archive": archive, "links": mappings,
+                                "verification_scope": verification_scope(manifest)})
     write_json(output / "platform-record.json", record)
 
 
@@ -357,6 +368,10 @@ def aggregate(input_dir: Path, output: Path) -> None:
     identities = {(record["version"], record["source_sha"]) for _, record in records.values()}
     if len(identities) != 1 or next(iter(identities))[0] != version:
         raise ValueError("npm target versions or sources differ")
+    scopes = {verification_scope(record) for _, record in records.values()}
+    if len(scopes) != 1:
+        raise ValueError("npm target verification scopes differ")
+    scope = scopes.pop()
     output.mkdir(parents=True, exist_ok=False)
     packages = []
     for target in PACKAGES:
@@ -373,9 +388,10 @@ def aggregate(input_dir: Path, output: Path) -> None:
         (folder / "bin").mkdir()
         shutil.copyfile(ROOT / "npm/bin/brewdoc.cjs", folder / "bin/brewdoc.cjs")
         (folder / "bin/brewdoc.cjs").chmod(0o755)
-        packages.append(pack_directory(folder, output, {"version": version, "source_sha": packages[0]["source_sha"]}))
+        packages.append(pack_directory(folder, output, {"version": version, "source_sha": packages[0]["source_sha"],
+                                                       "verification_scope": scope}))
     write_json(output / "npm-manifest.json", {"schema": 1, "version": version, "source_sha": packages[0]["source_sha"],
-               "node": NODE_VERSION, "npm": NPM_VERSION, "packages": packages})
+               "node": NODE_VERSION, "npm": NPM_VERSION, "packages": packages, "verification_scope": scope})
 
 
 def verify_release(input_dir: Path) -> dict:
@@ -389,6 +405,8 @@ def verify_release(input_dir: Path) -> dict:
     if [record["metadata"]["name"] for record in records] != expected_names:
         raise ValueError("npm publication order or package set differs")
     for record in records:
+        if verification_scope(record) != verification_scope(manifest):
+            raise ValueError("npm release verification scopes differ")
         target = record.get("target")
         if record["metadata"] != package_metadata(version, target) or (record["version"], record["source_sha"]) != (version, manifest["source_sha"]):
             raise ValueError("npm package source, version or metadata differs")
@@ -438,11 +456,16 @@ def publish(input_dir: Path) -> None:
             raise ValueError("Published npm version is absent from the registry")
 
 
-def check_public(input_dir: Path) -> None:
+def check_public(input_dir: Path, output: Path | None = None) -> None:
     """Require every public version and tarball to match the admitted release."""
-    for record in verify_release(input_dir)["packages"]:
+    manifest = verify_release(input_dir)
+    for record in manifest["packages"]:
         if not public_record(record):
             raise ValueError(f"Public npm version is missing: {record['metadata']['name']}")
+    if output is not None:
+        write_json(output, {"schema": 1, "verdict": "PASS", "version": manifest["version"],
+                           "source_sha": manifest["source_sha"], "verification_scope": verification_scope(manifest),
+                           "packages": {record["metadata"]["name"]: record["integrity"] for record in manifest["packages"]}})
 
 
 def local_registry(input_dir: Path, manifest: dict) -> ThreadingHTTPServer:
@@ -510,6 +533,19 @@ def consumer_probe(arguments: list[str], work: Path, environment: dict, native: 
     check = cli_result(arguments, ["--self-check"], work, environment, 45)
     if (check.returncode, check.stdout, check.stderr) != (0, ("self-check: ok (38 checks)" + os.linesep).encode("ascii"), b""):
         raise ValueError("npm consumer self-check changed")
+    if verification_scope(native) == "smoke":
+        if native["oracle"] != [] or len(native["probes"]) != 2 or {row["probe"] for row in native["probes"]} != {"epub2", "formula"}:
+            raise ValueError("npm smoke requires exactly the synthetic native probes")
+        row = next(row for row in native["probes"] if row["probe"] == "epub2")
+        payload = base64.b64decode(row["bytes_base64"], validate=True)
+        if digest(payload) != row["source_sha256"]:
+            raise ValueError("npm synthetic EPUB source identity changed")
+        copied = work / "Unicode caf\u00e9" / row["path"]
+        copied.parent.mkdir(exist_ok=True)
+        copied.write_bytes(payload)
+        helper.check_output(cli_result(arguments, [str(copied)], work, environment), row)
+        return {"self_check": 38, "selected_package": selected_package, "fixtures": [],
+                "probes": [{"probe": "epub2", "path": row["path"], "markdown_sha256": row["markdown_sha256"]}]}
     help_result = cli_result(arguments, ["--help"], work, environment, 45)
     if help_result.returncode != 0 or help_result.stderr or not help_result.stdout.startswith(b"usage: brewdoc"):
         raise ValueError("npm consumer help changed")
@@ -539,10 +575,10 @@ def process_snapshot() -> dict:
     """Read process identities without persisting unrelated process commands."""
     if os.name == "nt":
         result = subprocess.run([shutil.which("powershell"), "-NoProfile", "-Command",
-            "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine) | ConvertTo-Json -Compress"],
+            "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine,ExecutablePath) | ConvertTo-Json -Compress"],
             capture_output=True, check=True, timeout=10)
         return {int(row["ProcessId"]): {"parent": int(row["ParentProcessId"]),
-                "start": row["CreationDate"], "command": row["CommandLine"] or ""}
+                "start": row["CreationDate"], "command": row["CommandLine"] or "", "executable": row["ExecutablePath"] or ""}
                 for row in json.loads(result.stdout)}
     result = subprocess.run([shutil.which("ps"), "-axo", "pid=,ppid=,lstart=,command="],
                             capture_output=True, check=True, timeout=5)
@@ -554,8 +590,98 @@ def process_snapshot() -> dict:
     return rows
 
 
-def cancellation_probe(launcher: Path, work: Path, environment: dict, javascript: bool) -> dict:
+def windows_cancellation_probe(launcher: Path, binary: Path, work: Path, environment: dict) -> dict:
+    """Cancel offline HTML output only after a receipt and live native identity."""
+    source = work / "cancellation.html"
+    source.write_bytes(b"<html><body><p>" + b"x" * (1024 * 1024) + b"</p></body></html>")
+    child = subprocess.Popen([npm_command([])[0], str(launcher), str(source)], cwd=work, env=environment,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    received = queue.Queue()
+    def read_receipt():
+        """Read one bounded line without draining the blocking Markdown output."""
+        try:
+            received.put(child.stdout.readline(65537))
+        except OSError as error:
+            received.put(error)
+    reader = threading.Thread(target=read_receipt, daemon=True)
+    observed = {}
+    def observe() -> dict:
+        """Record current descendants before termination can remove parent links."""
+        rows = process_snapshot()
+        owned, previous = {child.pid}, set()
+        while owned != previous:
+            previous = owned.copy()
+            owned.update(pid for pid, row in rows.items() if row["parent"] in owned)
+        observed.update({pid: rows[pid] for pid in owned - {child.pid} if pid in rows})
+        return {pid: row for pid, row in observed.items() if pid in rows
+                and (rows[pid]["start"], rows[pid]["command"]) == (row["start"], row["command"])}
+    try:
+        reader.start()
+        try:
+            line = received.get(timeout=10)
+        except queue.Empty as error:
+            raise ValueError("Windows npm HTML receipt was not ready") from error
+        if isinstance(line, OSError):
+            raise ValueError("Windows npm HTML receipt could not be read") from line
+        if len(line) > 65536 or not line.endswith(b"\n"):
+            raise ValueError("Windows npm HTML receipt exceeds its bound")
+        receipt = json.loads(line)
+        if {key: receipt.get(key) for key in ("file_ok", "route", "source", "out")} != {
+                "file_ok": True, "route": "html", "source": source.name, "out": None}:
+            raise ValueError("Windows npm HTML capture did not succeed")
+        live = observe()
+        if child.poll() is not None or not any(row["executable"].casefold() == str(binary.resolve()).casefold() for row in live.values()):
+            raise ValueError("Windows npm admitted native child was not alive")
+        child.send_signal(signal.CTRL_BREAK_EVENT)
+        child.wait(timeout=10)
+        if child.returncode == 0:
+            raise ValueError("Windows npm natural zero exit is not nonzero cancellation")
+        deadline = time.monotonic() + 5
+        while observe() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if observe():
+            raise ValueError("Windows npm native child survived cancellation")
+        return {"native_observed": True, "native_terminated": True, "javascript": "unsupported",
+                "dns_observed": False, "owned_processes": len(observed),
+                "trigger": "offline-html-output", "launcher_exit": "nonzero"}
+    finally:
+        cleanup_failed = True
+        try:
+            for pid in observe():
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            cleanup_failed = False
+        finally:
+            try:
+                if child.poll() is None:
+                    try:
+                        if cleanup_failed:
+                            subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"],
+                                           capture_output=True, check=True, timeout=5)
+                    finally:
+                        child.kill()
+            finally:
+                try:
+                    child.wait(timeout=5)
+                    child.communicate(timeout=5)
+                finally:
+                    child.stdout.close()
+                    if reader.ident is not None:
+                        reader.join(timeout=1)
+        if observe():
+            raise ValueError("Windows npm failure cleanup left an owned child")
+
+
+def cancellation_probe(launcher: Path, work: Path, environment: dict, javascript: bool,
+                       native_binary: Path | None = None) -> dict:
     """Observe owned native and separate-session JS children before cancellation."""
+    if os.name == "nt":
+        if native_binary is None:
+            raise ValueError("Windows npm cancellation requires an admitted native binary")
+        return windows_cancellation_probe(launcher, native_binary, work, environment)
     arguments = [npm_command([])[0], str(launcher), "--url", "https://example.org/", "--timeout", "30"]
     if javascript:
         arguments.append("--render-js")
@@ -607,9 +733,13 @@ def cancellation_probe(launcher: Path, work: Path, environment: dict, javascript
                 os.kill(pid, signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
 
 
-def probe(input_dir: Path, target: str, mode: str, output: Path) -> None:
+def probe(input_dir: Path, target: str, mode: str, output: Path, smoke: bool = False,
+          public_evidence: Path | None = None) -> None:
     """Prove npm global/local and actual npx consumers outside the checkout."""
     manifest = verify_release(input_dir)
+    scope = "smoke" if smoke else "full"
+    if verification_scope(manifest) != scope:
+        raise ValueError("npm consumer verification scope differs")
     selected = next(record for record in manifest["packages"] if record.get("target") == target)
     system, machine = platform.system(), platform.machine().lower()
     expected = {"linux-x64": ("Linux", "x86_64"), "windows-x64": ("Windows", "amd64"),
@@ -617,7 +747,17 @@ def probe(input_dir: Path, target: str, mode: str, output: Path) -> None:
     if (system, machine) != expected[target]:
         raise ValueError("npm consumer must run on its matching native target")
     if mode == "public":
-        check_public(input_dir)
+        if smoke:
+            expected_public = {"schema": 1, "verdict": "PASS", "version": manifest["version"],
+                               "source_sha": manifest["source_sha"], "verification_scope": scope,
+                               "packages": {record["metadata"]["name"]: record["integrity"] for record in manifest["packages"]}}
+            if public_evidence is None or read_json(public_evidence) != expected_public:
+                raise ValueError("npm smoke lacks matching central public byte evidence")
+            for record in (selected, manifest["packages"][-1]):
+                if not public_record(record):
+                    raise ValueError("Public npm target pair is missing")
+        else:
+            check_public(input_dir)
     server = local_registry(input_dir, manifest) if mode == "local" else None
     thread = threading.Thread(target=server.serve_forever, daemon=True) if server else None
     if thread:
@@ -635,15 +775,21 @@ def probe(input_dir: Path, target: str, mode: str, output: Path) -> None:
             package = f"brewdoc@{manifest['version']}"
             global_prefix, local_prefix = work / "global", work / "local"
             run_npm(["install", "--global", "--prefix", str(global_prefix), "--ignore-scripts", package], work, environment)
-            local_prefix.mkdir()
-            write_json(local_prefix / "package.json", {"name": "brewdoc-consumer-proof", "version": "1.0.0", "private": True})
-            run_npm(["install", "--prefix", str(local_prefix), "--ignore-scripts", "--save-exact", package], work, environment)
-            run_npm(["--yes", f"--package={package}", "brewdoc", "--self-check"], work, environment, npx=True)
+            if not smoke:
+                local_prefix.mkdir()
+                write_json(local_prefix / "package.json", {"name": "brewdoc-consumer-proof", "version": "1.0.0", "private": True})
+                run_npm(["install", "--prefix", str(local_prefix), "--ignore-scripts", "--save-exact", package], work, environment)
+            npx_check = run_npm(["--yes", f"--package={package}", "brewdoc", "--self-check"], work, environment, npx=True)
+            if smoke and (npx_check.stdout, npx_check.stderr) != (("self-check: ok (38 checks)" + os.linesep).encode("ascii"), b""):
+                raise ValueError("npx smoke self-check changed")
             npx_packages = list((work / "config/cache/_npx").glob("*/node_modules/brewdoc"))
             if len(npx_packages) != 1:
                 raise ValueError("npx did not install exactly one isolated main package")
             global_modules = global_prefix / ("node_modules" if os.name == "nt" else "lib/node_modules")
-            packages = {"global": global_modules / "brewdoc", "local": local_prefix / "node_modules/brewdoc", "npx": npx_packages[0]}
+            packages = {"global": global_modules / "brewdoc"}
+            if not smoke:
+                packages["local"] = local_prefix / "node_modules/brewdoc"
+            packages["npx"] = npx_packages[0]
             consumers = {}
             for name, folder in packages.items():
                 installed_identity(folder, manifest["packages"][-1], dependencies=True)
@@ -654,24 +800,34 @@ def probe(input_dir: Path, target: str, mode: str, output: Path) -> None:
                     raise ValueError("npm resolved a native package outside the isolated installation")
                 installed_identity(platform_package, selected)
                 native = read_json(platform_package / "native-manifest.json")
+                if name == ("global" if smoke else "local"):
+                    cancellation_binary = platform_package / TARGETS[target]["executable"]
                 if (native["source_sha"], native["version"], native["target"], native["archive"]) != (
                         manifest["source_sha"], manifest["version"], target, selected["native_archive"]):
                     raise ValueError("Installed npm native source identity differs")
+                if verification_scope(native) != scope:
+                    raise ValueError("Installed npm verification scope differs")
                 bin_paths = {"global": global_prefix / ("brewdoc.cmd" if os.name == "nt" else "bin/brewdoc"),
                              "local": local_prefix / "node_modules/.bin" / ("brewdoc.cmd" if os.name == "nt" else "brewdoc")}
                 arguments = [str(bin_paths[name])] if name != "npx" else []
                 if name == "npx":
                     arguments = npm_command(["--yes", f"--package={package}", "brewdoc"], npx=True)
-                consumers[name] = consumer_probe(arguments, work, environment, native, selected["metadata"]["name"])
-            cancellation = cancellation_probe(packages["local"] / "bin/brewdoc.cjs", work, environment, target != "windows-x64")
+                if smoke and name == "npx":
+                    consumers[name] = {"self_check": 38, "selected_package": selected["metadata"]["name"], "fixtures": [], "probes": []}
+                else:
+                    consumers[name] = consumer_probe(arguments, work, environment, native, selected["metadata"]["name"])
+            cancellation = cancellation_probe(packages["global" if smoke else "local"] / "bin/brewdoc.cjs", work, environment,
+                                              target != "windows-x64", native_binary=cancellation_binary)
             signatures = None
             if mode == "public":
-                verified = run_npm(["audit", "signatures"], local_prefix, environment)
+                audit_prefix = packages["npx"].parents[1] if smoke else local_prefix
+                verified = run_npm(["audit", "signatures"], audit_prefix, environment)
                 report = verified.stdout.decode("utf-8")
                 if not re.search(r"2 packages? (?:have |has )?verified registry signatures", report) or not re.search(r"2 packages? (?:have |has )?verified attestations", report):
                     raise ValueError("npm registry signatures or provenance attestations are incomplete")
                 signatures = {"verified_packages": 2, "verified_attestations": 2, "stdout_sha256": digest(verified.stdout)}
             write_json(output, {"schema": 1, "verdict": "PASS", "mode": mode, "target": target,
+                       "verification_scope": scope,
                        "version": manifest["version"], "source_sha": manifest["source_sha"],
                        "node": NODE_VERSION, "npm": NPM_VERSION,
                        "packages": {record["metadata"]["name"]: record["integrity"] for record in manifest["packages"]},
@@ -692,6 +848,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--target", choices=list(PACKAGES))
     parser.add_argument("--mode", choices=["local", "public"], default="local")
+    parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--public-evidence", type=Path)
     args = parser.parse_args()
     required = {"pack": ("native_dir", "output"), "aggregate": ("input", "output"),
                 "probe": ("input", "target", "output")}.get(args.operation, ("input",))
@@ -707,9 +865,10 @@ def main() -> None:
     elif args.operation == "publish":
         publish(args.input.resolve())
     elif args.operation == "check-public":
-        check_public(args.input.resolve())
+        check_public(args.input.resolve(), args.output.resolve() if args.output else None)
     else:
-        probe(args.input.resolve(), args.target, args.mode, args.output.resolve())
+        probe(args.input.resolve(), args.target, args.mode, args.output.resolve(), args.smoke,
+              args.public_evidence.resolve() if args.public_evidence else None)
 
 
 if __name__ == "__main__":
