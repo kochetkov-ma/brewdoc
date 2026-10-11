@@ -116,7 +116,7 @@ def test_publish_failure_exposes_only_allowlisted_code_and_static_cause(tmp_path
     (b'{"error":{"code":"E403","code":"EOTP","detail":"CANARY_DUPLICATE_SECRET"}}', b"CANARY_STDERR_SECRET"),
     (b'[{"error":{"code":"E403","detail":"CANARY_ARRAY_SECRET"}}]', b"CANARY_STDERR_SECRET"),
     (b"", b'{"error":{"code":"E403","detail":"CANARY_STDERR_SECRET"}}'),
-    (b'{"error":{"code":"E403","summary":"provenance generation failed CANARY_SUMMARY_SECRET","detail":"one-time password required CANARY_DETAIL_SECRET"}}', b"CANARY_STDERR_SECRET"),
+    (b'{"error":{"code":"E403","summary":"provenance generation failed; one-time password required CANARY_SUMMARY_SECRET","detail":"CANARY_DETAIL_SECRET"}}', b"CANARY_STDERR_SECRET"),
     (b'{"error":{"code":["CANARY_CODE_SECRET"],"summary":"CANARY_SUMMARY_SECRET"}}', b"CANARY_STDERR_SECRET"),
 ], ids=["unknown-code", "malformed", "oversized", "conflicting-keys", "wrong-shape", "stderr-only", "conflicting-causes", "wrong-code-type"])
 def test_publish_failure_uses_generic_diagnostics_for_untrusted_error_output(tmp_path, monkeypatch, capsys, npm_builder, stdout, stderr):
@@ -145,6 +145,49 @@ def test_publish_failure_classifies_fixed_provenance_phrase_without_exposing_aut
     # THEN classification emits only a finite code and category without quoting diagnostic prose
     assert str(failure.value) == f"npm publish failed (1); code={expected_code}; cause=provenance-error; authenticated output was suppressed", "known phrases never authorize echoing unknown codes or raw detail"
     assert capsys.readouterr() == ("", ""), "classified provenance errors remain unprinted"
+
+
+@pytest.mark.parametrize("detail", ["provenance generation failed CANARY_DETAIL_SECRET",
+                                  "Package name too similar to existing package CANARY_DETAIL_SECRET"], ids=["provenance", "name-similarity"])
+def test_e403_generic_summary_never_classifies_specific_reason_from_detail(tmp_path, monkeypatch, capsys, npm_builder, detail):
+    # GIVEN an E403 generic summary whose detail contains a specific reason and secret
+    payload = json.dumps({"error": {"code": "E403", "summary": "Forbidden", "detail": detail,
+                                  "extras": {"authUrl": "CANARY_AUTH_SECRET"}}}).encode()
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, payload)
+    assert json.loads(payload)["error"]["summary"] == "Forbidden", "the server summary states no specific refusal reason"
+    # WHEN failed publication classifies the explicit server summary only
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN detail cannot replace the generic refusal or enter its observable message
+    assert str(failure.value) == "npm publish failed (1); code=E403; cause=registry-forbidden; authenticated output was suppressed", "generic summary must not inherit diagnostic boilerplate or detail claims"
+    assert len(calls) == 1, "summary-only refusal classification does not retry publication"
+    assert capsys.readouterr() == ("", ""), "authenticated detail remains unprinted"
+
+
+@pytest.mark.parametrize("code,summary,expected_code,cause", [
+    ("E403", "Package name too similar to existing package", "E403", "package-name-refused"),
+    ("E403", "Please verify your email before publishing", "E403", "email-verification-required"),
+    ("E403", "You do not have permission to publish this package", "E403", "publish-permission-refused"),
+    ("E403", "Publication blocked by a security policy", "E403", "security-policy-refused"),
+    ("E403", "Publication not allowed from your IP address", "E403", "ip-restriction-mentioned"),
+    ("E401", "Package name too similar to existing package", "E401", "authentication-rejected"),
+    ("E403", "Package name too similar; verify your email", "UNKNOWN", "unclassified"),
+], ids=["name-similarity", "email", "publish-permission", "explicit-security-policy", "explicit-ip", "non-e403", "conflicting-summary"])
+def test_explicit_registry_summary_emits_only_fixed_e403_refusal_categories(tmp_path, monkeypatch, capsys, npm_builder, code, summary, expected_code, cause):
+    # GIVEN one explicit server summary and secret-bearing detail and extras
+    payload = json.dumps({"error": {"code": code, "summary": summary,
+        "detail": "Forbidden by security policy CANARY_DETAIL_SECRET",
+        "extras": {"token": "CANARY_TOKEN_SECRET", "authUrl": "CANARY_AUTH_SECRET"},
+        "doneUrl": "CANARY_DONE_SECRET"}}).encode()
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, payload)
+    assert json.loads(payload)["error"]["summary"] == summary, "only the explicit summary supplies the refusal premise"
+    # WHEN publication classifies the bounded complete JSON error
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN finite E403 refinement cannot disclose prose, change other codes or resolve ambiguity
+    assert str(failure.value) == f"npm publish failed (1); code={expected_code}; cause={cause}; authenticated output was suppressed", "only unambiguous explicit E403 summary categories may refine the failure"
+    assert len(calls) == 1, "registry refusal diagnostics do not retry publication"
+    assert capsys.readouterr() == ("", ""), "authenticated registry strings remain unprinted"
 
 
 def test_publish_failure_preserves_generic_refusal_when_json_decoder_exceeds_recursion(tmp_path, monkeypatch, capsys, npm_builder):
