@@ -142,16 +142,94 @@ def test_pinned_npm_pack_object_result_is_admitted(tmp_path, monkeypatch, npm_bu
     }, "npm 12 pack result was not bound to its archive"
 
 
-@pytest.mark.parametrize("mode,executable,expected", [(0o666, False, 0o644), (0o666, True, 0o755), (0o755, False, 0o755)])
-def test_portable_tar_modes_preserve_executable_bits(npm_builder, mode, executable, expected):
+@pytest.mark.parametrize("mode,executable,target,expected", [(0o666, False, None, 0o644), (0o666, True, None, 0o755),
+    (0o755, False, None, 0o755), (0o777, False, "windows-x64", 0o644), (0o777, True, "windows-x64", 0o755),
+    (0o755, False, "linux-x64", 0o755), (0o755, False, "macos-arm64", 0o755)])
+def test_portable_tar_modes_preserve_executable_bits(npm_builder, mode, executable, target, expected):
     # GIVEN Windows writable-file or native executable source modes.
     assert mode & 0o600 == 0o600, "Source owner permissions precondition changed"
 
     # WHEN pinned npm creates its portable tar headers.
-    observed = npm_builder.packed_mode(mode, executable)
+    observed = npm_builder.packed_mode(mode, executable, target=target)
 
     # THEN group writes are removed and bin executables remain executable.
     assert observed == expected, "npm portable mode mapping changed"
+
+
+def windows_platform_tarball(tmp_path, builder, *, payload=b"Windows native executable", tar_mode=0o644):
+    """Build a real package carrying Windows' observed 0777 native and 0644 tar modes."""
+    original = b"Windows native executable"
+    native = {"schema": 1, "target": "windows-x64", "version": "0.3.1", "source_sha": "a" * 40,
+              "python": "3.12.14", "wheel_sha256": "b" * 64, "lock_sha256": "c" * 64,
+              "executable": "brewdoc/brewdoc.exe", "archive": {
+                  "filename": "brewdoc-0.3.1-windows-x64.zip", "bytes": 1, "sha256": "d" * 64},
+              "inventory": {"brewdoc": {"kind": "directory", "mode": 0o777}, "brewdoc/brewdoc.exe": {
+                  "kind": "file", "mode": 0o777, "bytes": len(original), "sha256": hashlib.sha256(original).hexdigest()}},
+              "oracle": [{"path": f"tests/fixtures/input-{index}.pdf", "source_sha256": "e" * 64,
+                  "code": 0, "receipt": {"out": None}, "markdown_bytes": 1, "markdown_sha256": "f" * 64} for index in range(11)],
+              "probes": [{"probe": name, "path": "tests/fixtures/input.xlsx"} for name in ("sheet-order", "vba", "epub2", "formula")]}
+    verification = {"verdict": "PASS", "target": "windows-x64", "version": "0.3.1", "source_sha": "a" * 40,
+                    "archive_sha256": "d" * 64}
+    metadata = builder.package_metadata("0.3.1", "windows-x64")
+    payloads = {"package.json": json.dumps(metadata).encode(), "native-manifest.json": json.dumps(native).encode(),
+                "native-verification.json": json.dumps(verification).encode(), "binary/brewdoc.exe": payload}
+    path, files = tmp_path / "brewdoc-win32-x64-0.3.1.tgz", {}
+    with tarfile.open(path, "w:gz") as archive:
+        for name, body in payloads.items():
+            member = tarfile.TarInfo("package/" + name)
+            member.size, member.mode = len(body), tar_mode if name == "binary/brewdoc.exe" else 0o644
+            archive.addfile(member, io.BytesIO(body))
+            files[name] = {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(), "mode": member.mode}
+    body = path.read_bytes()
+    record = {"target": "windows-x64", "version": "0.3.1", "source_sha": "a" * 40,
+              "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(), "integrity": builder.integrity(body),
+              "metadata": metadata, "files": files, "native_archive": native["archive"], "links": {}}
+    return path, record
+
+
+def test_windows_native_executable_admits_exact_non_bin_tar_mode_without_changing_its_bytes(tmp_path, npm_builder):
+    # GIVEN Windows Python reports 0777 for the exact native executable while pinned npm emits 0644
+    path, record = windows_platform_tarball(tmp_path, npm_builder)
+    assert record["files"]["binary/brewdoc.exe"]["mode"] == 0o644, "the real tar carries the observed Windows non-bin mode"
+    # WHEN complete native/archive admission reopens and verifies actual tar members
+    verdict = npm_builder.verify_tarball(path, record)
+    # THEN the unchanged native executable is admitted under exact target-specific packing semantics
+    assert verdict is None, "Windows portable mode conversion must preserve strict native file identity"
+
+
+def test_windows_npm_producer_seals_the_same_target_specific_modes_as_cross_host_admission(tmp_path, monkeypatch, npm_builder):
+    # GIVEN a real Windows-shaped tarball and staged executable with Python's 0777 source mode
+    output = tmp_path / "output"
+    output.mkdir()
+    path, original = windows_platform_tarball(output, npm_builder)
+    stage = tmp_path / "stage"
+    with tarfile.open(path) as archive:
+        for member in archive.getmembers():
+            destination = stage / member.name.removeprefix("package/")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(archive.extractfile(member).read())
+    (stage / "binary/brewdoc.exe").chmod(0o777)
+    packed = {"brewdoc-win32-x64": {"filename": path.name, "integrity": original["integrity"]}}
+    monkeypatch.setattr(npm_builder, "check_tools", lambda *arguments: None)
+    monkeypatch.setattr(npm_builder, "run_npm", lambda *arguments: subprocess.CompletedProcess([], 0, json.dumps(packed).encode(), b""))
+    assert (stage / "binary/brewdoc.exe").stat().st_mode & 0o777 == 0o777, "the source stage retains the raw native executable mode"
+    # WHEN packing creates the platform record and immediately reopens the actual tarball
+    record = npm_builder.pack_directory(stage, output, {key: original[key] for key in ("target", "version", "source_sha", "native_archive", "links")})
+    # THEN producer and remote admission share exact modes while source staging remains unchanged
+    assert record["files"] == original["files"], "the producer seals every actual file byte/hash/mode under the admitted target"
+    assert (stage / "binary/brewdoc.exe").stat().st_mode & 0o777 == 0o777, "portable tar expectations never alter raw staged mode checks"
+
+
+@pytest.mark.parametrize("payload,mode", [(b"substituted executable", 0o644), (b"Windows native executable", 0o755)])
+def test_windows_npm_native_admission_still_refuses_changed_executable_bytes_or_wrong_tar_mode(tmp_path, npm_builder, payload, mode):
+    # GIVEN self-consistent package transport and outer inventory hide an altered native file or mode
+    path, record = windows_platform_tarball(tmp_path, npm_builder, payload=payload, tar_mode=mode)
+    assert record["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), "the transport itself starts internally consistent"
+    # WHEN admission binds the actual tar members to the original admitted native inventory
+    with pytest.raises(ValueError, match="native files"):
+        npm_builder.verify_tarball(path, record)
+    # THEN refusing the substitution cannot rewrite original native source evidence
+    assert record["source_sha"] == "a" * 40, "the refused source identity remains unchanged"
 
 
 def test_registry_omitted_files_field_accepts_exact_tarball(npm_builder, monkeypatch):

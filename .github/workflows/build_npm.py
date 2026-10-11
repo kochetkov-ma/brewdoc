@@ -48,8 +48,10 @@ def integrity(payload: bytes) -> str:
     return "sha512-" + base64.b64encode(hashlib.sha512(payload).digest()).decode("ascii")
 
 
-def packed_mode(mode: int, executable: bool = False) -> int:
-    """Match pinned npm's portable modes and executable bin normalization."""
+def packed_mode(mode: int, executable: bool = False, *, target: str | None = None) -> int:
+    """Use npm's Windows file modes or POSIX bits, then normalize declared bin entries."""
+    if target == "windows-x64":
+        mode = 0o644
     return (mode | (0o111 if executable else 0) | 0o600) & ~0o022
 
 
@@ -139,7 +141,7 @@ def terminal_file(name: str, inventory: dict) -> str:
     return name
 
 
-def stage_native(native: Path, inventory: dict, output: Path) -> dict:
+def stage_native(native: Path, inventory: dict, output: Path, *, target: str | None = None) -> dict:
     """Validate the full native tree before materializing npm-only file aliases."""
     if native.is_symlink() or not native.is_dir() or output.exists():
         raise ValueError("Native input or npm staging directory is invalid")
@@ -168,7 +170,7 @@ def stage_native(native: Path, inventory: dict, output: Path) -> dict:
             relative = "binary/" + name.removeprefix("brewdoc/")
             mappings[relative] = {"link": entry["target"], "terminal": terminal,
                                   "sha256": expected["sha256"], "mode": expected["mode"],
-                                  "packed_mode": packed_mode(expected["mode"])}
+                                  "packed_mode": packed_mode(expected["mode"], target=target)}
         elif kind == "file" and stat.S_ISREG(observed.st_mode):
             source, expected = path, entry
         else:
@@ -248,12 +250,12 @@ def check_tools(environment: dict, cwd: Path) -> None:
         raise ValueError(f"npm tooling must be Node {NODE_VERSION} and npm {NPM_VERSION}")
 
 
-def file_inventory(folder: Path) -> dict:
+def file_inventory(folder: Path, *, target: str | None = None) -> dict:
     """Record every package file before packing, including native licenses."""
     bins = set(read_json(folder / "package.json").get("bin", {}).values())
     return {path.relative_to(folder).as_posix(): {"bytes": path.stat().st_size,
             "sha256": digest(path.read_bytes()), "mode": packed_mode(path.stat().st_mode & 0o777,
-                                       path.relative_to(folder).as_posix() in bins)}
+                                       path.relative_to(folder).as_posix() in bins, target=target)}
             for path in sorted(folder.rglob("*")) if path.is_file()}
 
 
@@ -294,11 +296,11 @@ def verify_tarball(path: Path, record: dict) -> None:
                 identity = native["inventory"][terminal]
                 destination = "binary/" + name.removeprefix("brewdoc/")
                 binary_files[destination] = {"bytes": identity["bytes"], "sha256": identity["sha256"],
-                                             "mode": packed_mode(identity["mode"])}
+                                             "mode": packed_mode(identity["mode"], target=native["target"])}
                 if entry["kind"] == "symlink":
                     mappings[destination] = {"link": entry["target"], "terminal": terminal,
                                              "sha256": identity["sha256"], "mode": identity["mode"],
-                                             "packed_mode": packed_mode(identity["mode"])}
+                                             "packed_mode": packed_mode(identity["mode"], target=native["target"])}
             if ({name: value for name, value in observed.items() if name.startswith("binary/")} != binary_files
                     or record["links"] != mappings):
                 raise ValueError("npm native files or materialized link identities differ")
@@ -322,7 +324,8 @@ def pack_directory(folder: Path, output: Path, extra: dict) -> dict:
     path = output / filename
     payload = path.read_bytes()
     record = {**extra, "filename": filename, "bytes": len(payload), "sha256": digest(payload),
-              "integrity": integrity(payload), "metadata": read_json(folder / "package.json"), "files": file_inventory(folder)}
+              "integrity": integrity(payload), "metadata": read_json(folder / "package.json"),
+              "files": file_inventory(folder, target=extra.get("target"))}
     if packed[name]["integrity"] != record["integrity"]:
         raise ValueError("npm pack integrity differs from archive bytes")
     verify_tarball(path, record)
@@ -349,7 +352,7 @@ def pack_native(native_dir: Path, output: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="brewdoc-npm-stage-") as temporary:
         folder = Path(temporary) / "package"
         write_package(folder, package_metadata(version, target))
-        mappings = stage_native(native_dir / "bundle/brewdoc", manifest["inventory"], folder / "binary")
+        mappings = stage_native(native_dir / "bundle/brewdoc", manifest["inventory"], folder / "binary", target=target)
         write_json(folder / "native-manifest.json", manifest)
         write_json(folder / "native-verification.json", verification)
         record = pack_directory(folder, output, {"target": target, "version": version, "source_sha": manifest["source_sha"],
