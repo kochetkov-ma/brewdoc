@@ -2,6 +2,7 @@
 
 import importlib.util
 import base64
+import hashlib
 import json
 import os
 import stat
@@ -46,6 +47,187 @@ def native_record(tmp_path, target='linux-x64'):
     BUILDER.write_json(directory / 'manifest.json', manifest)
     BUILDER.write_json(directory / 'verification.json', verification)
     return directory, manifest
+
+
+def linux_runtime_fixture(tmp_path, monkeypatch):
+    """Provide actual copied library bytes with package-query I/O isolated at its edge."""
+    root, host = tmp_path / 'brewdoc', tmp_path / 'host'
+    (root / '_internal').mkdir(parents=True)
+    sources = []
+    owners = {'libgcc_s.so.1': 'libgcc-s1:amd64', 'libstdc++.so.6': 'libstdc++6:amd64'}
+    for filename, package in owners.items():
+        source = host / 'usr/lib' / filename
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(('actual ' + filename).encode())
+        (root / '_internal' / filename).write_bytes(source.read_bytes())
+        sources.append({'name': filename, 'source': str(source), 'bytes': source.stat().st_size,
+                        'sha256': BUILDER.digest(source)})
+    notice = host / 'usr/share/doc/gcc-12-base/copyright'
+    notice.parent.mkdir(parents=True)
+    notice.write_text('GCC copyright\nGCC RUNTIME LIBRARY EXCEPTION\nVersion 3.1, 31 March 2009\n'
+                      '0. Definitions.\n1. Grant of Additional Permission.\n2. No Weakening of GCC Copyleft.\n'
+                      'The availability of this Exception does not imply any general presumption that third-party '
+                      'software is unaffected by the copyleft requirements of the license of GCC.\n'
+                      'GPL3: /usr/share/common-licenses/GPL-3\n')
+    for package in owners.values():
+        folder = host / 'usr/share/doc' / package.split(':')[0]
+        folder.mkdir(parents=True)
+        (folder / 'copyright').symlink_to(notice)
+    gpl = host / 'usr/share/common-licenses/GPL-3'
+    gpl.parent.mkdir(parents=True)
+    gpl.write_text('GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n'
+                   '0. Definitions.\n17. Interpretation of Sections 15 and 16.\n'
+                   'END OF TERMS AND CONDITIONS\nHow to Apply These Terms to Your New Programs\n'
+                   '<http://www.gnu.org/licenses/why-not-lgpl.html>.\n')
+    versions = {**{package: '12.3.0-1ubuntu1~22.04.2' for package in owners.values()},
+                'gcc-12-base:amd64': '12.3.0-1ubuntu1~22.04.2', 'base-files': '12ubuntu4.7'}
+
+    def query(arguments, **kwargs):
+        """Emulate only dpkg's installed package ownership and file metadata."""
+        operation, name = arguments[1], arguments[-1]
+        if operation == '-W':
+            source_package = {'base-files': 'base-files'}.get(name, 'gcc-12')
+            output = '\t'.join((name, versions[name], source_package, versions[name], 'installed')) + '\n'
+        elif operation == '-L':
+            paths = {'libgcc-s1:amd64': ['/usr/lib/libgcc_s.so.1'],
+                     'libstdc++6:amd64': ['/usr/lib/libstdc++.so.6'],
+                     'gcc-12-base:amd64': ['/usr/share/doc/gcc-12-base/copyright']}
+            output = '\n'.join(paths[name]) + '\n'
+        else:
+            output = {'/usr/share/common-licenses/GPL-3': 'base-files: /usr/share/common-licenses/GPL-3\n'}.get(
+                name, 'gcc-12-base:amd64: /usr/share/doc/gcc-12-base/copyright\n')
+        return subprocess.CompletedProcess(arguments, 0, output.encode(), b'')
+
+    monkeypatch.setattr(BUILDER, 'command', query)
+    return root, host, sources, notice, gpl, versions
+
+
+def test_linux_native_runtime_libraries_retain_matching_package_notices_and_hashes(tmp_path, monkeypatch):
+    # GIVEN copied compiler libraries whose installed owners and source notices agree
+    root, host, sources, notice, gpl, _versions = linux_runtime_fixture(tmp_path, monkeypatch)
+    assert len(sources) == 2, 'both actual compiler runtime payloads need retained notices'
+    # WHEN the pre-archive collector binds host ownership to the copied runtime bytes
+    retained, libraries = BUILDER.collect_linux_runtime_notices(root, sources, host=host)
+    # THEN complete notice files and actual library hashes enter the existing retention records
+    assert [row['name'] for row in libraries] == ['libgcc_s.so.1', 'libstdc++.so.6'], 'the fixed runtime pair is recorded'
+    assert [(root / row['path']).read_bytes() for row in retained] == [gpl.read_bytes(), notice.read_bytes()], (
+        'the collector retains complete original copyright and GPL3 bytes without rewriting them')
+    copyright_record = {'package': 'gcc-12-base:amd64', 'version': '12.3.0-1ubuntu1~22.04.2',
+                        'source_package': 'gcc-12', 'source_version': '12.3.0-1ubuntu1~22.04.2'}
+    gpl_record = {'package': 'base-files', 'version': '12ubuntu4.7', 'source_package': 'base-files', 'source_version': '12ubuntu4.7'}
+    expected_notices = [{'path': 'licenses/installed/native-runtime/' + name, 'bytes': len(payload),
+                         'sha256': hashlib.sha256(payload).hexdigest()} for name, payload in
+                        [('gcc-12-base-amd64-copyright', notice.read_bytes()), ('GPL-3', gpl.read_bytes())]]
+    expected = [{'name': name, 'package': package, 'version': '12.3.0-1ubuntu1~22.04.2',
+                 'source_package': 'gcc-12', 'source_version': '12.3.0-1ubuntu1~22.04.2',
+                 'path': '_internal/' + name, 'bytes': len(('actual ' + name).encode()),
+                 'sha256': hashlib.sha256(('actual ' + name).encode()).hexdigest(),
+                 'copyright_package': copyright_record, 'gpl_package': gpl_record, 'notices': expected_notices}
+                for name, package in [('libgcc_s.so.1', 'libgcc-s1:amd64'), ('libstdc++.so.6', 'libstdc++6:amd64')]]
+    assert libraries == expected, 'complete public records bind exact binary/source versions, shipped bytes and full notice identities'
+
+
+@pytest.mark.parametrize('change', ['missing-notice', 'truncated-exception', 'missing-gpl', 'truncated-gpl', 'wrong-source',
+                                  'copied-bytes', 'source-bytes', 'missing-library', 'missing-source', 'duplicate-source'])
+def test_linux_native_notice_collection_refuses_unbound_or_incomplete_license_inputs(tmp_path, monkeypatch, change):
+    # GIVEN an otherwise complete actual library/package/notice source mapping
+    root, host, sources, notice, gpl, versions = linux_runtime_fixture(tmp_path, monkeypatch)
+    assert (root / '_internal/libgcc_s.so.1').read_bytes() == b'actual libgcc_s.so.1', 'the source copy starts exact'
+    changes = {'missing-notice': notice.unlink, 'truncated-exception': lambda: notice.write_text('GCC copyright\n'),
+               'missing-gpl': gpl.unlink, 'wrong-source': lambda: versions.update({'gcc-12-base:amd64': '12.2.0'}),
+               'truncated-gpl': lambda: gpl.write_text(gpl.read_text().replace('why-not-lgpl.html>.', '')),
+               'copied-bytes': lambda: (root / '_internal/libgcc_s.so.1').write_bytes(b'substituted library'),
+               'source-bytes': lambda: Path(sources[0]['source']).write_bytes(b'changed host library'),
+               'missing-library': lambda: (root / '_internal/libgcc_s.so.1').unlink(),
+               'missing-source': lambda: sources.pop(),
+               'duplicate-source': lambda: sources.append(sources[0])}
+    changes[change]()
+    # WHEN admission runs before any distributable archive is written
+    with pytest.raises(ValueError, match='Linux runtime'):
+        BUILDER.collect_linux_runtime_notices(root, sources, host=host)
+    # THEN the incomplete notice set cannot become archive input
+    assert (root / 'licenses/installed/native-runtime').exists() is False, 'all evidence is validated before retention'
+
+
+def runtime_hook_fixture(tmp_path, monkeypatch):
+    """Model two installed tool owners while retaining real original runtime-hook files."""
+    environment = tmp_path / 'environment'
+    paths = {'pyinstaller': 'lib/site-packages/PyInstaller/hooks/rthooks/pyi_rth_inspect.py',
+             'pyinstaller-hooks-contrib': 'lib/site-packages/_pyinstaller_hooks_contrib/rthooks/pyi_rth_cryptography_openssl.py'}
+    versions = {'pyinstaller': '6.22.3', 'pyinstaller-hooks-contrib': '2026.8'}
+    packages, scripts = {}, []
+    for component, name in paths.items():
+        source = environment / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(('Original full hook source, copyright 2024: ' + component + '\n').encode())
+        packages[component] = SimpleNamespace(version=versions[component], files=[name], locate_file=lambda item: environment / item)
+        scripts.append((source.stem, str(source), 'PYSOURCE'))
+    monkeypatch.setattr(BUILDER.importlib.metadata, 'distribution', packages.__getitem__)
+    return environment, scripts, versions, packages
+
+
+def test_actual_included_hook_sources_keep_full_original_attribution_and_pinned_tool_identity(tmp_path, monkeypatch):
+    # GIVEN Analysis-selected hook sources installed inside the isolated pinned build environment
+    environment, scripts, versions, _packages = runtime_hook_fixture(tmp_path, monkeypatch)
+    assert len(scripts) == 2, 'the fixture distinguishes core and contributed runtime-hook owners'
+    # WHEN the collector captures before EXE and retains unchanged full source files before archiving
+    captured = BUILDER.capture_native_sources([], scripts, environment, versions)
+    root = tmp_path / 'brewdoc'
+    retained, hooks = BUILDER.collect_runtime_hook_notices(root, captured['hooks'])
+    # THEN every copied notice keeps complete source bytes and exact installed-tool provenance
+    assert [(root / row['path']).read_bytes() for row in retained] == [Path(row[1]).read_bytes() for row in sorted(scripts)], (
+        'runtime hook attribution retains original full file contents including the contributed 2024 header')
+    assert [(row['component'], row['version']) for row in hooks] == [('pyinstaller-hooks-contrib', '2026.8'), ('pyinstaller', '6.22.3')], (
+        'both installed tool versions stay attached to their actual captured hook sources')
+    expected = []
+    for name, component, version in [('pyi_rth_cryptography_openssl.py', 'pyinstaller-hooks-contrib', '2026.8'),
+                                     ('pyi_rth_inspect.py', 'pyinstaller', '6.22.3')]:
+        payload = ('Original full hook source, copyright 2024: ' + component + '\n').encode()
+        expected.append({'name': name, 'component': component, 'version': version, 'bytes': len(payload),
+                         'sha256': hashlib.sha256(payload).hexdigest(), 'notice': {
+                             'path': 'licenses/installed/runtime-hooks/' + name, 'bytes': len(payload),
+                             'sha256': hashlib.sha256(payload).hexdigest()}})
+    assert hooks == expected, 'full original hook source and retained notice identities are bound to each exact installed tool'
+    assert (str(environment) in json.dumps(hooks)) is False, 'shipped runtime metadata contains no private host source paths'
+
+
+@pytest.mark.parametrize('change', ['changed', 'missing', 'duplicate', 'unsafe-name', 'empty'])
+def test_runtime_hook_retention_refuses_changed_missing_or_unsafe_captured_sources(tmp_path, monkeypatch, change):
+    # GIVEN an exact pre-EXE capture of installed runtime-hook sources
+    environment, scripts, versions, _packages = runtime_hook_fixture(tmp_path, monkeypatch)
+    captured = BUILDER.capture_native_sources([], scripts, environment, versions)['hooks']
+    assert next(row['bytes'] for row in captured if row['component'] == 'pyinstaller') == 55, 'the core captured source has the exact authored byte count'
+    changes = {'changed': lambda: Path(captured[0]['source']).write_bytes(b'changed hook source'),
+               'missing': lambda: Path(captured[0]['source']).unlink(), 'duplicate': lambda: captured.append(captured[0]),
+               'unsafe-name': lambda: captured[0].update(name='../pyi_rth_bad.py'), 'empty': captured.clear}
+    changes[change]()
+    # WHEN post-freeze retention compares source/name identities before writing any notice
+    with pytest.raises(ValueError, match='Runtime hook'):
+        BUILDER.collect_runtime_hook_notices(tmp_path / 'brewdoc', captured)
+    # THEN refused hook evidence cannot become a distributable notice set
+    assert (tmp_path / 'brewdoc/licenses').exists() is False, 'all hooks are admitted before the first notice write'
+
+
+@pytest.mark.parametrize('change', ['outside-environment', 'wrong-version', 'duplicate', 'wrong-directory'])
+def test_runtime_hook_capture_requires_unique_installed_pinned_owners_inside_the_build_environment(tmp_path, monkeypatch, change):
+    # GIVEN a real hook file and the exact installed build-tool package file lists
+    environment, scripts, versions, packages = runtime_hook_fixture(tmp_path, monkeypatch)
+    assert scripts[0][0] == 'pyi_rth_inspect', 'the control source is the normal core runtime hook'
+    relocated = tmp_path / 'pyi_rth_inspect.py'
+    relocated.write_bytes(Path(scripts[0][1]).read_bytes())
+    wrong_folder = environment / 'lib/site-packages/pyi_rth_inspect.py'
+    wrong_folder.write_bytes(relocated.read_bytes())
+    changes = {'outside-environment': lambda: scripts.__setitem__(0, (scripts[0][0], str(relocated), 'PYSOURCE')),
+               'wrong-version': lambda: setattr(packages['pyinstaller'], 'version', '6.22.2'),
+               'duplicate': lambda: scripts.append(scripts[0]),
+               'wrong-directory': lambda: (scripts.__setitem__(0, (scripts[0][0], str(wrong_folder), 'PYSOURCE')),
+                   setattr(packages['pyinstaller'], 'files', ['lib/site-packages/pyi_rth_inspect.py']))}
+    changes[change]()
+    # WHEN capture checks the actual files and pinned package ownership before EXE
+    with pytest.raises(ValueError, match='Runtime hook'):
+        BUILDER.capture_native_sources([], scripts, environment, versions)
+    # THEN invalid attribution never writes a build-local source sidecar
+    assert (tmp_path / 'native-notice-sources.json').exists() is False, 'the caller writes evidence only after capture succeeds'
 
 
 @pytest.mark.parametrize('name', ['../brewdoc/file', '/brewdoc/file', 'brewdoc/../file',

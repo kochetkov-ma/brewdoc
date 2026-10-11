@@ -7,6 +7,7 @@ import ast
 import base64
 import hashlib
 import importlib.util
+import importlib.metadata
 import json
 import os
 import platform
@@ -20,6 +21,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import tomllib
 import unicodedata
 import zipfile
 from multiprocessing.connection import Connection
@@ -327,6 +329,156 @@ def copy_notices(checkout: Path, destination: Path) -> None:
     shutil.copyfile(source / 'provenance.json', destination / 'provenance.json')
 
 
+def linux_package(package: str) -> dict:
+    """Require one installed Debian package with complete binary and source identities."""
+    fields = command(['dpkg-query', '-W', '--showformat=${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\t${db:Status-Status}\n',
+                      package]).stdout.decode().strip().split('\t')
+    if len(fields) != 5 or any(not field or '\n' in field for field in fields) or fields[0] != package or fields[4] != 'installed':
+        raise ValueError('Linux runtime package identity is incomplete or not installed')
+    return dict(zip(('package', 'version', 'source_package', 'source_version'), fields[:4], strict=True))
+
+
+def capture_native_sources(binaries: list, scripts: list, environment: Path, tool_versions: dict) -> dict:
+    """Capture selected Analysis payload identities before EXE with installed hook ownership."""
+    libraries = [{'name': Path(name).name, 'source': source, 'bytes': Path(source).stat().st_size,
+                  'sha256': digest(Path(source))} for name, source, _kind in binaries
+                 if Path(name).name in ('libgcc_s.so.1', 'libstdc++.so.6')]
+    packages = {name: importlib.metadata.distribution(name) for name in ('pyinstaller', 'pyinstaller-hooks-contrib')}
+    if {name: package.version for name, package in packages.items()} != tool_versions:
+        raise ValueError('Runtime hook build-tool versions differ from the pinned source')
+    hooks, seen = [], set()
+    for _name, source_name, _kind in scripts:
+        source = Path(source_name)
+        if not source.name.startswith('pyi_rth_'):
+            continue
+        if (source.name in seen or not re.fullmatch(r'pyi_rth_[a-zA-Z0-9_]+\.py', source.name)
+                or source.is_symlink() or not source.is_file() or not source.resolve().is_relative_to(environment.resolve())
+                or not 0 < source.stat().st_size <= 256 * 1024):
+            raise ValueError('Runtime hook Analysis source is missing, duplicated or outside its environment')
+        owners = [name for name, package in packages.items() if any(
+            Path(package.locate_file(item)).resolve() == source.resolve() for item in package.files or [])]
+        if len(owners) != 1:
+            raise ValueError('Runtime hook has no unique installed build-tool owner')
+        prefix = {'pyinstaller': ('PyInstaller', 'hooks', 'rthooks'),
+                  'pyinstaller-hooks-contrib': ('_pyinstaller_hooks_contrib', 'rthooks')}[owners[0]]
+        parts = source.resolve().relative_to(environment.resolve()).parts
+        if not any(parts[index:index + len(prefix)] == prefix for index in range(len(parts))):
+            raise ValueError('Runtime hook source is outside the installed runtime-hook directory')
+        seen.add(source.name)
+        hooks.append({'name': source.name, 'source': str(source), 'bytes': source.stat().st_size,
+                      'sha256': digest(source), 'component': owners[0], 'version': packages[owners[0]].version})
+    if not hooks:
+        raise ValueError('Runtime hook Analysis evidence is empty')
+    return {'libraries': sorted(libraries, key=lambda row: row['name']),
+            'hooks': sorted(hooks, key=lambda row: row['name'])}
+
+
+def collect_runtime_hook_notices(root: Path, records: list) -> tuple[list, list]:
+    """Retain complete original included hook sources only after their captured bytes agree."""
+    records = sorted(records, key=lambda row: row['name'])
+    seen = set()
+    for record in records:
+        source = Path(record['source'])
+        name = record['name']
+        if (name in seen or not re.fullmatch(r'pyi_rth_[a-zA-Z0-9_]+\.py', name) or source.name != name
+                or source.is_symlink() or not source.is_file()
+                or (source.stat().st_size, digest(source)) != (record['bytes'], record['sha256'])):
+            raise ValueError('Runtime hook source changed after Analysis or has an unsafe name')
+        seen.add(name)
+    if not seen:
+        raise ValueError('Runtime hook source evidence is empty')
+    retained, hooks = [], []
+    for record in records:
+        source = Path(record['source'])
+        destination = root / 'licenses/installed/runtime-hooks' / record['name']
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        notice = {'path': destination.relative_to(root).as_posix(), 'bytes': destination.stat().st_size,
+                  'sha256': digest(destination)}
+        if (notice['bytes'], notice['sha256']) != (record['bytes'], record['sha256']):
+            raise ValueError('Runtime hook retained notice bytes changed')
+        retained.append(notice)
+        hooks.append({**{key: record[key] for key in ('name', 'component', 'version', 'bytes', 'sha256')},
+                      'notice': notice})
+    return retained, hooks
+
+
+def collect_linux_runtime_notices(root: Path, sources: list, *, host: Path = Path('/')) -> tuple[list, list]:
+    """Bind the copied GCC runtimes to installed Ubuntu owners and complete original notices."""
+    owners = {'libgcc_s.so.1': 'libgcc-s1:amd64', 'libstdc++.so.6': 'libstdc++6:amd64'}
+    records, notices, seen = [], {}, set()
+    for captured in sources:
+        name = captured['name']
+        if name not in owners or name in seen:
+            raise ValueError('Linux runtime source mapping is unknown or duplicated')
+        seen.add(name)
+        source, copied = Path(captured['source']).resolve(), root / '_internal' / name
+        if (not source.is_file() or copied.is_symlink() or not copied.is_file()
+                or (source.stat().st_size, digest(source)) != (captured['bytes'], captured['sha256'])
+                or (captured['bytes'], captured['sha256']) != (copied.stat().st_size, digest(copied))):
+            raise ValueError('Linux runtime source and copied library bytes differ')
+        package = linux_package(owners[name])
+        paths = command(['dpkg-query', '-L', package['package']]).stdout.decode().splitlines()
+        if not any((host / path.lstrip('/')).resolve() == source for path in paths if path.startswith('/')):
+            raise ValueError('Linux runtime library is not owned by its installed package')
+        copyright = host / 'usr/share/doc' / package['package'].split(':')[0] / 'copyright'
+        copyright = copyright.resolve()
+        if not copyright.is_file() or not copyright.is_relative_to((host / 'usr/share/doc').resolve()):
+            raise ValueError('Linux runtime package copyright is missing or escapes documentation')
+        logical = '/' + copyright.relative_to(host.resolve()).as_posix()
+        ownership = command(['dpkg-query', '-S', logical]).stdout.decode().strip().split(': ', 1)
+        if len(ownership) != 2 or ownership[1] != logical or '\n' in ownership[0]:
+            raise ValueError('Linux runtime copyright owner is ambiguous')
+        document_package = linux_package(ownership[0])
+        if (document_package['source_package'], document_package['source_version']) != (
+                package['source_package'], package['source_version']):
+            raise ValueError('Linux runtime copyright belongs to a different source version')
+        notice = ' '.join(copyright.read_text(encoding='utf-8').split())
+        markers = ('GCC RUNTIME LIBRARY EXCEPTION', 'Version 3.1, 31 March 2009', '0. Definitions.',
+                   '1. Grant of Additional Permission.', '2. No Weakening of GCC Copyleft.',
+                   'The availability of this Exception does not imply any general presumption that third-party '
+                   'software is unaffected by the copyleft requirements of the license of GCC.')
+        if any(marker not in notice for marker in markers) or '/usr/share/common-licenses/GPL-3' not in notice:
+            raise ValueError('Linux runtime copyright lacks the complete GCC exception')
+        notice_name = document_package['package'].replace(':', '-') + '-copyright'
+        notices[notice_name] = copyright
+        records.append({'name': name, **package, 'path': copied.relative_to(root).as_posix(),
+                        'bytes': copied.stat().st_size, 'sha256': digest(copied),
+                        'copyright_package': document_package,
+                        'notices': ['licenses/installed/native-runtime/' + notice_name,
+                                    'licenses/installed/native-runtime/GPL-3']})
+    if seen != set(owners):
+        raise ValueError('Linux runtime source mapping is incomplete')
+    gpl = host / 'usr/share/common-licenses/GPL-3'
+    if gpl.is_symlink() or not gpl.is_file():
+        raise ValueError('Linux runtime GPL-3 notice is missing or linked')
+    text = ' '.join(gpl.read_text(encoding='utf-8').split())
+    markers = ('GNU GENERAL PUBLIC LICENSE', 'Version 3, 29 June 2007', '0. Definitions.',
+               '17. Interpretation of Sections 15 and 16.', 'END OF TERMS AND CONDITIONS',
+               'How to Apply These Terms to Your New Programs', 'why-not-lgpl.html>.')
+    if any(marker not in text for marker in markers):
+        raise ValueError('Linux runtime GPL-3 notice is incomplete')
+    ownership = command(['dpkg-query', '-S', '/usr/share/common-licenses/GPL-3']).stdout.decode().strip().split(': ', 1)
+    if len(ownership) != 2 or ownership[1] != '/usr/share/common-licenses/GPL-3' or '\n' in ownership[0]:
+        raise ValueError('Linux runtime GPL-3 package owner is ambiguous')
+    gpl_package = linux_package(ownership[0])
+    notices['GPL-3'] = gpl
+    retained = []
+    for name, source in sorted(notices.items()):
+        destination = root / 'licenses/installed/native-runtime' / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        if digest(destination) != digest(source):
+            raise ValueError('Linux runtime retained notice bytes changed')
+        retained.append({'path': destination.relative_to(root).as_posix(), 'bytes': destination.stat().st_size,
+                         'sha256': digest(destination)})
+    by_path = {row['path']: row for row in retained}
+    for record in records:
+        record['gpl_package'] = gpl_package
+        record['notices'] = [by_path[name] for name in record['notices']]
+    return retained, sorted(records, key=lambda row: row['path'])
+
+
 ORACLE_CODE = '''import hashlib, importlib.util, json, sys
 import tempfile,zipfile,xml.etree.ElementTree as ET
 from pathlib import Path
@@ -471,13 +623,21 @@ def build(checkout: Path, bundle: Path, output: Path, target: str, *, smoke: boo
         raise ValueError('Standalone oracle did not use the accepted installed wheel')
     entry = Path(observed['origin']).with_name('_standalone.py')
     specification = output / 'standalone.spec'
+    native_sources = output / 'native-notice-sources.json'
+    project = tomllib.loads((checkout / 'pyproject.toml').read_text(encoding='utf-8'))
+    tool_versions = {requirement.split('==')[0]: requirement.split('==')[1].split(';')[0].strip()
+                     for requirement in project['dependency-groups']['standalone']}
     specification.write_text(f'''from PyInstaller.utils.hooks import collect_data_files,collect_dynamic_libs,copy_metadata
+import json,runpy,sys
+from pathlib import Path
 datas=collect_data_files('brewdoc')+collect_data_files('pdfminer')
 datas+=collect_data_files('pypdfium2')+collect_data_files('pypdfium2_raw')
 for name in {names!r}: datas+=copy_metadata(name)
 analysis=Analysis([{str(entry)!r}],datas=datas,binaries=collect_dynamic_libs('pypdfium2_raw'),
  hiddenimports=['_quickjs','selectolax.lexbor','python_calamine'],excludes=['selectolax.parser'])
 analysis.datas=[item for item in analysis.datas if not item[0].replace('\\\\','/').startswith('selectolax/parser.')]
+capture=runpy.run_path({str(Path(__file__).resolve())!r})['capture_native_sources']
+Path({str(native_sources)!r}).write_text(json.dumps(capture(analysis.binaries,analysis.scripts,Path(sys.prefix),{tool_versions!r})),encoding='utf-8')
 archive=PYZ(analysis.pure)
 executable=EXE(archive,analysis.scripts,[],exclude_binaries=True,name='brewdoc',console=True,strip=False,upx=False)
 collection=COLLECT(executable,analysis.binaries,analysis.datas,strip=False,upx=False,name='brewdoc')
@@ -501,7 +661,13 @@ collection=COLLECT(executable,analysis.binaries,analysis.datas,strip=False,upx=F
                                   'bytes': destination.stat().st_size, 'sha256': digest(destination)})
     if not installed_licenses:
         raise ValueError('Standalone runtime notices were not retained')
-    (root / 'licenses/installed-manifest.json').write_text(json.dumps(installed_licenses, indent=2) + '\n')
+    sources = json.loads(native_sources.read_text(encoding='utf-8'))
+    retained, runtime_info['native_hooks'] = collect_runtime_hook_notices(root, sources['hooks'])
+    installed_licenses.extend(retained)
+    if target == 'linux-x64':
+        retained, runtime_info['native_libraries'] = collect_linux_runtime_notices(root, sources['libraries'])
+        installed_licenses.extend(retained)
+    write_json(root / 'licenses/installed-manifest.json', sorted(installed_licenses, key=lambda row: row['path']))
     version = producer['version']
     write_json(root / 'version.json', {'version': version, 'source_sha': producer['checkout_sha'],
                                       'python': data['python'], 'target': target})

@@ -2306,6 +2306,42 @@
         }
       ],
       "gaps": []
+    },
+    {
+      "component": "openssl-3.5.9",
+      "version": "3.5.9",
+      "url": "https://raw.githubusercontent.com/openssl/openssl/45e844fa2a14ec92d146bd8f5778ac130b6625fb/README.md",
+      "sha256": "f68c351048c11bd8499b9d6ef8b283386d4544cc556fd2679a2ff2b1c50a378b",
+      "expected_sha256": "f68c351048c11bd8499b9d6ef8b283386d4544cc556fd2679a2ff2b1c50a378b",
+      "gaps": [],
+      "files": [
+        {
+          "member": "README.md",
+          "path": "openssl/3.5.9/README-copyright.txt",
+          "input_sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "bytes": 150,
+          "normalization": "Extract bytes from Copyright heading through the blank line before <!-- Links; preserve section bytes unchanged"
+        }
+      ]
+    },
+    {
+      "component": "openssl-4.0.3",
+      "version": "4.0.3",
+      "url": "https://raw.githubusercontent.com/openssl/openssl/af1775b60dfa141a4ad762585052cabeb9f37e9e/README.md",
+      "sha256": "ae4d7773db05353b31ce1a022bac002df03506d818e94ea087b23a80c8e4084f",
+      "expected_sha256": "ae4d7773db05353b31ce1a022bac002df03506d818e94ea087b23a80c8e4084f",
+      "gaps": [],
+      "files": [
+        {
+          "member": "README.md",
+          "path": "openssl/4.0.3/README-copyright.txt",
+          "input_sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "sha256": "7dbbda3b3b7594825162aff406751dea98fa379301d16fd3a03ee4a5f342003f",
+          "bytes": 150,
+          "normalization": "Extract bytes from Copyright heading through the blank line before <!-- Links; preserve section bytes unchanged"
+        }
+      ]
     }
   ]
 }

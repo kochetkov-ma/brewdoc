@@ -1,3 +1,5 @@
+.github/workflows/*.py text eol=lf
+tests/**/*.py text eol=lf
 tests/fixtures/** -text
 pyproject.toml text eol=lf
 uv.lock text eol=lf
