@@ -261,12 +261,22 @@ def publish_failure(payload: bytes) -> tuple[str, str]:
         return unknown
     code = error["code"] if error["code"] in PUBLISH_CAUSES else "UNKNOWN"
     cause = PUBLISH_CAUSES.get(code, "unclassified")
-    message = " ".join(error.get(field, "") for field in ("summary", "detail")).lower()
+    fields = ("summary",) if code == "E403" else ("summary", "detail")
+    message = " ".join(error.get(field, "") for field in fields).lower()
     matches = {label for label, phrases in (
         ("provenance-error", ("provenance generation", "generate provenance", "invalid provenance", "provenance statement")),
         ("one-time-password-required", ("one-time password", "two-factor authentication")),
         ("version-conflict", ("cannot publish over", "previously published versions")),
     ) if any(phrase in message for phrase in phrases)}
+    if code == "E403":
+        matches.update(label for label, phrases in (
+            ("package-name-refused", ("package name too similar", "package name is reserved")),
+            ("email-verification-required", ("verify your email", "email address must be verified")),
+            ("publish-permission-refused", ("do not have permission to publish", "not authorized to publish",
+                                          "you may not perform that action with these credentials")),
+            ("security-policy-refused", ("blocked by security policy", "blocked by a security policy")),
+            ("ip-restriction-mentioned", ("not allowed from your ip address", "ip address is not allowed")),
+        ) if any(phrase in message for phrase in phrases))
     if len(matches) > 1:
         return unknown
     return code, next(iter(matches)) if matches else cause
