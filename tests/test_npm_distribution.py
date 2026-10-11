@@ -76,6 +76,118 @@ def test_public_self_check_failure_reports_exit_and_only_bounded_actual_streams(
                                   + "; stderr=" + repr(b"e" * 512) + ")"), "diagnostics contain exactly the first 512 bytes per stream"
 
 
+def npm_publish_response(tmp_path, monkeypatch, npm_builder, stdout, *, returncode=1, stderr=b"CANARY_STDERR_SECRET"):
+    """Replace the npm process boundary with bounded synthetic publication output."""
+    environment = {"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}
+    calls = []
+
+    def process(arguments, **options):
+        """Retain subprocess arguments while returning the authored failure streams."""
+        calls.append((arguments, options))
+        return subprocess.CompletedProcess(arguments, returncode, stdout, stderr)
+
+    monkeypatch.setattr(npm_builder, "npm_command", lambda arguments, npx=False: ["node", "npm", *arguments])
+    monkeypatch.setattr(npm_builder.subprocess, "run", process)
+    return environment, calls
+
+
+@pytest.mark.parametrize("code,cause", [("E403", "registry-forbidden"), ("EOTP", "one-time-password-required"),
+                                      ("EPUBLISHCONFLICT", "version-conflict")], ids=["forbidden", "otp", "version-conflict"])
+def test_publish_failure_exposes_only_allowlisted_code_and_static_cause(tmp_path, monkeypatch, capsys, npm_builder, code, cause):
+    # GIVEN a complete npm error object with a known code and secret-bearing nested fields
+    payload = json.dumps({"error": {"code": code, "summary": "CANARY_SUMMARY_SECRET", "detail": "CANARY_DETAIL_SECRET",
+        "authUrl": "https://npm.invalid/auth?token=CANARY_AUTH_SECRET", "doneUrl": "CANARY_DONE_SECRET",
+        "extras": {"token": "CANARY_NESTED_SECRET"}}}).encode()
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, payload)
+    assert json.loads(payload)["error"]["code"] == code, "the diagnostic premise is a complete known-code error"
+    # WHEN the existing publisher receives the failed authenticated npm process
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN only the fixed code/category and actual exit status are observable
+    assert str(failure.value) == f"npm publish failed (1); code={code}; cause={cause}; authenticated output was suppressed", "authenticated fields must never enter diagnostic text"
+    assert len(calls) == 1, "a publication failure cannot trigger an automatic retry"
+    assert capsys.readouterr() == ("", ""), "publication diagnostics never print authenticated process streams"
+
+
+@pytest.mark.parametrize("stdout,stderr", [
+    (b'{"error":{"code":"CANARY_CODE_SECRET","summary":"CANARY_SUMMARY_SECRET"}}', b"CANARY_STDERR_SECRET"),
+    (b'{"error":{"code":"E403","detail":"CANARY_TRUNCATED_SECRET"}', b"CANARY_STDERR_SECRET"),
+    (json.dumps({"error": {"code": "E403", "detail": "CANARY_OVERSIZE_SECRET" + "x" * 65536}}).encode(), b"CANARY_STDERR_SECRET"),
+    (b'{"error":{"code":"E403","code":"EOTP","detail":"CANARY_DUPLICATE_SECRET"}}', b"CANARY_STDERR_SECRET"),
+    (b'[{"error":{"code":"E403","detail":"CANARY_ARRAY_SECRET"}}]', b"CANARY_STDERR_SECRET"),
+    (b"", b'{"error":{"code":"E403","detail":"CANARY_STDERR_SECRET"}}'),
+    (b'{"error":{"code":"E403","summary":"provenance generation failed CANARY_SUMMARY_SECRET","detail":"one-time password required CANARY_DETAIL_SECRET"}}', b"CANARY_STDERR_SECRET"),
+    (b'{"error":{"code":["CANARY_CODE_SECRET"],"summary":"CANARY_SUMMARY_SECRET"}}', b"CANARY_STDERR_SECRET"),
+], ids=["unknown-code", "malformed", "oversized", "conflicting-keys", "wrong-shape", "stderr-only", "conflicting-causes", "wrong-code-type"])
+def test_publish_failure_uses_generic_diagnostics_for_untrusted_error_output(tmp_path, monkeypatch, capsys, npm_builder, stdout, stderr):
+    # GIVEN untrusted or unavailable JSON error evidence and a concrete failing exit
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, stdout, returncode=7, stderr=stderr)
+    assert calls == [], "no npm process has run before the failure observation"
+    # WHEN the publisher observes unknown, malformed, oversized or ambiguous evidence
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN static fallback preserves the actual exit without exposing untrusted fields
+    assert str(failure.value) == "npm publish failed (7); code=UNKNOWN; cause=unclassified; authenticated output was suppressed", "invalid diagnostic evidence must fail closed"
+    assert len(calls) == 1, "invalid diagnostic evidence never retries publication"
+    assert capsys.readouterr() == ("", ""), "untrusted publication output must remain unprinted"
+
+
+@pytest.mark.parametrize("code,expected_code", [("E403", "E403"), ("CANARY_CODE_SECRET", "UNKNOWN")], ids=["known-code", "unknown-code"])
+def test_publish_failure_classifies_fixed_provenance_phrase_without_exposing_authenticated_detail(tmp_path, monkeypatch, capsys, npm_builder, code, expected_code):
+    # GIVEN a complete error with one approved provenance phrase and unrelated secrets
+    payload = json.dumps({"error": {"code": code, "summary": "generate provenance CANARY_SUMMARY_SECRET",
+                                  "detail": "CANARY_DETAIL_SECRET", "authUrl": "CANARY_AUTH_SECRET"}}).encode()
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, payload)
+    assert calls == [], "classification starts before any publication response"
+    # WHEN failed npm publication returns this single finite phrase category
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN classification emits only a finite code and category without quoting diagnostic prose
+    assert str(failure.value) == f"npm publish failed (1); code={expected_code}; cause=provenance-error; authenticated output was suppressed", "known phrases never authorize echoing unknown codes or raw detail"
+    assert capsys.readouterr() == ("", ""), "classified provenance errors remain unprinted"
+
+
+def test_publish_failure_preserves_generic_refusal_when_json_decoder_exceeds_recursion(tmp_path, monkeypatch, capsys, npm_builder):
+    # GIVEN an isolated parser-depth failure whose diagnostic contains a synthetic secret
+    payload = b'{"error":{"code":"E403"}}'
+    environment, calls = npm_publish_response(tmp_path, monkeypatch, npm_builder, payload)
+
+    def parser_failure(*arguments, **options):
+        """Model the standard JSON decoder's nesting failure without shared recursion state."""
+        raise RecursionError("CANARY_PARSER_SECRET")
+
+    monkeypatch.setattr(npm_builder.json, "loads", parser_failure)
+    assert calls == [], "the decoder fault is installed before npm executes"
+    # WHEN failed publication reaches the JSON decoding boundary
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish", "fixture.tgz", "--json"], tmp_path, environment)
+    # THEN decoder failure retains the publication exit and exposes no parser text
+    assert str(failure.value) == "npm publish failed (1); code=UNKNOWN; cause=unclassified; authenticated output was suppressed", "JSON nesting failure must not leak or replace the publication error"
+    assert capsys.readouterr() == ("", ""), "parser diagnostics remain unprinted"
+
+
+def test_publish_requests_json_only_for_missing_packages_and_preserves_platform_first_order(tmp_path, monkeypatch, npm_builder):
+    # GIVEN exact package admission and an already public first platform package
+    names = ["linux.tgz", "windows.tgz", "macos.tgz", "main.tgz"]
+    records = [{"filename": name} for name in names]
+    manifest = {"packages": records}
+    answers = iter([True, False, False, False, True, True, True, True])
+    reads, calls = [], []
+    monkeypatch.setattr(npm_builder, "verify_release", lambda unused: manifest)
+    monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
+    monkeypatch.setattr(npm_builder, "os", SimpleNamespace(environ={"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}))
+    monkeypatch.setattr(npm_builder, "public_record", lambda record: reads.append(record["filename"]) or next(answers))
+    monkeypatch.setattr(npm_builder, "run_npm", lambda arguments, cwd, environment: calls.append((arguments, cwd, environment)))
+    assert calls == [], "existing public byte admission precedes every publication attempt"
+    # WHEN publication skips exact existing bytes and continues the missing packages
+    actual = npm_builder.publish(tmp_path)
+    # THEN the JSON flag preserves scripts, access, provenance and platform-first ordering
+    expected = [(["publish", str((tmp_path / name).resolve()), "--ignore-scripts", "--access", "public", "--provenance", "--json"],
+                 tmp_path, {"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}) for name in names[1:]]
+    assert (actual, calls) == (None, expected), "only missing packages publish, with the main package last and no changed permissions"
+    assert reads == names + names, "every package is checked before writes and again after its publication slot"
+
+
 @pytest.mark.parametrize("native_mode,tar_mode", [
     pytest.param(0o755, 0o755, marks=pytest.mark.skipif(os.name == "nt", reason="POSIX executable modes"), id="posix"),
     pytest.param(0o666, 0o644, marks=pytest.mark.skipif(os.name != "nt", reason="Windows file modes"), id="windows"),
