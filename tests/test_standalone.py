@@ -1,11 +1,18 @@
 """Fixed standalone child operations preserve isolated launch and refusal behavior."""
 
 import importlib
+import contextlib
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import socket
+import threading
+import queue
+import struct
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +25,7 @@ def test_dns_lookup_uses_fixed_child_dispatch_without_interpreter_code(tmp_path,
     executable = str(tmp_path / "brewdoc")
     calls = []
     monkeypatch.setattr(sys, "frozen", frozen, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(sys, "executable", executable)
     monkeypatch.setattr(htmlurl.os, "getpid", lambda: 43210)
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
@@ -169,3 +177,368 @@ def test_signal_dispatch_enters_only_the_existing_fresh_child_probe(monkeypatch)
     # THEN the existing guarded signal proof is called exactly once
     assert (code, calls) == (0, ["signal"]), (
         "signal dispatch must use the existing fixed native prerequisite without arbitrary code")
+
+
+@pytest.mark.parametrize("operation,operands,runtime,flags", [
+    ("dns", ("localhost", "443", "43210"), "base", ["-I", "-S"]),
+    ("signal", (), "venv", ["-I"]),
+    ("js", ("17", "43210"), "venv", ["-I"]),
+])
+def test_windows_source_selects_base_python_only_for_stdlib_dns(tmp_path, monkeypatch, operation, operands, runtime, flags):
+    # GIVEN distinct trusted runtime paths and an existing base executable
+    standalone = importlib.import_module("brewdoc._standalone")
+    base = tmp_path / "base python.exe"
+    base.write_bytes(b"runtime")
+    executables = {"base": str(base), "venv": str(tmp_path / "venv python.exe")}
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "executable", executables["venv"])
+    monkeypatch.setattr(sys, "_base_executable", executables["base"])
+    assert (Path(sys._base_executable), base.read_bytes()) == (base, b"runtime"), (
+        "the trusted base path must identify the prepared executable file")
+    # WHEN the fixed source child operation selects its interpreter
+    command = standalone.child_command(operation, *operands)
+    # THEN only DNS bypasses the venv relay and site initialization
+    assert command == [executables[runtime], *flags, str(Path(standalone.__file__).resolve()),
+                       "--brewdoc-internal", operation, *operands], (
+        "Windows DNS alone must directly own the same runtime's stdlib-only child")
+
+
+@pytest.mark.parametrize("base_kind", ["missing", "relative", "absent", "directory", "wrong-type"])
+def test_invalid_windows_base_runtime_retains_named_dns_refusal(tmp_path, monkeypatch, base_kind):
+    # GIVEN an unavailable or invalid trusted base runtime and an observable launch edge
+    bases = {"missing": None, "relative": "python.exe", "absent": str(tmp_path / "missing.exe"),
+             "directory": str(tmp_path), "wrong-type": 17}
+    calls = []
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "_base_executable", bases[base_kind])
+
+    def launch(argv, **options):
+        """Observe accidental fallback to an executable outside the trusted base path."""
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, b'["127.0.0.1"]\n', b"")
+
+    monkeypatch.setattr(htmlurl.subprocess, "run", launch)
+    monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
+    assert calls == [], "invalid base selection must begin without a child launch"
+    # WHEN DNS cannot select the running installation's base interpreter
+    with pytest.raises(htmlurl.BrewdocError) as raised:
+        htmlurl._dns_lookup("localhost", 443, 100.5)
+    # THEN the existing parent boundary refuses without any interpreter fallback
+    assert (str(raised.value), raised.value.acquisition_stage, calls) == (
+        "URL DNS worker failed", "dns", [],
+    ), "invalid base paths must preserve named DNS refusal before process creation"
+
+
+@pytest.fixture
+def windows_dns_edges(monkeypatch):
+    """Expose Windows owner-handle lifecycle without starting native processes."""
+    standalone = importlib.import_module("brewdoc._standalone")
+    calls, watchers = [], []
+
+    def open_owner(access, inherit, owner):
+        """Record the exact non-inheritable owner handle request."""
+        calls.append(("open", access, inherit, owner))
+        return 123
+
+    def wait_owner(handle, timeout):
+        """Model an alive owner probe followed by signaled owner death."""
+        calls.append(("wait", handle, timeout))
+        return {0: 258, 4294967295: 0}[timeout]
+
+    def close_owner(handle):
+        """Observe explicit handle cleanup after its wait completes."""
+        calls.append(("close", handle))
+
+    def start_thread(*, target, daemon):
+        """Retain the daemon's target so the test can deliver owner death deterministically."""
+        def start():
+            """Record startup without executing the retained watcher."""
+            calls.append(("start", daemon))
+            watchers.append(target)
+        return SimpleNamespace(start=start)
+
+    def resolve(host, port, **options):
+        """Record resolution after synchronous owner admission."""
+        calls.append(("resolve", host, port, options))
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))]
+
+    def stop(code):
+        """Capture process termination without exiting the test interpreter."""
+        calls.append(("exit", code))
+        raise SystemExit(code)
+
+    api = SimpleNamespace(SYNCHRONIZE=1048576, INFINITE=4294967295, WAIT_TIMEOUT=258,
+                          OpenProcess=open_owner, WaitForSingleObject=wait_owner, CloseHandle=close_owner)
+    monkeypatch.setitem(sys.modules, "_winapi", api)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(os, "getppid", lambda: 76543)
+    monkeypatch.setattr(os, "_exit", stop)
+    monkeypatch.setattr(threading, "Thread", start_thread)
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    return standalone, api, calls, watchers
+
+
+def test_windows_dns_admits_logical_owner_before_resolution_and_stops_after_owner_death(windows_dns_edges, capsys):
+    # GIVEN an alive logical owner whose PID differs from the immediate redirector parent
+    standalone, _api, calls, watchers = windows_dns_edges
+    assert os.getppid() == 76543, "the DNS child must see the intermediate launcher's PID"
+    # WHEN DNS acquires its owner's handle and resolves while that owner remains alive
+    standalone._dns_worker("localhost", 443, 43210)
+    # THEN admission precedes resolution without trusting immediate parent identity
+    assert (calls, capsys.readouterr().out) == ([
+        ("open", 1048576, False, 43210), ("wait", 123, 0), ("start", True),
+        ("resolve", "localhost", 443, {"type": socket.SOCK_STREAM}),
+    ], '["127.0.0.1"]\n'), "an alive logical owner must permit exact DNS output before its death"
+    # WHEN the actual owner signals the already acquired process handle
+    with pytest.raises(SystemExit) as stopped:
+        watchers[0]()
+    # THEN the watcher closes that handle and terminates despite the unchanged redirector PID
+    assert (stopped.value.code, calls[-3:]) == (
+        1, [("wait", 123, 4294967295), ("close", 123), ("exit", 1)],
+    ), "owner death must close the waited handle and stop the resolver child"
+
+
+def _failed_after(action):
+    """Preserve an observable API call before raising its operating-system failure."""
+    def fail(*args, **options):
+        """Raise after the mocked API edge records its arguments."""
+        action(*args, **options)
+        raise OSError("test API failure")
+    return fail
+
+
+@pytest.mark.parametrize("phase,expected", [
+    ("open", [("open", 1048576, False, 43210), ("exit", 1)]),
+    ("probe", [("open", 1048576, False, 43210), ("wait", 123, 0), ("close", 123), ("exit", 1)]),
+    ("exited", [("open", 1048576, False, 43210), ("wait", 123, 0), ("close", 123), ("exit", 1)]),
+    ("unexpected", [("open", 1048576, False, 43210), ("wait", 123, 0), ("close", 123), ("exit", 1)]),
+    ("start", [("open", 1048576, False, 43210), ("wait", 123, 0), ("start", True), ("close", 123), ("exit", 1)]),
+])
+def test_windows_dns_refuses_owner_admission_failures_before_resolution(windows_dns_edges, monkeypatch, capsys, phase, expected):
+    # GIVEN a failing owner admission edge and a resolver that records any premature I/O
+    standalone, api, calls, _watchers = windows_dns_edges
+    original_wait, original_thread = api.WaitForSingleObject, threading.Thread
+
+    def exited(handle, timeout):
+        """Return an already signaled owner after recording the zero-time probe."""
+        original_wait(handle, timeout)
+        return 0
+
+    def unexpected(handle, timeout):
+        """Return an inadmissible probe verdict after recording its handle."""
+        original_wait(handle, timeout)
+        return 128
+
+    def failed_start(**options):
+        """Fail daemon startup before its retained target can wait on the owner."""
+        thread = original_thread(**options)
+        thread.start = _failed_after(thread.start)
+        return thread
+
+    changes = {"open": (api, "OpenProcess", _failed_after(api.OpenProcess)),
+               "probe": (api, "WaitForSingleObject", _failed_after(original_wait)),
+               "exited": (api, "WaitForSingleObject", exited),
+               "unexpected": (api, "WaitForSingleObject", unexpected),
+               "start": (threading, "Thread", failed_start)}
+    monkeypatch.setattr(*changes[phase])
+    assert calls == [], "owner admission must fail before resolver or watcher actions"
+    # WHEN the worker reaches the selected owner lifetime failure
+    with pytest.raises(SystemExit) as stopped:
+        standalone._dns_worker("localhost", 443, 43210)
+    # THEN acquired non-waiting handles close and every failure refuses before DNS
+    output = capsys.readouterr()
+    assert (stopped.value.code, calls, output.out, output.err) == (1, expected, "", ""), (
+        "owner admission failures must close their handle and terminate without DNS I/O")
+
+
+@pytest.mark.parametrize("phase", ["wait", "close"])
+def test_windows_dns_watcher_always_exits_after_wait_or_close_failure(windows_dns_edges, monkeypatch, capsys, phase):
+    # GIVEN an admitted DNS owner and a daemon that has not yet consumed owner death
+    standalone, api, calls, watchers = windows_dns_edges
+    standalone._dns_worker("localhost", 443, 43210)
+    assert capsys.readouterr().out == '["127.0.0.1"]\n', "the admitted owner must first permit exact DNS output"
+    changes = {"wait": (api, "WaitForSingleObject", _failed_after(api.WaitForSingleObject)),
+               "close": (api, "CloseHandle", _failed_after(api.CloseHandle))}
+    monkeypatch.setattr(*changes[phase])
+    # WHEN the owner's waiting or cleanup API fails inside its watcher
+    with pytest.raises(SystemExit) as stopped:
+        watchers[0]()
+    # THEN cleanup failure cannot leave a live resolver without an owner watchdog
+    assert (stopped.value.code, calls[-3:]) == (
+        1, [("wait", 123, 4294967295), ("close", 123), ("exit", 1)],
+    ), "the DNS child must terminate unconditionally after wait or handle cleanup failure"
+
+
+def test_frozen_windows_dns_keeps_its_bundle_executable_without_a_base_runtime(tmp_path, monkeypatch):
+    # GIVEN a frozen bundle whose DNS operation needs no external Python interpreter
+    standalone = importlib.import_module("brewdoc._standalone")
+    executable = str(tmp_path / "brewdoc.exe")
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", executable)
+    monkeypatch.setattr(sys, "_base_executable", None)
+    assert sys._base_executable is None, "frozen DNS must work without selecting base Python"
+    # WHEN the admitted bundle dispatches its fixed DNS child
+    command = standalone.child_command("dns", "localhost", "443", "43210")
+    # THEN the embedded runtime is selected with no source-interpreter flags
+    assert command == [executable, "--brewdoc-internal", "dns", "localhost", "443", "43210"], (
+        "frozen Windows DNS must retain exact bundle dispatch without base-runtime fallback")
+
+
+def _blocked_dns_probe(tmp_path):
+    """Publish native runtime identity only after owner admission, then block the resolver."""
+    standalone = importlib.import_module("brewdoc._standalone")
+    probe = tmp_path / "blocked DNS probe.py"
+    probe.write_text(
+        "import json,os,runpy,socket,struct,sys,threading\n"
+        "worker=runpy.run_path(%r)\n"
+        "def blocked(*args,**options):\n"
+        "    print(json.dumps({'pid':os.getpid(),'parent':os.getppid(),"
+        "'base':sys._base_executable,'version':list(sys.version_info[:3]),"
+        "'bits':struct.calcsize('P')*8,'isolated':sys.flags.isolated,'no_site':sys.flags.no_site,"
+        "'site_loaded':'site' in sys.modules,'brewdoc_loaded':'brewdoc' in sys.modules}),flush=True)\n"
+        "    threading.Event().wait(20)\n"
+        "    raise OSError('test resolver remained blocked')\n"
+        "socket.getaddrinfo=blocked\n"
+        "raise SystemExit(worker['main'](sys.argv[1:]))\n" % str(Path(standalone.__file__).resolve()),
+        encoding="utf-8")
+    return probe
+
+
+def _read_probe_record(process):
+    """Bound one readiness read before controlling the recorded process."""
+    records = queue.Queue()
+
+    def read():
+        """Deliver the next readiness line."""
+        records.put(process.stdout.readline())
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    record = json.loads(records.get(timeout=5))
+    reader.join(5)
+    assert reader.is_alive() is False, "the bounded readiness reader must finish before process control"
+    return record
+
+
+def _close_windows_probe(handle):
+    """Reap the recorded test-owned process even when an earlier assertion fails."""
+    import _winapi
+    try:
+        with contextlib.suppress(PermissionError):
+            _winapi.TerminateProcess(handle, 1)
+        assert _winapi.WaitForSingleObject(handle, 5000) == 0, "the owned DNS probe must be terminated before handle cleanup"
+    finally:
+        _winapi.CloseHandle(handle)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Direct Windows base-runtime selection requires a Windows runner.")
+def test_windows_production_dns_succeeds_outside_checkout_with_hostile_python_paths(tmp_path):
+    # GIVEN a copied entry and poisoned startup paths without Python on PATH
+    standalone = importlib.import_module("brewdoc._standalone")
+    script = tmp_path / "direct DNS with spaces.py"
+    shutil.copyfile(standalone.__file__, script)
+    poison = tmp_path / "poison"
+    poison.mkdir()
+    marker = tmp_path / "site-imported"
+    (poison / "sitecustomize.py").write_text(
+        "from pathlib import Path\nPath(%r).write_text('unexpected startup')\n" % str(marker), encoding="utf-8")
+    environment = {"PATH": str(tmp_path / "empty-path"), "PYTHONPATH": str(poison),
+                   "PYTHONHOME": str(poison), "HOME": str(tmp_path), "USERPROFILE": str(tmp_path),
+                   "SystemRoot": os.environ["SystemRoot"], "WINDIR": os.environ["WINDIR"],
+                   "__PYVENV_LAUNCHER__": sys.executable}
+    command = standalone.child_command("dns", "127.0.0.1", "443", str(os.getpid()))
+    command[3] = str(script)
+    assert command[:3] == [sys._base_executable, "-I", "-S"], (
+        "production Windows DNS must directly select the running installation's isolated base interpreter")
+    # WHEN the actual selected runtime resolves through the relocated entry
+    completed = subprocess.run(command, cwd=tmp_path, env=environment, capture_output=True, timeout=5, check=False)
+    # THEN ordinary and internal Python path overrides cannot import startup hooks or change DNS output
+    assert (completed.returncode, completed.stdout, completed.stderr, marker.exists()) == (
+        0, ('["127.0.0.1"]' + os.linesep).encode("ascii"), b"", False,
+    ), "direct production DNS must preserve exact success under hostile cwd and Python environment overrides"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native Windows process handles require a Windows runner.")
+def test_windows_direct_dns_timeout_reaps_the_same_runtime_worker(tmp_path, monkeypatch):
+    # GIVEN an observable direct DNS child that blocks after native owner admission
+    import _winapi
+    probe = _blocked_dns_probe(tmp_path)
+    processes, handles, identities = [], [], []
+    original_popen = subprocess.Popen
+
+    def launch(command, **options):
+        """Use production interpreter selection while replacing only the resolver I/O edge."""
+        command = list(command)
+        command[3] = str(probe)
+        process = original_popen(command, **options)
+        processes.append(process)
+        handles.append(_winapi.OpenProcess(1048577, False, process.pid))
+        identities.append(_read_probe_record(process))
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
+    assert processes == [], "the native timeout probe must start without any owned child"
+    try:
+        # WHEN the real parent-owned DNS subprocess reaches its deadline after readiness
+        with pytest.raises(htmlurl.URLTimeoutError) as raised:
+            htmlurl._dns_lookup("localhost", 443, 100.25)
+        # THEN the physical worker is the chosen base runtime and timeout killed/reaped it directly
+        assert (str(raised.value), raised.value.acquisition_stage, processes[0].returncode,
+                identities, _winapi.WaitForSingleObject(handles[0], 0)) == (
+            "URL DNS deadline exceeded", "dns", 1, [{
+                "pid": processes[0].pid, "parent": os.getpid(), "base": sys._base_executable,
+                "version": list(sys.version_info[:3]), "bits": struct.calcsize("P") * 8,
+                "isolated": 1, "no_site": 1, "site_loaded": False, "brewdoc_loaded": False,
+            }], 0,
+        ), "deadline cancellation must directly own the same isolated runtime without a relay or orphan"
+    finally:
+        for process in processes:
+            process.kill()
+            process.communicate(timeout=5)
+        for handle in handles:
+            _close_windows_probe(handle)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native Windows owner death requires a Windows runner.")
+def test_windows_direct_dns_stops_when_its_logical_owner_exits(tmp_path):
+    # GIVEN a real owner that uses production DNS selection without an enclosing venv relay
+    import _winapi
+    standalone = importlib.import_module("brewdoc._standalone")
+    probe = _blocked_dns_probe(tmp_path)
+    owner_script = tmp_path / "DNS owner.py"
+    owner_script.write_text(
+        "import json,os,runpy,subprocess,sys\n"
+        "worker=runpy.run_path(%r)\n"
+        "command=worker['child_command']('dns','localhost','443',str(os.getpid()))\n"
+        "command[3]=%r\n"
+        "child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)\n"
+        "print(json.dumps({'owner':os.getpid(),'child':child.pid}),flush=True)\n"
+        "sys.stdout.buffer.write(child.stdout.readline());sys.stdout.flush()\n"
+        "sys.stdin.buffer.read(1)\n"
+        "os._exit(0)\n" % (str(Path(standalone.__file__).resolve()), str(probe)), encoding="utf-8")
+    handles = []
+    owner = subprocess.Popen([sys._base_executable, "-I", "-S", str(owner_script)],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        owner_record = _read_probe_record(owner)
+        handles.append(_winapi.OpenProcess(1048577, False, owner_record["child"]))
+        identity = _read_probe_record(owner)
+        assert (owner.poll(), owner_record["owner"], identity["pid"], identity["parent"]) == (
+            None, owner.pid, owner_record["child"], owner.pid,
+        ), "an alive owner must admit its actual direct resolver before the death handshake"
+        # WHEN the owner exits while the resolver remains blocked
+        stdout, stderr = owner.communicate(input=b"x", timeout=5)
+        verdict = _winapi.WaitForSingleObject(handles[0], 5000)
+        # THEN the owner handle stops the physical worker without relying on unchanged getppid
+        assert (owner.returncode, stdout, stderr, verdict, _winapi.GetExitCodeProcess(handles[0])) == (
+            0, b"", b"", 0, 1,
+        ), "owner death must promptly terminate the direct resolver and leave no orphan"
+    finally:
+        owner.kill()
+        owner.communicate(timeout=5)
+        for handle in handles:
+            _close_windows_probe(handle)

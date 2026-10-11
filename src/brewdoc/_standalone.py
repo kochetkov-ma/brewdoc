@@ -37,8 +37,24 @@ def child_command(operation: str, *arguments: str) -> list[str]:
     _child_arguments(operation, arguments)
     prefix = [sys.executable]
     if not getattr(sys, "frozen", False):
-        prefix.extend(["-I", str(Path(__file__).resolve())])
+        prefix.append("-I")
+        if sys.platform == "win32" and operation == "dns":
+            base = getattr(sys, "_base_executable", None)
+            if not isinstance(base, str) or not Path(base).is_absolute() or not Path(base).is_file():
+                raise OSError("DNS base interpreter unavailable")
+            prefix = [base, "-I", "-S"]
+        prefix.append(str(Path(__file__).resolve()))
     return [*prefix, "--brewdoc-internal", operation, *arguments]
+
+
+def _exit_windows_dns(handle: int | None) -> None:
+    """Close the owner handle and exit the DNS child, even if cleanup fails."""
+    try:
+        if handle is not None:
+            import _winapi
+            _winapi.CloseHandle(handle)
+    finally:
+        os._exit(1)
 
 
 def _dns_worker(host: str, port: int, parent_pid: int) -> None:
@@ -48,13 +64,33 @@ def _dns_worker(host: str, port: int, parent_pid: int) -> None:
     import threading
     import time
 
+    owner_handle = None
+    if sys.platform == "win32":
+        import _winapi
+        try:
+            owner_handle = _winapi.OpenProcess(_winapi.SYNCHRONIZE, False, parent_pid)
+            if _winapi.WaitForSingleObject(owner_handle, 0) != _winapi.WAIT_TIMEOUT:
+                raise OSError("DNS owner process exited")
+        except OSError:
+            _exit_windows_dns(owner_handle)
+
     def watch() -> None:
         """Stop blocked libc resolution after parent death."""
+        if owner_handle is not None:
+            try:
+                _winapi.WaitForSingleObject(owner_handle, _winapi.INFINITE)
+            finally:
+                _exit_windows_dns(owner_handle)
         while os.getppid() == parent_pid:
             time.sleep(0.05)
         os._exit(1)
 
-    threading.Thread(target=watch, daemon=True).start()
+    try:
+        threading.Thread(target=watch, daemon=True).start()
+    except (OSError, RuntimeError):
+        if owner_handle is None:
+            raise
+        _exit_windows_dns(owner_handle)
     answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     sys.stdout.write(json.dumps(list(dict.fromkeys(item[4][0] for item in answers))[:129]) + "\n")
 

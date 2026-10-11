@@ -4,9 +4,12 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -202,3 +205,52 @@ def test_aggregation_requires_all_targets_with_one_source_identity(tmp_path):
         BUILDER.aggregate(tmp_path, tmp_path / 'release')
     # THEN no release assets are staged before all targets pass
     assert (tmp_path / 'release').exists() is False, 'the failed aggregate has no publishable output'
+
+
+@pytest.mark.parametrize('refusal', [(0, b'["127.0.0.1"]\n', b''), (1, b'output', b''),
+                                   (1, b'', b'warning'), (2, b'', b'')])
+def test_windows_frozen_dns_gate_rejects_inexact_exited_owner_refusal(tmp_path, monkeypatch, refusal):
+    # GIVEN a live-owner DNS success and a real exited owner retained by its Popen object
+    binary = tmp_path / 'brewdoc.exe'
+    environment = BUILDER.consumer_environment(tmp_path)
+    owners = []
+    original_popen = subprocess.Popen
+
+    def owner_process(*arguments, **options):
+        """Keep the actual owner available for the admission precondition."""
+        owner = original_popen(*arguments, **options)
+        owners.append(owner)
+        return owner
+
+    def exited_dns(arguments, **options):
+        """Simulate the binary response after the retained owner has exited."""
+        assert owners[0].poll() == 0, 'the actual owner has exited before frozen DNS starts'
+        assert arguments == [str(binary), '--brewdoc-internal', 'dns', 'localhost', '80', str(owners[0].pid)], \
+            'the admitted executable receives exactly the exited owner PID'
+        return subprocess.CompletedProcess(arguments, *refusal)
+
+    monkeypatch.setattr(BUILDER, 'sys', SimpleNamespace(platform='win32', _base_executable=sys._base_executable))
+    monkeypatch.setattr(BUILDER, 'command', lambda *args, **kwargs: subprocess.CompletedProcess([], 0, b'["127.0.0.1"]', b''))
+    monkeypatch.setattr(BUILDER.subprocess, 'Popen', owner_process)
+    monkeypatch.setattr(BUILDER.subprocess, 'run', exited_dns)
+    assert owners == [], 'no owner process exists before the gate executes'
+    # WHEN the Windows gate receives an inexact refusal from the frozen child
+    with pytest.raises(ValueError, match='Frozen DNS child admitted an exited owner'):
+        BUILDER.child_checks(binary, tmp_path, environment, javascript=False)
+    # THEN the actual owner was reaped and retained throughout child admission
+    assert [owner.returncode for owner in owners] == [0], 'the isolated owner exited successfully and was waited'
+
+
+def test_windows_frozen_dns_gate_records_exact_exited_owner_refusal(tmp_path, monkeypatch):
+    # GIVEN successful loopback DNS and an exact exited-owner refusal
+    binary = tmp_path / 'brewdoc.exe'
+    environment = BUILDER.consumer_environment(tmp_path)
+    monkeypatch.setattr(BUILDER, 'sys', SimpleNamespace(platform='win32', _base_executable=sys._base_executable))
+    monkeypatch.setattr(BUILDER, 'command', lambda *args, **kwargs: subprocess.CompletedProcess([], 0, b'["127.0.0.1"]', b''))
+    monkeypatch.setattr(BUILDER.subprocess, 'run', lambda arguments, **options: subprocess.CompletedProcess(arguments, 1, b'', b''))
+    assert binary.exists() is False, 'the unit check substitutes only the frozen binary response'
+    # WHEN the Windows gate waits for its actual isolated owner and admits the child response
+    result = BUILDER.child_checks(binary, tmp_path, environment, javascript=False)
+    # THEN the receipt retains live-owner DNS and records only the observed exited-owner result
+    assert result == {'dns': ['127.0.0.1'], 'exited_owner': {'code': 1, 'stdout_bytes': 0, 'stderr_bytes': 0}}, \
+        'the exact refusal is recorded without changing the existing DNS field'

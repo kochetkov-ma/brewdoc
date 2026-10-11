@@ -518,6 +518,23 @@ def child_checks(binary: Path, work: Path, environment: dict, javascript: bool) 
     if dns.stderr or not addresses or set(addresses) - {'127.0.0.1', '::1'}:
         raise ValueError('Frozen DNS child returned unexpected localhost addresses')
     result = {'dns': addresses}
+    if sys.platform == 'win32':
+        owner = subprocess.Popen([sys._base_executable, '-I', '-S', '-c', 'pass'],
+                                 cwd=work, env=environment, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            if owner.wait(timeout=10) != 0:
+                raise ValueError('Frozen DNS test owner did not exit successfully')
+            # Retain Popen's Windows handle after exit so its PID cannot be reused.
+            refused = subprocess.run([str(binary), '--brewdoc-internal', 'dns', 'localhost', '80', str(owner.pid)],
+                                     cwd=work, env=environment, capture_output=True, timeout=10)
+            if (refused.returncode, refused.stdout, refused.stderr) != (1, b'', b''):
+                raise ValueError('Frozen DNS child admitted an exited owner')
+            result['exited_owner'] = {'code': 1, 'stdout_bytes': 0, 'stderr_bytes': 0}
+        finally:
+            if owner.poll() is None:
+                owner.kill()
+                owner.wait(timeout=5)
     if not javascript:
         return result
     probe = subprocess.run([str(binary), '--brewdoc-internal', 'signal'],
