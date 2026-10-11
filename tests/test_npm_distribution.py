@@ -24,6 +24,58 @@ def npm_builder():
     return module
 
 
+@pytest.mark.parametrize("suffix,expected", [(["--self-check"],
+    'C:\\Windows\\System32\\cmd.exe /d /s /c ""C:\\brewdoc npm consumer Unicode-é\\global\\brewdoc.cmd" --self-check"'),
+    (["C:\\Unicode café\\sample.epub"],
+     'C:\\Windows\\System32\\cmd.exe /d /s /c ""C:\\brewdoc npm consumer Unicode-é\\global\\brewdoc.cmd" "C:\\Unicode café\\sample.epub""')])
+def test_windows_installed_cmd_uses_one_raw_command_line_without_second_crt_quote_serialization(tmp_path, monkeypatch, npm_builder, suffix, expected):
+    # GIVEN an installed npm shim under a real smoke path shape with Unicode and spaces
+    calls = []
+    monkeypatch.setattr(npm_builder, "os", SimpleNamespace(name="nt", environ={"COMSPEC": "C:\\Windows\\System32\\cmd.exe"}))
+
+    def launch(command, **options):
+        """Retain the actual CreateProcess argument form at the subprocess I/O edge."""
+        calls.append((command, options))
+        return subprocess.CompletedProcess(command, 0, b"exact stdout", b"")
+
+    monkeypatch.setattr(npm_builder.subprocess, "run", launch)
+    assert len(calls) == 0, "no command interpreter is started before the shim request"
+    # WHEN the normal installed shim receives self-check or one Unicode document path
+    result = npm_builder.cli_result(["C:\\brewdoc npm consumer Unicode-é\\global\\brewdoc.cmd"], suffix, tmp_path, {}, 45)
+    # THEN cmd receives literal outer quotes once and exact streams without shell fallback
+    assert calls == [(expected, {"cwd": tmp_path, "env": {}, "capture_output": True, "timeout": 45})], (
+        "a prequoted CMD payload must never be serialized again as a CRT argv element")
+    assert (result.returncode, result.stdout, result.stderr) == (0, b"exact stdout", b""), "shim result streams remain untouched"
+
+
+@pytest.mark.parametrize("platform_name,arguments", [("posix", ["/tmp/brewdoc/bin/brewdoc"]),
+                                                     ("nt", ["C:\\node\\node.exe", "C:\\npm\\npx-cli.js"])])
+def test_direct_node_and_posix_cli_preserve_argument_lists_without_command_shell(tmp_path, monkeypatch, npm_builder, platform_name, arguments):
+    # GIVEN a direct executable invocation with no command shim
+    calls = []
+    monkeypatch.setattr(npm_builder, "os", SimpleNamespace(name=platform_name, environ={}))
+    monkeypatch.setattr(npm_builder.subprocess, "run", lambda command, **options:
+                        calls.append((command, options)) or subprocess.CompletedProcess(command, 0, b"direct bytes", b""))
+    assert calls == [], "direct invocation starts without a command shell"
+    # WHEN the CLI is exercised through its original executable argument list
+    npm_builder.cli_result(arguments, ["--self-check"], tmp_path, {}, 30)
+    # THEN original argv and subprocess boundaries remain exact
+    assert calls == [([*arguments, "--self-check"], {"cwd": tmp_path, "env": {}, "capture_output": True, "timeout": 30})], (
+        "only Windows .cmd requires command-interpreter parsing")
+
+
+def test_public_self_check_failure_reports_exit_and_only_bounded_actual_streams(tmp_path, monkeypatch, npm_builder):
+    # GIVEN isolated public self-check output with a failing exit and oversized streams
+    monkeypatch.setattr(npm_builder, "cli_result", lambda *args: subprocess.CompletedProcess([], 2, b"o" * 600, b"e" * 600))
+    assert len(b"o" * 600) == 600, "the probe fixture exceeds the diagnostic byte limit"
+    # WHEN strict self-check admission refuses the actual response
+    with pytest.raises(ValueError) as failure:
+        npm_builder.consumer_probe(["brewdoc.cmd"], tmp_path, {}, {}, "brewdoc-win32-x64")
+    # THEN the refusal exposes useful bounded streams without argv or environment values
+    assert str(failure.value) == ("npm consumer self-check changed (exit 2; stdout=" + repr(b"o" * 512)
+                                  + "; stderr=" + repr(b"e" * 512) + ")"), "diagnostics contain exactly the first 512 bytes per stream"
+
+
 @pytest.mark.parametrize("native_mode,tar_mode", [
     pytest.param(0o755, 0o755, marks=pytest.mark.skipif(os.name == "nt", reason="POSIX executable modes"), id="posix"),
     pytest.param(0o666, 0o644, marks=pytest.mark.skipif(os.name != "nt", reason="Windows file modes"), id="windows"),

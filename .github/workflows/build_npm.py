@@ -525,7 +525,8 @@ def cli_result(arguments: list[str], suffix: list[str], work: Path, environment:
     """Exercise npm's installed bin links or Windows command shims with inherited bytes."""
     command = [*arguments, *suffix]
     if os.name == "nt" and command[0].endswith(".cmd"):
-        command = [os.environ["COMSPEC"], "/d", "/s", "/c", '"' + subprocess.list2cmdline(command) + '"']
+        interpreter = subprocess.list2cmdline([os.environ["COMSPEC"], "/d", "/s", "/c"])
+        command = interpreter + ' "' + subprocess.list2cmdline(command) + '"'
     return subprocess.run(command, cwd=work, env=environment, capture_output=True, timeout=timeout)
 
 
@@ -535,7 +536,8 @@ def consumer_probe(arguments: list[str], work: Path, environment: dict, native: 
     helper = native_builder()
     check = cli_result(arguments, ["--self-check"], work, environment, 45)
     if (check.returncode, check.stdout, check.stderr) != (0, ("self-check: ok (38 checks)" + os.linesep).encode("ascii"), b""):
-        raise ValueError("npm consumer self-check changed")
+        raise ValueError(f"npm consumer self-check changed (exit {check.returncode}; "
+                         f"stdout={check.stdout[:512]!r}; stderr={check.stderr[:512]!r})")
     if verification_scope(native) == "smoke":
         if native["oracle"] != [] or len(native["probes"]) != 2 or {row["probe"] for row in native["probes"]} != {"epub2", "formula"}:
             raise ValueError("npm smoke requires exactly the synthetic native probes")
