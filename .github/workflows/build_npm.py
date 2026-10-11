@@ -36,6 +36,15 @@ PACKAGES = {"linux-x64": "brewdoc-linux-x64-glibc", "windows-x64": "brewdoc-win3
 TARGETS = {"linux-x64": {"os": "linux", "cpu": "x64", "libc": "glibc", "executable": "binary/brewdoc"},
            "windows-x64": {"os": "win32", "cpu": "x64", "executable": "binary/brewdoc.exe"},
            "macos-arm64": {"os": "darwin", "cpu": "arm64", "executable": "binary/brewdoc"}}
+PUBLISH_CAUSES = {"E400": "bad-request", "E401": "authentication-rejected", "E403": "registry-forbidden",
+                  "E404": "registry-not-found", "E409": "version-conflict", "E429": "rate-limit",
+                  "E413": "payload-too-large", "E422": "registry-unprocessable",
+                  "EOTP": "one-time-password-required", "ENEEDAUTH": "authentication-required",
+                  "EPUBLISHCONFLICT": "version-conflict", "EUSAGE": "usage-error",
+                  "ECONNRESET": "transport-error", "ETIMEDOUT": "transport-error",
+                  "ENOTFOUND": "transport-error", "EAI_AGAIN": "transport-error",
+                  "E500": "registry-unavailable", "E502": "registry-unavailable",
+                  "E503": "registry-unavailable", "E504": "registry-unavailable"}
 
 
 def digest(payload: bytes) -> str:
@@ -230,13 +239,47 @@ def npm_command(arguments: list[str], npx: bool = False) -> list[str]:
     return [str(executable), str(npm), *arguments]
 
 
+def publish_failure(payload: bytes) -> tuple[str, str]:
+    """Return finite diagnostics without exposing authenticated npm output."""
+    unknown = ("UNKNOWN", "unclassified")
+    if len(payload) > 64 * 1024:
+        return unknown
+
+    def unique_object(pairs):
+        """Reject conflicting JSON keys before classification."""
+        if len({name for name, _ in pairs}) != len(pairs):
+            raise ValueError("Duplicate npm error field")
+        return dict(pairs)
+
+    try:
+        value = json.loads(payload.decode("utf-8"), object_pairs_hook=unique_object)
+    except (ValueError, UnicodeError, RecursionError):
+        return unknown
+    error = value.get("error") if isinstance(value, dict) else None
+    if (not isinstance(error, dict) or not isinstance(error.get("code"), str)
+            or any(not isinstance(error.get(field, ""), str) for field in ("summary", "detail"))):
+        return unknown
+    code = error["code"] if error["code"] in PUBLISH_CAUSES else "UNKNOWN"
+    cause = PUBLISH_CAUSES.get(code, "unclassified")
+    message = " ".join(error.get(field, "") for field in ("summary", "detail")).lower()
+    matches = {label for label, phrases in (
+        ("provenance-error", ("provenance generation", "generate provenance", "invalid provenance", "provenance statement")),
+        ("one-time-password-required", ("one-time password", "two-factor authentication")),
+        ("version-conflict", ("cannot publish over", "previously published versions")),
+    ) if any(phrase in message for phrase in phrases)}
+    if len(matches) > 1:
+        return unknown
+    return code, next(iter(matches)) if matches else cause
+
+
 def run_npm(arguments: list[str], cwd: Path, environment: dict, timeout: int = 180,
             npx: bool = False) -> subprocess.CompletedProcess:
     """Bound npm tool calls and keep failure output separate from receipt stdout."""
     result = subprocess.run(npm_command(arguments, npx), cwd=cwd, env=environment, capture_output=True, timeout=timeout)
     if result.returncode:
         if arguments[0] == "publish":
-            raise RuntimeError(f"npm publish failed ({result.returncode}); authenticated output was suppressed")
+            code, cause = publish_failure(result.stdout)
+            raise RuntimeError(f"npm publish failed ({result.returncode}); code={code}; cause={cause}; authenticated output was suppressed")
         raise RuntimeError(f"npm command failed ({result.returncode}): {arguments[0]}\n"
                            + (result.stdout + result.stderr).decode("utf-8", errors="replace"))
     return result
@@ -453,7 +496,7 @@ def publish(input_dir: Path) -> None:
     existing = [public_record(record) for record in manifest["packages"]]
     for record, admitted in zip(manifest["packages"], existing, strict=True):
         if not admitted:
-            run_npm(["publish", str((input_dir / record["filename"]).resolve()), "--ignore-scripts", "--access", "public", "--provenance"],
+            run_npm(["publish", str((input_dir / record["filename"]).resolve()), "--ignore-scripts", "--access", "public", "--provenance", "--json"],
                     input_dir, os.environ.copy())
         if not public_record(record):
             raise ValueError("Published npm version is absent from the registry")
