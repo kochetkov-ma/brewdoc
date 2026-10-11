@@ -525,7 +525,8 @@ def test_windows_direct_dns_stops_when_its_logical_owner_exits(tmp_path):
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         owner_record = _read_probe_record(owner)
-        handles.append(_winapi.OpenProcess(1048577, False, owner_record["child"]))
+        # PROCESS_QUERY_LIMITED_INFORMATION permits reading the worker's exit status.
+        handles.append(_winapi.OpenProcess(_winapi.SYNCHRONIZE | 0x0001 | 0x1000, False, owner_record["child"]))
         identity = _read_probe_record(owner)
         assert (owner.poll(), owner_record["owner"], identity["pid"], identity["parent"]) == (
             None, owner.pid, owner_record["child"], owner.pid,
