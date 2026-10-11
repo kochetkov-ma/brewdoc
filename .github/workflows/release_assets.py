@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -28,12 +29,54 @@ CONTROLS = {"release-manifest.json", "SHA256SUMS", "staged-body.md"}
 CI_ARTIFACTS = ("ci-dist", "ci-native-assets", "ci-npm-release",
                 *("ci-npm-consumer-" + target for target in TARGETS))
 TOOLS = {"python": "3.12.14", "uv": "0.12.21", "node": "24.21.0", "npm": "12.2.0"}
+V031_SOURCE = "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7"
+V031_MANIFEST_SHA256 = "e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38"
+V031_RELEASE_ID = 409891511
+V031_PRODUCER_RUN_ID = 38169296455
+RELEASE_CONTROLS = {".github/workflows/release.yml", ".github/workflows/release_assets.py",
+                    "tests/test_release_assets.py", "RELEASING.md"}
 
 
 def needs_smoke(paths: list[str]) -> bool:
-    """Skip only a complete, ordinary documentation-only diff outside packaged inputs."""
-    return not paths or any(not name.startswith("docs/") or ".." in Path(name).parts
+    """Skip only complete ordinary documentation or reviewed release-controller diffs."""
+    return not paths or any((not name.startswith("docs/") and name not in RELEASE_CONTROLS) or ".." in Path(name).parts
                             or "\\" in name or name.endswith("/") for name in paths)
+
+
+def github_event() -> dict:
+    """Read only bounded ordinary workflow event evidence."""
+    path = Path(os.environ.get("GITHUB_EVENT_PATH", ""))
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Workflow event is missing or linked")
+    with path.open("rb") as stream:
+        payload = stream.read(64 * 1024 + 1)
+    if len(payload) > 64 * 1024:
+        raise ValueError("Workflow event is missing or oversized")
+    value = json.loads(payload)
+    if not isinstance(value, dict):
+        raise ValueError("Workflow event is not an object")
+    return value
+
+
+def ci_scope(checkout: Path, base: str, head: str) -> bool:
+    """Use complete explicit IDs or exact main push evidence, otherwise run smoke."""
+    try:
+        if not base and not head:
+            if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/heads/main":
+                return True
+            event = github_event()
+            base, head = event.get("before", ""), event.get("after", "")
+            actual = command(["git", "-C", str(checkout), "rev-parse", "HEAD"]).decode().strip()
+            if head != actual or head != os.environ.get("GITHUB_SHA"):
+                return True
+        if not all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) and value != "0" * 40
+                   for value in (base, head)):
+            return True
+        paths = command(["git", "-C", str(checkout), "diff", "--name-only", "-z",
+                         "--no-renames", base, head]).decode().rstrip("\0").split("\0")
+        return needs_smoke(paths)
+    except (OSError, ValueError, UnicodeError, TypeError):
+        return True
 
 
 def source_inputs(checkout: Path, source_sha: str) -> dict:
@@ -302,6 +345,49 @@ def checksums(assets: dict) -> str:
     return "".join(f"{row['sha256']}  {name}\n" for name, row in sorted(assets.items()))
 
 
+def admit_v031(folder: Path, output: Path) -> dict:
+    """Bind the fixed published package bytes to a separate actual main controller."""
+    if output.resolve().is_relative_to(folder.resolve()) or output.exists() or output.is_symlink():
+        raise ValueError("Controller receipt must be new and separate from release assets")
+    if identity(folder / "release-manifest.json")["sha256"] != V031_MANIFEST_SHA256:
+        raise ValueError("Fixed 0.3.1 release manifest differs")
+    manifest = admit(folder, "v0.3.1", V031_SOURCE)
+    if (manifest["producer"]["run_id"], manifest["producer"]["run_attempt"]) != (V031_PRODUCER_RUN_ID, 1):
+        raise ValueError("Fixed 0.3.1 original producer differs")
+    inputs = github_event().get("inputs", {})
+    if (not isinstance(inputs, dict) or inputs.get("operation") != "resume-v031"
+            or any(inputs.get(name, "") != "" for name in
+                   ("prepared_run_id", "approved_wheel_sha256", "approved_sdist_sha256"))):
+        raise ValueError("Fixed continuation inputs differ")
+    controller_sha = command(["git", "-C", str(CHECKOUT), "rev-parse", "HEAD"]).decode().strip()
+    run_id, attempt = os.environ.get("GITHUB_RUN_ID", ""), os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    if (os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+            or os.environ.get("GITHUB_REF") != "refs/heads/main"
+            or os.environ.get("GITHUB_SHA") != controller_sha or not re.fullmatch(r"[0-9a-f]{40}", controller_sha)
+            or not run_id.isdecimal() or int(run_id) <= 0 or not attempt.isdecimal() or int(attempt) <= 0):
+        raise ValueError("Continuation controller identity differs")
+    run = api(f"actions/runs/{run_id}")
+    expected = {"id": int(run_id), "run_attempt": int(attempt), "head_sha": controller_sha,
+                "event": "workflow_dispatch", "head_branch": "main", "path": ".github/workflows/release.yml"}
+    if ({key: run.get(key) for key in expected} != expected
+            or run.get("repository", {}).get("full_name") != REPOSITORY
+            or run.get("head_repository", {}).get("full_name") != REPOSITORY):
+        raise ValueError("Continuation controller run differs")
+    tag_preflight(manifest)
+    pypi_public(folder, manifest)
+    release, assets = release_state(folder, manifest)
+    if release["id"] != V031_RELEASE_ID or release["body"] != (folder / "staged-body.md").read_text(encoding="utf-8"):
+        raise ValueError("Fixed 0.3.1 existing release or staged body differs")
+    require_complete(folder, manifest, release, assets)
+    record = {"schema": 1, "operation": "resume-v031", "tag": "v0.3.1", "source_sha": V031_SOURCE,
+              "manifest_sha256": V031_MANIFEST_SHA256, "producer_run_id": V031_PRODUCER_RUN_ID,
+              "producer_run_attempt": 1, "release_id": V031_RELEASE_ID,
+              "controller": {"source_sha": controller_sha, "run_id": int(run_id), "run_attempt": int(attempt),
+                             "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
+    write_json(output, record)
+    return record
+
+
 def admit(folder: Path, tag: str, source_sha: str) -> dict:
     """Require the sealed complete set before every remote operation."""
     manifest = read_json(folder / "release-manifest.json")
@@ -368,9 +454,26 @@ def release_state(folder: Path, manifest: dict, *, missing: bool = False) -> tup
     if manifest.get("npm") is not True:
         raise ValueError("The new release requires all four npm packages")
     tag_preflight(manifest)
-    release = api(f"releases/tags/{manifest['tag']}", missing=missing)
+    release = api(f"releases/tags/{manifest['tag']}", missing=True)
     if release is None:
-        return None, {}
+        rows = api("releases?per_page=100")
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError("Release list is malformed")
+        if len(rows) >= 100:
+            raise ValueError("Release list is truncated")
+        candidates = [row for row in rows if row.get("tag_name") == manifest["tag"]]
+        if len(candidates) > 1:
+            raise ValueError("Release tag is ambiguous")
+        if not candidates:
+            if missing:
+                return None, {}
+            raise ValueError("Existing release is unavailable")
+        identifier = candidates[0].get("id")
+        if type(identifier) is not int or identifier <= 0:
+            raise ValueError("Existing release identifier is invalid")
+        release = api(f"releases/{identifier}")
+        if not isinstance(release, dict) or release.get("id") != identifier:
+            raise ValueError("Existing release identity changed during lookup")
     if (type(release["id"]) is not int or release["id"] <= 0 or type(release["draft"]) is not bool
             or (release["tag_name"], release["target_commitish"], release["prerelease"]) != (
                 manifest["tag"], manifest["source_sha"], False)):
@@ -440,13 +543,16 @@ def authenticated_download(endpoint: str, path: Path, size: int, *, accept: str)
 
 
 def stage(folder: Path, manifest: dict) -> None:
-    """Create or resume only a matching draft, uploading absent exact assets."""
+    """Resume exact draft bytes or admit an already complete public staged release."""
     release, assets = release_state(folder, manifest, missing=True)
     body = (folder / "staged-body.md").read_text(encoding="utf-8")
     if release is not None:
+        if release["body"] != body:
+            raise ValueError("Existing release staged body differs")
+        if not release["draft"]:
+            require_complete(folder, manifest, release, assets)
+            return
         verify_downloads(folder, manifest, release, assets)
-        if not release["draft"] or release["body"] != body:
-            raise ValueError("Existing release is public or its staged body differs")
     else:
         api("releases", payload={"tag_name": manifest["tag"], "target_commitish": manifest["source_sha"],
                                  "name": manifest["tag"], "body": body, "draft": True, "prerelease": False})
@@ -748,6 +854,9 @@ def main(argv: list[str] | None = None) -> int:
     scope.add_argument("--base", required=True)
     scope.add_argument("--head", required=True)
     scope.add_argument("--github-output", type=Path, required=True)
+    continuation = commands.add_parser("admit-v031", allow_abbrev=False)
+    continuation.add_argument("--input", type=Path, required=True)
+    continuation.add_argument("--output", type=Path, required=True)
     for operation in ("stage", "publish", "verify-public", "download-target", "admit-public", "finalize"):
         subparser = commands.add_parser(operation, allow_abbrev=False)
         subparser.add_argument("--input", type=Path, required=True)
@@ -771,16 +880,12 @@ def main(argv: list[str] | None = None) -> int:
         reuse_ci(arguments.checkout, arguments.output, arguments.tag, arguments.source_sha)
         return 0
     if arguments.operation == "ci-scope":
-        selected = True
-        if all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (arguments.base, arguments.head)):
-            try:
-                paths = command(["git", "-C", str(arguments.checkout), "diff", "--name-only", "-z",
-                                 "--no-renames", arguments.base, arguments.head]).decode().rstrip("\0").split("\0")
-                selected = needs_smoke(paths)
-            except (ValueError, UnicodeError):
-                selected = True
+        selected = ci_scope(arguments.checkout, arguments.base, arguments.head)
         with arguments.github_output.open("a", encoding="utf-8") as output:
             output.write(f"smoke={'true' if selected else 'false'}\n")
+        return 0
+    if arguments.operation == "admit-v031":
+        admit_v031(arguments.input, arguments.output)
         return 0
     if arguments.operation == "prepare":
         manifest = prepare(arguments.checkout, arguments.bundle, arguments.native, arguments.output, arguments.body,
