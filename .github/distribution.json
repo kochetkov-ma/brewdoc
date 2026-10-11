@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "python": "3.12.14",
+  "uv": "0.12.21",
+  "bundle": "one-folder",
+  "targets": {
+    "linux-x64": {
+      "runner": "ubuntu-22.04",
+      "system": "Linux",
+      "machine": "x86_64",
+      "archive": "tar.gz",
+      "verification_floor": "Ubuntu 22.04, glibc 2.35",
+      "minimum_glibc": "2.35",
+      "render_js": true
+    },
+    "windows-x64": {
+      "runner": "windows-2025",
+      "system": "Windows",
+      "machine": "AMD64",
+      "archive": "zip",
+      "verification_floor": "Windows Server 2025 runner",
+      "render_js": false
+    },
+    "macos-arm64": {
+      "runner": "macos-15",
+      "system": "Darwin",
+      "machine": "arm64",
+      "archive": "tar.gz",
+      "verification_floor": "macOS 15 on Apple Silicon",
+      "render_js": true
+    }
+  },
+  "channels": {
+    "pypi": {"supported": true, "commands": ["pip", "uv", "pipx"]},
+    "standalone": {"supported": true},
+    "npm": {"supported": true},
+    "homebrew": {"supported": false, "issue": 28}
+  },
+  "npm": {
+    "name": "brewdoc",
+    "packages": {
+      "linux-x64": "brewdoc-linux-x64-glibc",
+      "windows-x64": "brewdoc-win32-x64",
+      "macos-arm64": "brewdoc-darwin-arm64"
+    },
+    "node": "24.21.0",
+    "npm": "12.2.0"
+  },
+  "signing": {
+    "windows": "Unsigned; publisher signing has not been configured",
+    "macos": "Ad hoc build signature; no Developer ID signing or notarization",
+    "linux": "Archive SHA-256 checksums; no detached publisher signature"
+  },
+  "release_features": [
+    "Portable one-folder bundles for Linux x64, Windows x64 and macOS ARM64 with bundled Python and dependencies",
+    "npm and npx launch the same admitted native engine through platform packages",
+    "Offline EPUB 2/3 conversion in declared spine order with Unicode metadata and navigation",
+    "Explicit URL acquisition and optional isolated JavaScript capture on admitted platforms",
+    "PDF, DOCX, PPTX, workbook and static HTML conversion with deterministic receipts"
+  ],
+  "releases": {
+    "0.2.0": {
+      "source_sha": "dc1f0c7fdedeec024840127ed989e1f58416762a",
+      "channels": ["pypi", "github-python-archives"],
+      "features": ["Offline PDF, DOCX, PPTX, workbook and static HTML conversion"]
+    },
+    "0.3.0": {
+      "source_sha": "c04938027a92b907afb283e4b1ebd84b5bb21f28",
+      "channels": ["pypi", "github-python-archives"],
+      "features": ["EPUB 2/3 conversion with Unicode and publication navigation", "Explicit URL acquisition and optional isolated JavaScript capture"]
+    }
+  }
+}

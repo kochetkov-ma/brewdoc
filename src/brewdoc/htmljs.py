@@ -16,6 +16,7 @@ from multiprocessing.connection import Connection
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from .common import BrewdocError
+from ._standalone import child_command
 
 BYTE_LIMIT = 8 * 1048576
 IPC_LIMIT = 18 * 1048576
@@ -55,9 +56,8 @@ def _check_runtime(*, deadline=None):
         raise BrewdocError('JS guarded stack prerequisite unavailable') from exc
     global _SIGNAL_PREREQUISITE
     if not _SIGNAL_PREREQUISITE:
-        command = 'from brewdoc.htmljs import _signal_preflight; _signal_preflight()'
         try:
-            probe = subprocess.run([sys.executable, '-I', '-c', command],
+            probe = subprocess.run(child_command('signal'),
                 timeout=min(5, _remaining(deadline)) if deadline is not None else 5,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -355,9 +355,8 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
     parent_socket, child_socket = socket.socketpair()
     parent = Connection(parent_socket.detach())
     descriptor = child_socket.fileno()
-    command = 'from brewdoc.htmljs import _worker_fd; _worker_fd(%d,%d)' % (descriptor, os.getpid())
     try:
-        process = subprocess.Popen([sys.executable, '-I', '-c', command], pass_fds=(descriptor,),
+        process = subprocess.Popen(child_command('js', str(descriptor), str(os.getpid())), pass_fds=(descriptor,),
             start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as exc:
         parent.close()

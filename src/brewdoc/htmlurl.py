@@ -12,7 +12,6 @@ import re
 import socket
 import ssl
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -21,6 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
 
 from brewdoc.common import BrewdocError
+from brewdoc._standalone import child_command
 from brewdoc import htmltext
 from brewdoc.service import EXIT_FAIL, _line, run
 
@@ -46,16 +46,6 @@ _V4_DENY = tuple(ipaddress.ip_network(value) for value in (
 _V6_ALLOW = ipaddress.ip_network("2000::/3")
 _V6_DENY = tuple(ipaddress.ip_network(value) for value in (
     "2001::/23", "2001:db8::/32", "2002::/16", "3fff::/20"))
-_DNS_CODE = """import json,os,socket,sys,threading,time
-parent=int(sys.argv[3])
-def watch():
-    while os.getppid()==parent:
-        time.sleep(.05)
-    os._exit(1)
-threading.Thread(target=watch,daemon=True).start()
-answers=socket.getaddrinfo(sys.argv[1],int(sys.argv[2]),type=socket.SOCK_STREAM)
-print(json.dumps(list(dict.fromkeys(item[4][0] for item in answers))[:129]))
-"""
 
 
 class URLPolicyError(BrewdocError):
@@ -170,9 +160,9 @@ def _public_address(address: str) -> bool:
 
 
 def _dns_lookup(host: str, port: int, deadline: float) -> tuple[str, ...]:
-    """Resolve in a terminable Python child so libc DNS cannot outlive the deadline."""
+    """Resolve in a terminable child so libc DNS cannot outlive the deadline."""
     try:
-        result = subprocess.run([sys.executable, "-I", "-c", _DNS_CODE, host, str(port), str(os.getpid())],
+        result = subprocess.run(child_command("dns", host, str(port), str(os.getpid())),
                                 capture_output=True, timeout=_remaining(deadline), check=False)
     except subprocess.TimeoutExpired as exc:
         raise _error("URL DNS deadline exceeded", "dns", URLTimeoutError) from exc

@@ -43,6 +43,167 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  standalone:
+    name: standalone (${{ matrix.target }}, Python 3.12.14)
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+          cache-suffix: uv-0.12.21-ci-standalone
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ci-dist
+          path: ${{ runner.temp }}/ci-dist
+          digest-mismatch: error
+      - name: Build the accepted wheel into its native standalone bundle
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py build --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist" --output "${{ runner.temp }}/ci-native-${{ matrix.target }}" --target "${{ matrix.target }}"
+      - name: Verify native CLI and accepted outputs outside the checkout
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py verify --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist" --output "${{ runner.temp }}/ci-native-${{ matrix.target }}" --target "${{ matrix.target }}"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0
+      - name: Pack the verified platform before native file attributes leave this runner
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py pack --native-dir "${{ runner.temp }}/ci-native-${{ matrix.target }}" --output "${{ runner.temp }}/ci-npm-${{ matrix.target }}"
+      - name: Preserve native bundle and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ci-native-target-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/*.tar.gz
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/*.zip
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/manifest.json
+            ${{ runner.temp }}/ci-native-${{ matrix.target }}/verification.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve sealed npm platform tarball and admission record
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ci-npm-target-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/ci-npm-${{ matrix.target }}/*.tgz
+            ${{ runner.temp }}/ci-npm-${{ matrix.target }}/platform-record.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  standalone-assets:
+    name: admit complete standalone and npm assets
+    needs: standalone
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: ci-native-target-*
+          path: ${{ runner.temp }}/ci-native-targets
+          digest-mismatch: error
+      - name: Admit exactly three verified native target manifests
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py aggregate --input "${{ runner.temp }}/ci-native-targets" --output "${{ runner.temp }}/ci-native-assets"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ci-native-assets
+          path: ${{ runner.temp }}/ci-native-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: ci-npm-target-*
+          path: ${{ runner.temp }}/ci-npm-targets
+          digest-mismatch: error
+      - name: Assemble the main package only after every native platform passes
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py aggregate --input "${{ runner.temp }}/ci-npm-targets" --output "${{ runner.temp }}/ci-npm-release"
+      - name: Admit the complete four-package npm set
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py verify --input "${{ runner.temp }}/ci-npm-release"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ci-npm-release
+          path: |
+            ${{ runner.temp }}/ci-npm-release/*.tgz
+            ${{ runner.temp }}/ci-npm-release/npm-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  npm-consumer:
+    name: npm consumer (${{ matrix.target }})
+    needs: standalone-assets
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ci-npm-release
+          path: ${{ runner.temp }}/ci-npm-release
+          digest-mismatch: error
+      - name: Check launcher argument, stream and exit behavior
+        run: node --test npm/test/launcher.test.cjs
+      - name: Verify normal npm and npx consumers from the sealed local package set
+        run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py probe --input "${{ runner.temp }}/ci-npm-release" --target "${{ matrix.target }}" --mode local --output "${{ runner.temp }}/ci-npm-probe-${{ matrix.target }}.json"
+      - name: Preserve npm consumer observations
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ci-npm-consumer-${{ matrix.target }}
+          path: ${{ runner.temp }}/ci-npm-probe-${{ matrix.target }}.json
+          if-no-files-found: warn
+          retention-days: 7
+
   package:
     name: package (Python 3.12)
     runs-on: ubuntu-26.04
