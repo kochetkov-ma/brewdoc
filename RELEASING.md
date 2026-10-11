@@ -6,7 +6,8 @@ The tag workflow does not rebuild Python packages, native bundles or npm package
 PyPI receives only the wheel and sdist. The GitHub release contains their accepted
 bytes, the three native archives, manifests, checksums and a complete installation guide.
 Selected npm platform packages publish before the main brewdoc package.
-Manual dispatch contains the guarded original 0.2.0 recovery path described below.
+Manual dispatch contains the fixed 0.3.1 continuation and guarded original 0.2.0
+recovery paths described below.
 
 ## One-time setup (manual)
 
@@ -152,6 +153,34 @@ Historical 0.2.0/0.3.0 releases are public Python wheel/sdist releases. Preserve
 their tags and bytes. Amend guide text only from each release's original features
 and available channels; never add later EPUB, URL, native or npm features to 0.2.0,
 or native/npm assets to 0.3.0.
+
+## Fixed 0.3.1 continuation
+
+After the reviewed continuation workflow reaches `main`, use its fixed dispatch
+to complete partial publication. Do not rerun the original failed tag workflow:
+GitHub reruns dependent jobs too, including its faulty lookup of an existing draft.
+Keep the three original 0.2.0 recovery fields empty:
+
+```sh
+gh workflow run release.yml --repo kochetkov-ma/brewdoc --ref main -f operation=resume-v031 -f prepared_run_id= -f approved_wheel_sha256= -f approved_sdist_sha256=
+```
+
+This operation accepts only `main`. Release payloads remain bound to `v0.3.1`,
+source `7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7`, producer CI `38169296455`
+attempt 1 and release-manifest SHA-256
+`e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38`.
+It reuses unchanged accepted artifacts without rebuilding, uploading to PyPI
+again or writing tags. The current controller commit/run and actual npm provenance
+are recorded separately from the original package source; neither identity is relabelled.
+
+Admission rechecks the fixed tag, manifest, public PyPI bytes and existing draft
+`409891511`. npm reuses existing versions only after their metadata and actual
+tarballs match accepted bytes/integrity; missing platforms publish before main.
+Pending stages, unknown registry state or mismatches require investigation, not a
+blind retry. GitHub continues the unique exact draft after its body and complete
+asset bytes match. Public native/npm/npx consumers on all three hosts and final
+guide admission still gate completion. A dispatched or successful publisher job
+alone does not establish accepted recovery.
 
 ## Original 0.2.0 recovery
 

@@ -64,7 +64,7 @@ def test_ci_artifact_admission_refuses_incomplete_or_unverifiable_sets(change):
 
 
 @pytest.mark.parametrize("paths,expected", [(["docs/architecture.md"], False), (["README.md"], True),
-    (["RELEASING.md"], True), (["FORMATS.md"], True), (["unknown.md"], True), ([], True),
+    (["RELEASING.md"], False), (["FORMATS.md"], True), (["unknown.md"], True), ([], True),
     (["docs/architecture.md", "src/brewdoc/cli.py"], True), (["docs/../README.md"], True)])
 def test_ci_path_gate_skips_only_proven_nonpackage_documentation(paths, expected):
     # GIVEN a complete list of changed paths
@@ -73,7 +73,80 @@ def test_ci_path_gate_skips_only_proven_nonpackage_documentation(paths, expected
     # WHEN the always-running gate selects package smoke
     actual = RELEASE.needs_smoke(paths)
     # THEN package inputs and unknown or incomplete changes retain all checks
-    assert actual is expected, "only ordinary docs paths can skip the artifact graph"
+    assert actual is expected, "only ordinary docs and exact release controls can skip the artifact graph"
+
+
+@pytest.mark.parametrize("paths,expected", [
+    ([".github/workflows/release.yml"], False),
+    ([".github/workflows/release_assets.py"], False),
+    (["tests/test_release_assets.py", "docs/architecture.md"], False),
+    ([".github/workflows/ci.yml"], True),
+    ([".github/workflows/release_assets.py", ".github/workflows/build_npm.py"], True),
+], ids=["release-workflow", "release-controller", "controller-tests-and-docs", "package-ci", "mixed-package-input"])
+def test_ci_path_gate_skips_exact_release_controls_and_keeps_package_changes(paths, expected):
+    # GIVEN controller-only changes or a nearby package-producing input
+    snapshot = list(paths)
+    assert paths == snapshot, "the complete changed-path observation is preserved"
+    # WHEN package smoke admission separates fixed release control from package inputs
+    actual = RELEASE.needs_smoke(paths)
+    # THEN only the accepted exact controller files may skip package construction
+    assert actual is expected, "neighboring workflow and npm build inputs retain package smoke"
+
+
+def push_scope_fixture(tmp_path, monkeypatch):
+    """Provide an exact main push event and fake only read-only Git command output."""
+    before, after = "a" * 40, "b" * 40
+    event = tmp_path / "push.json"
+    event.write_text(json.dumps({"before": before, "after": after, "ref": "refs/heads/main"}), encoding="utf-8")
+    for name, value in {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main",
+                        "GITHUB_SHA": after, "GITHUB_EVENT_PATH": str(event)}.items():
+        monkeypatch.setenv(name, value)
+    calls = []
+
+    def git(arguments, payload=None):
+        """Return HEAD and the controller-only diff without mutating Git."""
+        calls.append(arguments)
+        return {"rev-parse": (after + "\n").encode(), "diff": b".github/workflows/release.yml\0"}[arguments[3]]
+
+    monkeypatch.setattr(RELEASE, "command", git)
+    return event, before, after, calls
+
+
+def test_ci_scope_reads_exact_main_push_event_when_both_explicit_commits_are_absent(tmp_path, monkeypatch):
+    # GIVEN a bounded main push event whose after commit equals checkout HEAD and GITHUB_SHA
+    _event, before, after, calls = push_scope_fixture(tmp_path, monkeypatch)
+    output = tmp_path / "github-output"
+    assert calls == [], "no Git observation precedes scope admission"
+    # WHEN the existing CLI receives no explicit before or after commit
+    actual = RELEASE.main(["ci-scope", "--checkout", str(tmp_path), "--base", "", "--head", "", "--github-output", str(output)])
+    # THEN the exact controller diff can skip rebuilding unchanged release packages
+    assert (actual, output.read_text(encoding="utf-8")) == (0, "smoke=false\n"), "valid push evidence supplies the missing commit pair"
+    assert [call for call in calls if call[3] == "diff"] == [["git", "-C", str(tmp_path), "diff", "--name-only", "-z",
+        "--no-renames", before, after]], "the scope gate compares only the admitted immutable push commits"
+
+
+@pytest.mark.parametrize("change,base,head", [
+    ("foreign-ref", "", ""), ("foreign-event", "", ""), ("foreign-after", "", ""),
+    ("zero-before", "", ""), ("malformed", "", ""), ("array", "", ""), ("oversized", "", ""),
+    ("valid", "a" * 40, ""),
+], ids=["foreign-ref", "foreign-event", "foreign-after", "zero-before", "malformed", "array", "oversized", "partial-explicit-pair"])
+def test_ci_scope_keeps_smoke_for_untrusted_or_partial_push_evidence(tmp_path, monkeypatch, change, base, head):
+    # GIVEN a controller-only diff with incomplete or untrusted event evidence
+    event, before, after, calls = push_scope_fixture(tmp_path, monkeypatch)
+    assert calls == [], "the event guard starts without any Git diff observation"
+    mutations = {"foreign-ref": lambda: monkeypatch.setenv("GITHUB_REF", "refs/heads/feature"),
+                 "foreign-event": lambda: monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch"),
+                 "foreign-after": lambda: event.write_text(json.dumps({"before": before, "after": "c" * 40})),
+                 "zero-before": lambda: event.write_text(json.dumps({"before": "0" * 40, "after": after})),
+                 "malformed": lambda: event.write_bytes(b"not JSON"),
+                 "array": lambda: event.write_bytes(b"[]"),
+                 "oversized": lambda: event.write_bytes(b" " * (64 * 1024 + 1)), "valid": lambda: None}
+    mutations[change]()
+    # WHEN the scope gate considers absent or partially supplied explicit IDs
+    actual = RELEASE.ci_scope(tmp_path, base, head)
+    # THEN unavailable exact commit evidence retains package checks
+    assert actual is True, "untrusted or incomplete scope evidence must run smoke"
+    assert [call for call in calls if call[3] == "diff"] == [], "invalid event evidence never reaches Git diff"
 
 
 def npm_archives(output, targets):
@@ -118,10 +191,10 @@ def sealed_release(tmp_path, monkeypatch):
     """Prepare real synthetic archive identities through the existing admission helpers."""
     checkout, bundle, native = (tmp_path / name for name in ("checkout", "bundle", "native"))
     checkout.mkdir()
-    (checkout / "pyproject.toml").write_text('[project]\nversion = "0.3.0"\n', encoding="utf-8")
+    (checkout / "pyproject.toml").write_text(f'[project]\nversion = "{VERSION}"\n', encoding="utf-8")
     (checkout / "uv.lock").write_bytes(b"locked")
     (checkout / "src/brewdoc").mkdir(parents=True)
-    (checkout / "src/brewdoc/__init__.py").write_text('__version__ = "0.3.0"\n', encoding="utf-8")
+    (checkout / "src/brewdoc/__init__.py").write_text(f'__version__ = "{VERSION}"\n', encoding="utf-8")
     (checkout / ".github").mkdir()
     (checkout / ".github/distribution.json").write_bytes((CHECKOUT / ".github/distribution.json").read_bytes())
     original_helper = RELEASE.helper
@@ -137,8 +210,8 @@ def sealed_release(tmp_path, monkeypatch):
     monkeypatch.setattr(RELEASE, "CHECKOUT", checkout)
     (bundle / "dist").mkdir(parents=True)
     (bundle / "ci-package").mkdir()
-    wheel = bundle / "dist/brewdoc-0.3.0-py3-none-any.whl"
-    sdist = bundle / "dist/brewdoc-0.3.0.tar.gz"
+    wheel = bundle / f"dist/brewdoc-{VERSION}-py3-none-any.whl"
+    sdist = bundle / f"dist/brewdoc-{VERSION}.tar.gz"
     wheel.write_bytes(b"accepted wheel bytes")
     sdist.write_bytes(b"accepted source bytes")
     producer = {"version": VERSION, "checkout_sha": SOURCE,
@@ -429,6 +502,26 @@ def fake_api(monkeypatch, folder, manifest, *, draft=True, changes=None):
     return responses, calls
 
 
+def hidden_draft_api(monkeypatch, folder, manifest):
+    """Model a listed draft hidden by the tag endpoint and reject duplicate creation."""
+    responses, calls = fake_api(monkeypatch, folder, manifest)
+    release = responses[f"releases/tags/{manifest['tag']}"]
+    responses.update({"releases?per_page=100": [release], "releases/42": release})
+    original_run = RELEASE.subprocess.run
+
+    def run(arguments, **kwargs):
+        """Keep ordinary repository reads real while returning bounded HTTP failures."""
+        endpoint = arguments[2].removeprefix(f"repos/{RELEASE.REPOSITORY}/")
+        failures = {f"releases/tags/{manifest['tag']}": 404, "releases": 409}
+        if endpoint in failures:
+            calls.append(arguments)
+            return subprocess.CompletedProcess(arguments, 1, json.dumps({"status": str(failures[endpoint])}).encode(), b"")
+        return original_run(arguments, **kwargs)
+
+    monkeypatch.setattr(RELEASE.subprocess, "run", run)
+    return responses, calls
+
+
 def draft_io(monkeypatch, folder, assets, substitutions=None):
     """Fake the authenticated download process while retaining actual byte validation."""
     substitutions = substitutions or {}
@@ -514,6 +607,95 @@ def public_registry(monkeypatch, folder, manifest):
         return io.BytesIO(json.dumps(metadata).encode())
 
     monkeypatch.setattr(RELEASE.urllib.request, "urlopen", open_url)
+
+
+def v031_continuation_fixture(tmp_path, monkeypatch):
+    """Seal synthetic fixed-source packages while isolating controller and public I/O."""
+    monkeypatch.setitem(globals(), "VERSION", "0.3.1")
+    monkeypatch.setitem(globals(), "SOURCE", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7")
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    manifest["producer"] = {"run_id": 38169296455, "run_attempt": 1}
+    RELEASE.write_json(folder / "release-manifest.json", manifest)
+    digest = hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest()
+    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", digest)
+    responses, calls = fake_api(monkeypatch, folder, manifest)
+    release = responses["releases/tags/v0.3.1"]
+    release["id"] = 409891511
+    rows = responses["releases/42/assets?per_page=100"]
+    responses["releases/409891511/assets?per_page=100"] = rows
+    responses["actions/runs/73"] = {"id": 73, "run_attempt": 2, "head_sha": "c" * 40,
+        "event": "workflow_dispatch", "head_branch": "main", "path": ".github/workflows/release.yml",
+        "repository": {"full_name": RELEASE.REPOSITORY}, "head_repository": {"full_name": RELEASE.REPOSITORY}}
+    draft_io(monkeypatch, folder, rows)
+    public_io(monkeypatch, folder)
+    public_registry(monkeypatch, folder, manifest)
+    event = tmp_path / "dispatch.json"
+    event.write_text(json.dumps({"inputs": {"operation": "resume-v031"}}), encoding="utf-8")
+    for name, value in {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
+                        "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "73", "GITHUB_RUN_ATTEMPT": "2",
+                        "GITHUB_EVENT_PATH": str(event)}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(RELEASE, "command", lambda *args, **kwargs: ("c" * 40 + "\n").encode())
+    return folder, manifest, responses, calls, event, digest
+
+
+def test_fixed_v031_continuation_rejects_wrong_original_seal_before_any_remote_io(tmp_path, monkeypatch):
+    # GIVEN synthetic release bytes that cannot match the immutable original release seal
+    folder, _manifest = sealed_release(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(RELEASE.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    assert RELEASE.V031_MANIFEST_SHA256 == "e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38", "production recovery retains the actual immutable manifest seal"
+    # WHEN fixed-version admission observes the different manifest bytes
+    with pytest.raises(ValueError, match="Fixed 0.3.1 release manifest differs"):
+        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
+    # THEN refusal precedes remote reads and controller receipt creation
+    assert (calls, (tmp_path / "receipt.json").exists()) == ([], False), "a foreign seal cannot enter recovery"
+
+
+def test_fixed_v031_continuation_records_actual_controller_separately_from_original_source(tmp_path, monkeypatch):
+    # GIVEN admitted original package bytes and a different actual main controller commit
+    folder, manifest, _responses, calls, _event, digest = v031_continuation_fixture(tmp_path, monkeypatch)
+    assert (manifest["version"], manifest["source_sha"], manifest["producer"]) == (
+        "0.3.1", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", {"run_id": 38169296455, "run_attempt": 1}), "packages retain their immutable original identity"
+    # WHEN fixed continuation admits source, controller, existing release and actual PyPI bytes
+    actual = RELEASE.admit_v031(folder, tmp_path / "receipt.json")
+    # THEN the receipt preserves original release provenance and the real recovery controller
+    expected = {"schema": 1, "operation": "resume-v031", "tag": "v0.3.1",
+        "source_sha": "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", "manifest_sha256": digest,
+        "producer_run_id": 38169296455, "producer_run_attempt": 1, "release_id": 409891511,
+        "controller": {"source_sha": "c" * 40, "run_id": 73, "run_attempt": 2,
+                       "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
+    assert (actual, RELEASE.read_json(tmp_path / "receipt.json")) == (expected, expected), "recovery never relabels the controller as the package source"
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "fixed admission performs no publication mutation"
+
+
+@pytest.mark.parametrize("change,reason", [
+    ("producer-run", "original producer differs"), ("producer-attempt", "original producer differs"),
+    ("controller-run", "controller run differs"), ("controller-ref", "controller identity differs"),
+    ("legacy-input", "inputs differ"), ("release-id", "existing release or staged body differs"),
+    ("pypi-bytes", "asset bytes differ"),
+])
+def test_fixed_v031_continuation_refuses_foreign_origin_controller_release_or_public_bytes(tmp_path, monkeypatch, change, reason):
+    # GIVEN exact synthetic fixed-source inputs with one conflicting recovery boundary
+    folder, manifest, responses, calls, event, _digest = v031_continuation_fixture(tmp_path, monkeypatch)
+    assert manifest["producer"] == {"run_id": 38169296455, "run_attempt": 1}, "the original producer starts admitted"
+    mutations = {"producer-run": lambda: manifest["producer"].update(run_id=17),
+                 "producer-attempt": lambda: manifest["producer"].update(run_attempt=2),
+                 "controller-run": lambda: responses["actions/runs/73"].update(head_sha="d" * 40),
+                 "controller-ref": lambda: monkeypatch.setenv("GITHUB_REF", "refs/heads/feature"),
+                 "legacy-input": lambda: event.write_text(json.dumps({"inputs": {"operation": "resume-v031", "prepared_run_id": "17"}})),
+                 "release-id": lambda: responses["releases/tags/v0.3.1"].update(id=42),
+                 "pypi-bytes": lambda: public_io(monkeypatch, folder, {
+                     "brewdoc-0.3.1-py3-none-any.whl": b"x" * manifest["assets"]["brewdoc-0.3.1-py3-none-any.whl"]["bytes"]})}
+    mutations[change]()
+    RELEASE.write_json(folder / "release-manifest.json", manifest)
+    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest())
+    # WHEN fixed-version admission reaches the conflicting observable evidence
+    with pytest.raises(ValueError, match=reason):
+        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
+    # THEN no failed boundary can create an admitted controller receipt or publication write
+    assert ([call for call in calls if "--method" in call or call[1] == "release"],
+            (tmp_path / "receipt.json").exists()) == ([], False), "untrusted recovery evidence cannot authorize publication"
 
 
 def complete_public_evidence(tmp_path, folder, manifest, assets):
@@ -625,6 +807,113 @@ def test_explicit_http_404_is_the_only_absent_release(monkeypatch):
     result = RELEASE.api("releases/tags/v0.3.0", missing=True)
     # THEN only this absence is reusable for draft creation
     assert result is None, "an explicit 404 admits a new draft"
+
+
+def test_release_state_finds_unique_existing_draft_when_tag_endpoint_returns_404(tmp_path, monkeypatch):
+    # GIVEN an exact existing draft listed by GitHub but hidden by its tag endpoint
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
+    release = responses["releases/42"]
+    rows = responses["releases/42/assets?per_page=100"]
+    assert (release["draft"], len(rows)) == (True, 13), "the existing draft already holds the complete exact upload set"
+    # WHEN release lookup admits absence only after checking authenticated drafts
+    actual = RELEASE.release_state(folder, manifest, missing=True)
+    # THEN the existing draft is returned instead of admitting duplicate creation
+    assert actual == (release, {row["name"]: row for row in rows}), "a tag lookup 404 cannot conceal an existing matching draft"
+    assert [call for call in calls if "--method" in call] == [], "draft discovery remains read-only"
+
+
+@pytest.mark.parametrize("change,reason", [("ambiguous", "ambiguous|multiple|duplicated"),
+                                         ("truncated", "bounded|truncated"),
+                                         ("malformed", "malformed|invalid|list")])
+def test_hidden_draft_lookup_refuses_ambiguous_truncated_or_malformed_listing(tmp_path, monkeypatch, change, reason):
+    # GIVEN a tag lookup 404 and a listing that cannot establish unique release identity
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
+    release = responses["releases/42"]
+    assert release["tag_name"] == manifest["tag"], "the initial draft matches the admitted tag"
+    listings = {"ambiguous": [release, {**release, "id": 43}],
+                "truncated": [{**release, "id": index + 1} for index in range(100)],
+                "malformed": {"releases": [release]}}
+    responses["releases?per_page=100"] = listings[change]
+    # WHEN bounded authenticated fallback tries to resolve the existing draft
+    with pytest.raises(ValueError, match=reason):
+        RELEASE.release_state(folder, manifest, missing=True)
+    # THEN uncertain absence cannot authorize duplicate release creation
+    assert [call for call in calls if "--method" in call] == [], "invalid listing refusal performs no remote write"
+
+
+def test_stage_reuses_complete_hidden_draft_without_creation_or_upload(tmp_path, monkeypatch):
+    # GIVEN one existing draft whose exact thirteen assets already passed staging
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
+    draft_io(monkeypatch, folder, responses["releases/42/assets?per_page=100"])
+    assert len(responses["releases/42/assets?per_page=100"]) == 13, "the hidden draft already contains all required bytes"
+    # WHEN staging resumes through the authenticated draft fallback
+    actual = RELEASE.stage(folder, manifest)
+    # THEN complete byte readback succeeds without duplicate creation or replacement
+    assert actual is None, "idempotent staging completes normally"
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "existing exact assets require no public mutation"
+
+
+def test_stage_accepts_complete_public_release_with_exact_staged_body_without_mutation(tmp_path, monkeypatch):
+    # GIVEN an already public release retaining the exact staged body and complete bytes
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
+    downloads = public_io(monkeypatch, folder)
+    assert (responses["releases/tags/v0.3.0"]["draft"], len(responses["releases/42/assets?per_page=100"])) == (
+        False, 13), "the public release already contains the complete accepted set"
+    # WHEN staging resumes after the previous publication transition
+    actual = RELEASE.stage(folder, manifest)
+    # THEN exact byte verification completes without any release or asset mutation
+    assert actual is None, "the verified public release is an idempotent staging result"
+    assert sorted(url.rsplit("/", 1)[1] for url in downloads) == sorted(RELEASE.upload_identities(folder, manifest)), "every existing public asset is read back"
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "a complete public release requires no publication mutation"
+
+
+@pytest.mark.parametrize("delta,asset_count,replace_bytes,reason", [
+    ({"body": "Changed release instructions.\n"}, 13, False, "staged body differs"),
+    ({}, 12, False, "asset set is incomplete"),
+    ({}, 13, True, "asset bytes differ"),
+], ids=["changed-body", "partial-assets", "changed-bytes"])
+def test_public_release_staging_refuses_changed_body_partial_assets_or_bytes(tmp_path, monkeypatch, delta, asset_count, replace_bytes, reason):
+    # GIVEN a public release with one conflicting staged-body or asset identity
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
+    release, rows = responses["releases/tags/v0.3.0"], responses["releases/42/assets?per_page=100"]
+    assert (release["draft"], len(rows)) == (False, 13), "the release starts public with all thirteen assets"
+    release.update(delta)
+    rows[:] = rows[:asset_count]
+    name = "brewdoc-0.3.0-py3-none-any.whl"
+    substitutions = {False: {}, True: {name: b"x" * manifest["assets"][name]["bytes"]}}[replace_bytes]
+    public_io(monkeypatch, folder, substitutions)
+    # WHEN repeated staging verifies the existing publication
+    with pytest.raises(ValueError, match=reason):
+        RELEASE.stage(folder, manifest)
+    # THEN refusal cannot upload, replace or republish any public asset
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "public identity conflicts refuse before mutation"
+
+
+@pytest.mark.parametrize("delta,replace_bytes,reason", [
+    ({"target_commitish": "b" * 40}, False, "Existing release identity differs"),
+    ({"body": "Changed release instructions.\n"}, False, "staged body differs"),
+    ({}, True, "asset bytes differ"),
+], ids=["foreign-source", "changed-body", "changed-bytes"])
+def test_hidden_draft_staging_refuses_foreign_source_body_or_actual_bytes(tmp_path, monkeypatch, delta, replace_bytes, reason):
+    # GIVEN an existing hidden draft with one conflicting publication identity
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
+    release = responses["releases/42"]
+    assert release["target_commitish"] == SOURCE, "the draft starts at the exact admitted source"
+    release.update(delta)
+    name = "brewdoc-0.3.0-py3-none-any.whl"
+    substitutions = {False: {}, True: {name: b"x" * manifest["assets"][name]["bytes"]}}[replace_bytes]
+    draft_io(monkeypatch, folder, responses["releases/42/assets?per_page=100"], substitutions)
+    # WHEN staging validates the discovered draft and every existing asset
+    with pytest.raises(ValueError, match=reason):
+        RELEASE.stage(folder, manifest)
+    # THEN foreign or altered state refuses before creation, upload or publication
+    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "conflicting draft evidence never permits mutation"
 
 
 @pytest.mark.parametrize("change", [{"target_commitish": "main"}, {"tag_name": "v0.2.0"}, {"prerelease": True}])
