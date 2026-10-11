@@ -82,7 +82,11 @@ jobs:
         with:
           path: ${{ runner.temp }}/npm-downloads/_cacache
           key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
-      - run: npm install --global npm@12.2.0
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
         env:
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
       - name: Pack the verified platform before native file attributes leave this runner
@@ -135,7 +139,11 @@ jobs:
         with:
           path: ${{ runner.temp }}/npm-downloads/_cacache
           key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
-      - run: npm install --global npm@12.2.0
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
         env:
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
       - uses: actions/download-artifact@v8.0.2
@@ -206,7 +214,11 @@ jobs:
         with:
           path: ${{ runner.temp }}/npm-downloads/_cacache
           key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
-      - run: npm install --global npm@12.2.0
+      - name: Install pinned npm beside the selected Node runtime
+        shell: bash
+        run: |
+          BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
+          npm install --global --prefix "$BREWDOC_NPM_PREFIX" npm@12.2.0
         env:
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
       - uses: actions/download-artifact@v8.0.2
