@@ -1,3 +1,4 @@
 tests/fixtures/** -text
 pyproject.toml text eol=lf
 uv.lock text eol=lf
+benchmarks/corpus.json text eol=lf
