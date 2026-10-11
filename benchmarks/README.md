@@ -1,35 +1,64 @@
 # Document conversion corpus
 
-[corpus.json](corpus.json) indexes 47 existing files (4,681,527 bytes) in
+[corpus.json](corpus.json) indexes 49 existing files (5,668,302 bytes) in
 [tests/fixtures](../tests/fixtures). Run examples from a repository checkout.
 Fixtures and benchmark tools are not installed by the brewdoc wheel.
 
 Browse the [file catalog](CATALOG.md) for each document's title, topics, structural features and
-pages, sheets, chapters or slides. All 47 inputs are public Internet files; none were generated for
+pages, sheets, chapters or slides. All 49 inputs are public Internet files; none were generated for
 this corpus. The [annotation and provenance contract](annotations/README.md) explains source
 evidence, download verification and remaining unknowns.
 
 For a complete run, follow the [baseline methodology](METHODOLOGY.md): freeze
-the context, capture all 47 inputs twice, compare observations and review source
+the context, capture all 49 inputs twice, compare observations and review source
 content. Immutable raw results live in `.codex/reports/<UTC>_baseline-results/`.
 Selected completed full runs have reviewed portable bundles in
 `benchmarks/results/<run-id>/`, versioned on the `benchmark` branch. Browse the
 [full-run registry](results/README.md) for summaries and actual outputs.
 
-The `core` group contains 9 government/research PDFs, 2 Census workbooks and
-1 Apache HTML reference.
+The `core` group contains 9 government/research PDFs, 2 Census workbooks,
+1 Apache HTML reference and the Herland EPUB novel.
 The `feature_probe` group contains 20 upstream Calamine parser examples and 10
-DOCX/PPTX container examples, plus 5 MDN HTML learning examples. Keep the 12 core
-and 35 feature-probe results separate. Every input already appears in the test
-suite; this is a reusable comparison set, not a held-out quality set.
+DOCX/PPTX container examples, plus 5 MDN HTML learning examples and 1 EPUBCheck
+example. Keep the 13 core and 36 feature-probe results separate. Every input
+already appears in the test suite; this is a reusable comparison set, not a
+held-out quality set.
 
 HTML adds three table pages, an article example, a technical reference and a form.
 Each source annotation covers one recovered body, including navigation and footer
 content. See [HTML source scope](annotations/README.md#html-body-records) for
 tables, declared controls, literal code and static exclusions. Source coverage
 does not establish format acceptance. A targeted six-HTML capture has its own
-selection and cannot count as a complete 47-input run. Historical runs retain
+selection and cannot count as a complete 49-input run. Historical runs retain
 their frozen manifests and recorded coverage.
+
+## EPUB acceptance
+
+The two existing EPUB 3 sources add 17 declared spine units. Minimal EPUBCheck
+source review covers all members and reading text. Herland review covers all 16
+spine items and navigation, complete titlepage, imprint, colophon and uncopyright,
+and paragraph samples in chapters 1, 6 and 12, including chapter 6 verse.
+It does not establish exhaustive novel or visual layout fidelity. EPUB 2
+evidence is synthetic; no additional EPUB corpus is included.
+
+Each source receives two targeted captures for output acceptance. The scoped
+EPUB iteration compares the previous 47-input selection once before and once
+after shared changes. This compatibility comparison is separate from a complete
+two-pass 49-input benchmark. Historical result bundles retain their denominators.
+
+The accepted capture pair for each EPUB agrees byte for byte and retains the
+same complete receipt after only output-path normalization. All 17 units, declared
+metadata, source headings, reviewed text, Unicode, image records and links survive
+the stated review scope. Herland has 1,429 text regions: 1,410 source paragraphs,
+16 headings and 3 image metadata records. Four earlier captures exposed a lost
+`hgroup` heading and remain quality-failure evidence; there were eight capture
+attempts in total, of which four were accepted.
+
+Optional `accepted_output` objects in fixture receipts identify reviewed UTF-8
+Markdown by hash and byte length and retain the full receipt with only `out`
+normalized to null. The object is internal evidence, not a public receipt field
+or an authored Markdown golden. Detailed observed Markdown and review notes
+remain in local capture trees.
 
 ## Find an input
 

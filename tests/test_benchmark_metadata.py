@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ UNIT_FIELDS = {"pages", "sheets", "chapters", "slides"}
 UNIT_FIELD_BY_FORMAT = {
     "pdf": "pages",
     "docx": "chapters",
+    "epub": "chapters",
     "html": "chapters",
     "pptx": "slides",
     "ods": "sheets",
@@ -28,13 +30,13 @@ def load_manifest() -> dict:
 
 
 def test_manifest_structure_is_unique_and_covers_all_container_and_html_fixtures():
-    # GIVEN the benchmark manifest and every DOCX, PPTX or HTML fixture path
+    # GIVEN the benchmark manifest and every DOCX, EPUB, PPTX or HTML fixture path
     manifest = load_manifest()
     documents = manifest["documents"]
     fixture_paths = sorted(
         path.relative_to(ROOT).as_posix()
         for path in FIXTURES.rglob("*")
-        if path.suffix.lower() in {".docx", ".pptx", ".html"}
+        if path.suffix.lower() in {".docx", ".epub", ".pptx", ".html"}
     )
     # WHEN structural identities and paths are collected without reading the binaries
     ids = [document["id"] for document in documents]
@@ -43,20 +45,24 @@ def test_manifest_structure_is_unique_and_covers_all_container_and_html_fixtures
     duplicate_paths = sorted({path for path in paths if paths.count(path) > 1})
     missing_paths = sorted(path for path in paths if not (ROOT / path).is_file())
     container_paths = sorted(
-        document["path"] for document in documents if document["format"] in {"docx", "pptx", "html"}
+        document["path"] for document in documents
+        if document["format"] in {"docx", "epub", "pptx", "html"}
     )
     # THEN the index is complete, unique and bound to every container fixture
     assert (manifest["schema_version"], len(documents), sum(doc["size_bytes"] for doc in documents)) == (
         2,
-        47,
-        4_681_527,
-    ), "the manifest must retain schema 2 and the accepted 47-input byte total"
+        49,
+        5_668_302,
+    ), "the manifest must retain schema 2 and the accepted 49-input byte total"
     assert duplicate_ids == [], "benchmark document IDs must be unique"
     assert duplicate_paths == [], "each benchmark input path must identify one document"
     assert missing_paths == [], "every benchmark input path must exist in the checkout"
     assert container_paths == fixture_paths, (
-        "the manifest must cover all six DOCX, four PPTX and six HTML fixtures"
+        "the manifest must cover all six DOCX, two EPUB, four PPTX and six HTML fixtures"
     )
+    assert Counter(document["group"] for document in documents) == {
+        "core": 13, "feature_probe": 36,
+    }, "Herland adds one core source and EPUBCheck adds one feature probe"
 
 
 def test_annotations_bind_to_manifest_with_one_format_unit_collection():

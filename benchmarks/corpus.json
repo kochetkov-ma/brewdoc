@@ -1910,6 +1910,66 @@
         "license-footer"
       ],
       "annotation_path": "benchmarks/annotations/html-apache-httpd-allowmethods.json"
+    },
+    {
+      "id": "epub-epubcheck-minimal",
+      "title": "Minimal EPUB 3.0",
+      "topics": ["publication parser features", "declared-spine", "navigation-label"],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/epub/epubcheck-minimal.epub",
+      "source_url": "https://raw.githubusercontent.com/w3c/epubcheck/main/src/test/resources/epub3/00-minimal/files/minimal.epub",
+      "download_url": "https://raw.githubusercontent.com/w3c/epubcheck/main/src/test/resources/epub3/00-minimal/files/minimal.epub",
+      "source_verification": {
+        "checked_at_utc": "2026-10-11T13:19:45.420274+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/w3c/epubcheck/main/src/test/resources/epub3/00-minimal/files/minimal.epub",
+        "download_sha256": "6f446b9fbb00ce78f27d73c5693b5d6d3d0001d179c2266ae15dd7fe690e3677",
+        "download_size_bytes": 1504
+      },
+      "license": "BSD-3-Clause",
+      "license_url": "https://github.com/w3c/epubcheck/blob/main/LICENSE.md",
+      "sha256": "6f446b9fbb00ce78f27d73c5693b5d6d3d0001d179c2266ae15dd7fe690e3677",
+      "size_bytes": 1504,
+      "format": "epub",
+      "variant": "EPUB 3 static XHTML",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": ["declared-spine", "navigation-label", "publication-metadata", "source-heading"],
+      "annotation_path": "benchmarks/annotations/epub-epubcheck-minimal.json"
+    },
+    {
+      "id": "epub-standardebooks-herland",
+      "title": "Herland",
+      "topics": ["utopian fiction", "declared-spine", "front-back-matter", "unicode-text"],
+      "language": "en-US",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/epub/standardebooks-herland.epub",
+      "source_url": "https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland",
+      "download_url": "https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland/downloads/charlotte-perkins-gilman_herland.epub",
+      "source_verification": {
+        "checked_at_utc": "2026-10-11T13:19:57.158863+00:00",
+        "method": "GET",
+        "status": "unavailable",
+        "http_status": 200,
+        "effective_url": "https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland/downloads/charlotte-perkins-gilman_herland.epub",
+        "download_sha256": "fc583824f663c06f17cf81f9210942f8093c335e0d42d9517e08d12379ffcd10",
+        "download_size_bytes": 8787,
+        "content_type": "application/xhtml+xml; charset=utf-8",
+        "note": "The observed download response was an XHTML page, not an EPUB archive. Stored fixture bytes remain unchanged."
+      },
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sha256": "b830ce4d1d20e79387462b90c5a1e7c6b47dbb22d6c710d1ab488fe21d4747d7",
+      "size_bytes": 985271,
+      "format": "epub",
+      "variant": "EPUB 3 static XHTML",
+      "group": "core",
+      "origin_kind": "original_document",
+      "features": ["declared-spine", "front-back-matter", "publication-metadata", "navigation-labels", "hgroup-headings", "unicode-text", "image-metadata", "cross-document-link", "verse-quotes"],
+      "annotation_path": "benchmarks/annotations/epub-standardebooks-herland.json"
     }
   ],
   "gaps": [
@@ -1923,6 +1983,7 @@
     "Features describe inputs, not correct extraction. OCR, formula calculation, VBA execution and chart extraction are outside brewdoc acceptance.",
     "All 105 PDF pages, 54 workbook sheets, 6 DOCX main stories and 15 PPTX slides have complete annotations within their declared inspection scope. XLSB formula expressions are not decompiled; token record types, locations and cached results are inventoried. Visual rendering, formula recalculation and full binary-format conformance audits were not performed.",
     "The six HTML bodies have complete source annotations within the full-body static inspection scope. Browser layout, external stylesheets, script-created state and image pixels were not inspected.",
-    "The HTML article and form are upstream learning examples. Public HTML inputs do not cover every control, encoding refusal, malformed tree or resource boundary; synthetic unit cases cover those contracts separately."
+    "The HTML article and form are upstream learning examples. Public HTML inputs do not cover every control, encoding refusal, malformed tree or resource boundary; synthetic unit cases cover those contracts separately.",
+    "Both EPUB inputs are EPUB 3. EPUB 2 evidence is synthetic. Herland structure covers all 16 spine items; narrative source review samples chapters 1, 6 and 12. Neither licensed EPUB establishes body lists, tables, fallbacks, refusal or resource limits."
   ]
 }

@@ -4,6 +4,7 @@ import importlib.metadata
 import inspect
 import json
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -201,8 +202,56 @@ def test_public_api_is_exactly_the_package_exports():
     assert exports == [
         "ArtifactRef", "BrewdocError", "CellFormula", "FormulaArtifact", "__version__",
         "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
-        "render_doc", "render_html", "render_pdf", "render_presentation", "run", "self_check",
+        "render_doc", "render_epub", "render_html", "render_pdf", "render_presentation", "run",
+        "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
+
+
+@pytest.mark.parametrize("anchors,invalid", [
+    (("brewdoc-chapter-000001-fragment-000000",), "brewdoc-chapter-000001-fragment-000000"),
+    (("brewdoc-chapter-000000-fragment-000001",), "brewdoc-chapter-000000-fragment-000001"),
+    (("brewdoc-chapter-000002-fragment-000001",), "brewdoc-chapter-000002-fragment-000001"),
+    (("source-forged-anchor",), "source-forged-anchor"),
+    (("brewdoc-chapter-000001-fragment-000001", "brewdoc-chapter-000001-fragment-000001"),
+     "brewdoc-chapter-000001-fragment-000001"),
+], ids=["zero-fragment", "zero-chapter", "wrong-chapter", "source-forged", "duplicate"])
+def test_generated_fragment_anchors_reject_invalid_or_duplicate_identity(tmp_path, anchors, invalid):
+    # GIVEN an explicitly generated anchor block with invalid chapter or fragment identity
+    path = tmp_path / "sample.epub"
+    path.write_bytes(b"synthetic source identity")
+    blocks = [("anchor", anchor) for anchor in anchors]
+    assert path.read_bytes() == b"synthetic source identity", "assembly needs a stable source hash input"
+    # WHEN common assembly validates the generated fragments belonging to chapter one
+    with pytest.raises(brewdoc.BrewdocError) as raised:
+        common._assemble(path, "epub", "chapter", 1, [(1, "One", blocks)], zero_tally(),
+                         not_carried=(), preserve_unicode=True)
+    # THEN zero ordinals, another unit, source-forged names and duplicate anchors are refused
+    assert str(raised.value) == "invalid or duplicate generated fragment anchor: %r" % invalid, (
+        "generated anchors must have positive current-unit identity and be unique")
+
+
+class UnreachableTableCell:
+    """Fail if assembly consumes a cell after an earlier payload exceeds its remaining budget."""
+
+    def __str__(self):
+        raise AssertionError("the exhausted output budget must stop before this later table cell")
+
+
+def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tmp_path):
+    # GIVEN a first chapter using output space and a later table with an unreachable cell
+    path = tmp_path / "sample.epub"
+    path.write_bytes(b"synthetic source identity")
+    table = [["Header" * 20, UnreachableTableCell()], ["body", "safe"]]
+    units = [(1, "One", [("text", ["body " * 20])]), (2, "Two", [("table", table)])]
+    assert len(table[0][0]) == 120, "the first table cell must exceed the remaining body budget"
+    # WHEN table rendering consumes the remaining part of a small cumulative Markdown budget
+    with pytest.raises(brewdoc.BrewdocError) as raised:
+        common._assemble(path, "epub", "chapter", 2, units, zero_tally(), not_carried=(),
+                         preserve_unicode=True, max_markdown_bytes=256)
+    # THEN refusal precedes consumption of later cells rather than only checking the final join
+    assert re.sub(r"\AMarkdown byte limit exceeded: maximum [0-9]+\Z", "LIMIT", str(raised.value)) == (
+        "LIMIT"
+    ), "cumulative output growth must refuse at the table boundary before later-cell expansion"
 
 
 @pytest.mark.parametrize(
@@ -213,7 +262,7 @@ def test_public_api_is_exactly_the_package_exports():
                  ("sheets", inspect.Parameter.KEYWORD_ONLY, None),
                  ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None))),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
-          for name in ("render_pdf", "render_doc", "render_presentation", "render_html")),
+          for name in ("render_pdf", "render_doc", "render_presentation", "render_html", "render_epub")),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                   ("sheets", inspect.Parameter.KEYWORD_ONLY, None)))
           for name in ("render_book", "list_book_artifacts", "read_formulas")),
@@ -338,7 +387,7 @@ def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
         pytest.param(
             "brief.doc", lambda path: path.write_bytes(b"\xd0\xcf\x11\xe0"), "none",
             "unsupported suffix '.doc' in {path}: brewdoc reads "
-            ".docx .html .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
+            ".docx .epub .html .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
         pytest.param("absent.pdf", lambda path: None, "pdf", "no such file: {path}",
                      id="missing-file"),
     ],

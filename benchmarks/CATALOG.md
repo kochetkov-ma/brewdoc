@@ -1,17 +1,19 @@
 # Corpus catalog
 
-The corpus contains **47 public Internet inputs and 0 generated inputs**:
-9 PDFs, 6 DOCX documents, 4 PPTX presentations, 22 workbooks and 6 HTML pages,
-totaling 4,681,527 bytes. Original files remain in
+The corpus contains **49 public Internet inputs and 0 generated inputs**:
+9 PDFs, 6 DOCX documents, 2 EPUB publications, 4 PPTX presentations, 22 workbooks
+and 6 HTML pages, totaling 5,668,302 bytes. Original files remain in
 [tests/fixtures](../tests/fixtures). Each input below links to its source file,
 public download and detailed annotation. [corpus.json](corpus.json) holds the
 searchable metadata, license links and immutable local hashes.
 
-`core` contains 12 original government/research/reference documents; `feature_probe`
+`core` contains 13 original government/research/reference/literary documents; `feature_probe`
 contains 20 public upstream Calamine examples and 10 public office-format
-examples, plus 5 MDN learning examples. Both groups already appear in tests.
+examples, plus 5 MDN learning examples and 1 EPUBCheck example. Both groups
+already appear in tests.
 Public provenance is separate from the feature-probe selection label. The
-manifest records 46 matching downloads and one mismatch. The patent endpoint
+manifest records 47 matching downloads, one mismatch and one unavailable EPUB
+download that returned XHTML. Stored inputs remain unchanged. The patent endpoint
 regenerates CreationDate; its explicit mismatch is confined to metadata in a
 bounded comparison, with all page images unchanged.
 
@@ -118,10 +120,21 @@ The five MDN pages use CC0-1.0; the Apache page uses Apache-2.0.
 | [mdn-first-form-styled.html](../tests/fixtures/html/mdn-first-form-styled.html)<br>Your first HTML form, styled | HTML / 1,966 | 1 | labelled controls; declared form metadata. Two inputs, empty textarea, submit button, three explicit labels and relative action/POST method. | [pinned public download](https://raw.githubusercontent.com/mdn/learning-area/dbed6bcb8284634c7549c4da596ec30b0cfc6e7e/html/forms/your-first-HTML-form/first-form-styled.html) / [annotation](annotations/html-mdn-first-form-styled.json) |
 | [apache-httpd-allowmethods.html](../tests/fixtures/html/apache-httpd-allowmethods.html)<br>mod_allowmethods - Apache HTTP Server Version 2.4 | HTML / 7,887 | 1 | HTTP directive reference; literal configuration. Two whole tables with 22 source cells, two pre blocks, eight code elements, static language button, four relative images, navigation and license footer. | [pinned public download](https://raw.githubusercontent.com/apache/httpd/a8e4c4ad37a4ca6a1b3062ac349d97d8cf36d1d4/docs/manual/mod/mod_allowmethods.html.en) / [annotation](annotations/html-apache-httpd-allowmethods.json) |
 
+## EPUB publications
+
+Both sources are EPUB 3. Source annotations enumerate all 17 spine items;
+Herland prose review is sampled, as described in the annotation. EPUB 2,
+body lists, tables, fallback and refusal behavior use separate synthetic tests.
+
+| Original file and title | Format / bytes | Spine items | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [epubcheck-minimal.epub](../tests/fixtures/epub/epubcheck-minimal.epub)<br>Minimal EPUB 3.0 | EPUB 3 / 1,504 | 1 | One XHTML heading and paragraph, declared metadata and one TOC link. Complete source review. | [public download](https://raw.githubusercontent.com/w3c/epubcheck/main/src/test/resources/epub3/00-minimal/files/minimal.epub) / [annotation](annotations/epub-epubcheck-minimal.json) |
+| [standardebooks-herland.epub](../tests/fixtures/epub/standardebooks-herland.epub)<br>Herland | EPUB 3 / 985,271 | 16 | Twelve narrative chapters with titlepage, imprint, colophon and uncopyright; Unicode, image metadata, verse and links. Complete structural review, sampled prose. | [public source](https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland) / [annotation](annotations/epub-standardebooks-herland.json) |
+
 ## Scope and reuse
 
-Tables, figures, charts, cell ranges, main-story blocks, slide shapes, HTML bodies, source
-order and review methods are detailed in the annotations. Unknown locations and
+Tables, figures, charts, cell ranges, main-story blocks, slide shapes, HTML bodies,
+spine items, source order and review methods are detailed in the annotations. Unknown locations and
 undecompiled XLSB formula expressions stay explicit. [Manifest gaps](corpus.json)
 list missing source coverage. Complete
 annotation records do not establish correct conversion, formula calculation,

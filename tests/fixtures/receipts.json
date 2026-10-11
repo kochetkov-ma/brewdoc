@@ -93,6 +93,156 @@
   "unit_kind": "chapter",
   "units": 1
  },
+ "epub/epubcheck-minimal.epub": {
+  "accepted_output": {
+   "markdown_sha256": "2d9347ede4475376b676c54edcded45d0c84c1eadbcdc8a49fc17bc4b68ab401",
+   "markdown_utf8_bytes": 1930,
+   "normalization": "receipt.out=null; Markdown bytes unchanged",
+   "receipt": {
+    "artifacts": [],
+    "broken_ligature_words": 0,
+    "columns_split": 0,
+    "dropped": {
+     "cid_survivors": 0,
+     "control_chars": 0,
+     "ligatures": 0,
+     "nbsp": 0,
+     "non_ascii_replaced": 0,
+     "page_numbers": 0,
+     "pua_glyphs": 0,
+     "running_heads": 0,
+     "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "markdown_schema": "brewdoc.markdown/2",
+    "not_carried": [
+     "CSS, layout, pagination and font rendering",
+     "scripts, forms and active media",
+     "image pixels and graphical SVG content",
+     "unsupported SVG and MathML semantics",
+     "navigation semantics beyond declared TOC hierarchy"
+    ],
+    "out": null,
+    "reason": "epub rendered: 1 chapters, 0 tables, 2 text regions, 0 column splits",
+    "receipt_schema": "brewdoc.receipt/1",
+    "route": "epub",
+    "source": "epubcheck-minimal.epub",
+    "tables": 0,
+    "text_regions": 2,
+    "unit_keys": [
+     "chapter/000001"
+    ],
+    "unit_kind": "chapter",
+    "units": 1
+   },
+   "review_reference": "benchmarks/README.md#epub-acceptance",
+   "review_scope": "complete source and output review",
+   "source_sha256": "6f446b9fbb00ce78f27d73c5693b5d6d3d0001d179c2266ae15dd7fe690e3677"
+  },
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "epub",
+  "tables": 0,
+  "text_regions": 2,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "epub/standardebooks-herland.epub": {
+  "accepted_output": {
+   "markdown_sha256": "758157239847cc7f0ebe52a0c916f79d51fc328e7006d5d02d177d1dcd92283c",
+   "markdown_utf8_bytes": 321313,
+   "normalization": "receipt.out=null; Markdown bytes unchanged",
+   "receipt": {
+    "artifacts": [],
+    "broken_ligature_words": 0,
+    "columns_split": 0,
+    "dropped": {
+     "cid_survivors": 0,
+     "control_chars": 0,
+     "ligatures": 0,
+     "nbsp": 0,
+     "non_ascii_replaced": 0,
+     "page_numbers": 0,
+     "pua_glyphs": 0,
+     "running_heads": 0,
+     "soft_hyphens": 0
+    },
+    "file_ok": true,
+    "markdown_schema": "brewdoc.markdown/2",
+    "not_carried": [
+     "CSS, layout, pagination and font rendering",
+     "scripts, forms and active media",
+     "image pixels and graphical SVG content",
+     "unsupported SVG and MathML semantics",
+     "navigation semantics beyond declared TOC hierarchy"
+    ],
+    "out": null,
+    "reason": "epub rendered: 16 chapters, 0 tables, 1429 text regions, 0 column splits",
+    "receipt_schema": "brewdoc.receipt/1",
+    "route": "epub",
+    "source": "standardebooks-herland.epub",
+    "tables": 0,
+    "text_regions": 1429,
+    "unit_keys": [
+     "chapter/000001",
+     "chapter/000002",
+     "chapter/000003",
+     "chapter/000004",
+     "chapter/000005",
+     "chapter/000006",
+     "chapter/000007",
+     "chapter/000008",
+     "chapter/000009",
+     "chapter/000010",
+     "chapter/000011",
+     "chapter/000012",
+     "chapter/000013",
+     "chapter/000014",
+     "chapter/000015",
+     "chapter/000016"
+    ],
+    "unit_kind": "chapter",
+    "units": 16
+   },
+   "review_reference": "benchmarks/README.md#epub-acceptance",
+   "review_scope": "all 16 spine units and navigation; full front/back matter; sampled chapter 1, 6 and 12 paragraphs and chapter 6 verse",
+   "source_sha256": "b830ce4d1d20e79387462b90c5a1e7c6b47dbb22d6c710d1ab488fe21d4747d7"
+  },
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "epub",
+  "tables": 0,
+  "text_regions": 1429,
+  "unit_keys": [
+   "chapter/000001",
+   "chapter/000002",
+   "chapter/000003",
+   "chapter/000004",
+   "chapter/000005",
+   "chapter/000006",
+   "chapter/000007",
+   "chapter/000008",
+   "chapter/000009",
+   "chapter/000010",
+   "chapter/000011",
+   "chapter/000012",
+   "chapter/000013",
+   "chapter/000014",
+   "chapter/000015",
+   "chapter/000016"
+  ],
+  "unit_kind": "chapter",
+  "units": 16
+ },
  "html/apache-httpd-allowmethods.html": {
   "artifacts": [],
   "file_ok": true,

@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from brewdoc.common import BrewdocError
+from brewdoc.common import BrewdocError, _markdown_encoding
 from brewdoc.selfcheck import self_check
 from brewdoc.service import EXIT_FAIL, EXIT_OK, EXIT_USAGE, SUFFIXES, _line, _route, run
 
@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
-        description="Render a PDF, a Word document, a presentation, a spreadsheet or static HTML as "
+        description="Render a PDF, a Word document, a presentation, a spreadsheet, EPUB or static HTML as "
                     "deterministic, sanitised, LLM-readable "
                     "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
                     "a Markdown table, an unlined captioned table is cropped then read, other "
@@ -52,7 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
                     "section per sheet, using only the --sheet names when given. A .docx becomes "
                     "one anchored '## Chapter N: \"<heading>\"' section per Word heading and "
                     "keeps its tables. A .pptx becomes one anchored "
-                    "'## Slide N: \"<title>\"' section per declared slide. Static .html becomes one "
+                    "'## Slide N: \"<title>\"' section per declared slide. An .epub becomes one "
+                    "Unicode chapter per declared spine item. Static .html becomes one "
                     "chapter and requires CPython 3.12-3.14 with selectolax 0.4.13. Other runtimes "
                     "explicitly refuse HTML; a missing or broken parser on supported CPython "
                     "fails HTML conversion and self-check.",
@@ -65,14 +66,14 @@ def build_parser() -> argparse.ArgumentParser:
                "Without --out the Markdown follows that line on stdout."
                % SUFFIXES)
     parser.add_argument("document", nargs="?",
-                        help="the .pdf, .docx, .pptx, .html or spreadsheet to render")
+                        help="the .pdf, .docx, .pptx, .epub, .html or spreadsheet to render")
     parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
     parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
                         help="maximum waiting for one --url call and JS; positive finite seconds "
                              "within supported clock range, default 30")
     parser.add_argument("--render-js", action="store_true",
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
-    parser.add_argument("--out", help="write Markdown here (HTML UTF-8, other formats ASCII); default stdout")
+    parser.add_argument("--out", help="write Markdown here (HTML/EPUB UTF-8, other formats ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
     parser.add_argument("--artifact", action="append",
@@ -115,9 +116,10 @@ def main(argv=None) -> int:
                 args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
-        if line["route"] == "html" and hasattr(sys.stdout, "buffer"):
+        encoding = _markdown_encoding(line["route"])
+        if encoding == "utf-8" and hasattr(sys.stdout, "buffer"):
             sys.stdout.flush()
-            sys.stdout.buffer.write(markdown.encode("utf-8"))
+            sys.stdout.buffer.write(markdown.encode(encoding))
         else:
             sys.stdout.write(markdown)
     return rc

@@ -13,6 +13,7 @@ import brewdoc.htmltext as htmltext
 from brewdoc.common import (UNIT_COUNTERS, _escape_markdown_text, cell_text, markdown_table,
                             new_tally, sanitise, sha256)
 from brewdoc.docx import render_doc
+from brewdoc.epub import render_epub
 from brewdoc.pdf import render_pdf
 from brewdoc.pptx import render_presentation
 from brewdoc.service import EXIT_FAIL, EXIT_OK, run
@@ -219,6 +220,31 @@ def synthetic_pptx() -> bytes:
     return stream.getvalue()
 
 
+def _synthetic_epub() -> bytes:
+    """Build an offline EPUB whose archive/navigation order differs from its spine."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as package:
+        package.writestr("mimetype", "application/epub+zip")
+        package.writestr("META-INF/container.xml", '<container xmlns="urn:oasis:names:tc:opendocument:'
+                         'xmlns:container"><rootfiles><rootfile full-path="book.opf" '
+                         'media-type="application/oebps-package+xml"/></rootfiles></container>')
+        package.writestr("book.opf", '<package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+                         '<metadata/><manifest><item id="a" href="a.xhtml" '
+                         'media-type="application/xhtml+xml"/><item id="b" href="b.xhtml" '
+                         'media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" '
+                         'media-type="application/xhtml+xml" properties="nav"/></manifest>'
+                         '<spine><itemref idref="a"/><itemref idref="b"/></spine></package>')
+        package.writestr("b.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+                         '<title>Second</title></head><body><p>Back matter.</p></body></html>')
+        package.writestr("a.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
+                         '<title>First</title></head><body><p>café 東京\u00a0</p></body></html>'.encode("utf-8"))
+        package.writestr("nav.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml" '
+                         'xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>'
+                         '<li><a href="b.xhtml">Second</a></li><li><a href="a.xhtml">First</a></li>'
+                         '</ol></nav></body></html>')
+    return buffer.getvalue()
+
+
 def self_check() -> int:
     """Render synthetic fixtures and compare against pinned expectations; 0 when green."""
     failures, checks = [], []
@@ -357,6 +383,25 @@ def self_check() -> int:
                  (rc, line["file_ok"], line["route"], line["unit_kind"], line["units"],
                   line["reason"], html_md),
                  (EXIT_FAIL, False, "html", "chapter", 0, "HTML requires CPython 3.12-3.14", ""))
+
+        epub_path = Path(tmp, "fixture.epub")
+        epub_path.write_bytes(_synthetic_epub())
+        rc, line, epub_md = run(epub_path)
+        want("EPUB follows the declared spine instead of ZIP or navigation order",
+             (rc, line["file_ok"], line["route"], line["unit_kind"], line["unit_keys"]),
+             (EXIT_OK, True, "epub", "chapter", ["chapter/000001", "chapter/000002"]))
+        expected_tally = new_tally()
+        expected_tally.update(chapters=2, text_regions=2)
+        want("EPUB preserves Unicode and its public wrapper matches the service",
+             (render_epub(epub_path), chapter_lines(epub_md, "First"), chapter_lines(epub_md, "Second")),
+             ((epub_md, expected_tally), ["café 東京\u00a0"], [r"Back matter\."]))
+        want("EPUB conversion is deterministic", run(epub_path), (rc, line, epub_md))
+        epub_out = Path(tmp, "epub.md")
+        written_rc, written_line, written_md = run(epub_path, out=epub_out)
+        want("EPUB writes the exact UTF-8 service payload",
+             (written_rc, written_line["file_ok"], written_md,
+              epub_out.read_bytes() if written_rc == EXIT_OK else None),
+             (EXIT_OK, True, epub_md, epub_md.encode("utf-8")))
 
     for failure in failures:
         print("FAIL %s" % failure)

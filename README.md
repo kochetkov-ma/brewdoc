@@ -1,6 +1,6 @@
 # brewdoc
 
-Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets and static
+Document to Markdown for agent systems: PDF, Word, PPTX presentations, spreadsheets, EPUB and static
 HTML in, one Markdown file plus a JSON receipt out. No models or OCR. Local conversion
 is offline and deterministic (same file, same bytes). Explicit `--url` acquires a page.
 The receipt says what was rendered,
@@ -8,17 +8,17 @@ what was dropped and what the route structurally cannot carry.
 
 ## Install
 
-PyPI publication of 0.2.0 is pending. The commands below apply once it is published.
-For installation now, use the exact Git tag command below the table.
+Version 0.3.0 is prepared for publication. These registry commands apply only after
+0.3.0 is published on PyPI. Original 0.2.0 publication is tracked separately.
 
 | channel | command |
 |---|---|
-| pip | `pip install brewdoc==0.2.0` |
-| uvx | `uvx brewdoc==0.2.0 file.pdf` |
-| uv tool | `uv tool install brewdoc==0.2.0` |
-| Docker | `RUN pip install brewdoc==0.2.0` |
+| pip | `pip install brewdoc==0.3.0` |
+| uvx | `uvx brewdoc==0.3.0 file.pdf` |
+| uv tool | `uv tool install brewdoc==0.3.0` |
+| Docker | `RUN pip install brewdoc==0.3.0` |
 
-Install from the exact Git tag:
+The existing original source tag can be installed now. It predates EPUB and URL acquisition:
 
 ```
 uvx --from git+https://github.com/kochetkov-ma/brewdoc@v0.2.0 brewdoc file.pdf
@@ -36,18 +36,19 @@ Other runtimes retain the `.html` route and Python API but explicitly refuse HTM
 CPython, a missing or broken parser is an environment failure and `--self-check` exits 1.
 On an unsupported HTML runtime, self-check verifies HTML refusal and checks all other formats.
 
-URL JavaScript uses the optional `brewdoc[render-js]` extra: QuickJS-ng 0.17.0.1
+Version 0.3.0 includes URL acquisition and optional JavaScript capture. After publication,
+install the extra with `pip install 'brewdoc[render-js]==0.3.0'`. It uses QuickJS-ng 0.17.0.1
 and bundled LinkeDOM 0.18.13. From this source checkout, install the locked extra
 with `uv sync --locked --extra render-js`. Run it with
 `uv run --locked --extra render-js brewdoc --url URL --render-js`.
-No Node, browser engine or invocation-time component download is used. The existing published/tagged version commands above
-do not install this unreleased URL feature.
+No Node, browser engine or invocation-time component download is used.
 
 ## Usage
 
 ```
 brewdoc file.pdf --out file.md
 brewdoc slides.pptx --out slides.md
+brewdoc book.epub --out book.md
 brewdoc page.html --out page.md
 brewdoc --url https://example.com/article --out article.md
 brewdoc --url https://example.com/article --render-js --timeout 30 --out article.md
@@ -113,10 +114,10 @@ exit 1 with an HTML refusal receipt before HTTP.
 Every successful document uses `brewdoc.markdown/2`. A quoted source title is followed by Metadata,
 Artifacts, Known omissions, Contents, then anchored content units. PDF keys are `page/000001`,
 workbook keys are `sheet/000001`, DOCX keys are `chapter/000001`, PPTX keys are `slide/000001`,
-and HTML has one `chapter/000001`.
+EPUB keys follow declared spine ordinals as `chapter/000001`, and HTML has one `chapter/000001`.
 Metadata contains deterministic source identity, selection, content hashes, conversion tallies, and
 artifact capabilities. It excludes paths, timestamps, permissions, host data, and unsupported author
-metadata.
+metadata. EPUB adds source-declared publication titles, creators, languages and identifiers.
 
 For a conversion request, one JSON receipt line goes to stdout first (wrapped here, `unit_keys` omitted):
 
@@ -139,9 +140,9 @@ For a conversion request, one JSON receipt line goes to stdout first (wrapped he
 | key | meaning |
 |---|---|
 | `file_ok`, `reason` | `false` when the file was refused (no text layer, unreadable, unsupported suffix); `reason` names why, or summarises what was rendered |
-| `route` | which reader ran: `pdf`, `doc`, `presentation`, `sheet` or `html` |
+| `route` | which reader ran: `pdf`, `doc`, `presentation`, `sheet`, `epub` or `html` |
 | `source` | the local filename, or the redacted requested URL in URL mode |
-| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX and HTML, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
+| `unit_kind`, `units` | the route's content unit and how many were rendered; one pair for every format. `page` for PDF, `chapter` for DOCX, EPUB and HTML, `slide` for PPTX, `sheet` for a workbook, and `none` on a suffix brewdoc does not read |
 | `tables`, `text_regions`, `columns_split` | what else was rendered |
 | `receipt_schema` | the receipt key contract; `brewdoc.receipt/1` replaced the per-format `pages` and `sheets` counters |
 | `broken_ligature_words` | words with a ligature the font mapped to a stray code point, folded to ASCII, not repaired |
@@ -162,6 +163,7 @@ Exit code is non-zero on refusal; the receipt line is still printed.
 | `.pdf` | pdfplumber | needs a text layer; route chosen per region, never per page |
 | `.docx` | stdlib zip + XML | paragraphs and tables |
 | `.pptx` | stdlib zip + XML | slides in declared order; text, tables, notes and picture metadata |
+| `.epub` | stdlib zip + XML | EPUB 2/3 static XHTML in declared spine order; Unicode metadata and navigation |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | selected sheets keep full-source ordinals; numbers as stored (`85.0`), dates as ISO days |
 | `.html` | selectolax Lexbor | full static body or fragment, complete tables and source-declared controls; CPython 3.12-3.14 |
 
@@ -181,11 +183,23 @@ boundaries in place of visual Markdown
 containers. Plain list paragraphs retain their item marker and continuation indentation.
 See [HTML scope and limits](FORMATS.md#static-html).
 
-The public Python API exposes HTML and presentation rendering and generic workbook artifact access:
+EPUB reads one package with static XHTML in EPUB 2 or 3. Each declared spine item becomes
+a chapter, including empty and non-linear items, front matter and back matter. Publication
+navigation retains source hierarchy and links to generated chapter and fragment anchors.
+Declared metadata and meaningful Unicode are preserved. Images remain inert alt/title/target
+records; no pixels or external resources are read. EPUB adds no parser dependency.
+Malformed required content, unsafe archives, unavailable navigation targets, encrypted reading
+text, declared fixed layout and unsupported required media without an XHTML fallback refuse
+the whole book before output writes. Multiple rootfiles are outside this supported profile.
+See [EPUB scope and limits](FORMATS.md#epub).
+
+The public Python API exposes EPUB, HTML and presentation rendering and generic workbook artifact access:
 
 ```python
 import brewdoc
 
+markdown, tally = brewdoc.render_epub("book.epub")
+code, receipt, markdown = brewdoc.run("book.epub", out="book.md")
 markdown, tally = brewdoc.render_html("page.html")
 code, receipt, markdown = brewdoc.run("page.html", out="page.md")
 markdown, tally = brewdoc.render_presentation("slides.pptx")
@@ -225,6 +239,7 @@ PDF regions, in the order tried:
 | OCR | a PDF with no text layer is refused by name, never rendered empty |
 | PDF and DOCX images, figures, text drawn inside them | not carried; listed in `not_carried` |
 | PPTX pictures | represented by deterministic name, size, alt text, caption, source and byte-count placeholders; pixels are never emitted |
+| EPUB layout, scripts, media and graphics | CSS, pagination, font rendering, scripts, active media, image pixels and unsupported SVG/MathML semantics are omitted |
 | PPTX charts, SmartArt, audio, video and embedded objects | not carried; listed in `not_carried` |
 | a table spanning a page break | columns recovered, wrapped rows stay separate rows |
 | text rotated out of horizontal reading order | not carried |
@@ -236,14 +251,14 @@ PDF regions, in the order tried:
 ## Determinism
 
 No timestamps or unordered iteration. Two renders of one file have the same sha256;
-`--self-check` pins it. PDF, DOCX, PPTX and workbook output remains ASCII. HTML Markdown uses
+`--self-check` pins it. PDF, DOCX, PPTX and workbook output remains ASCII. HTML and EPUB Markdown use
 UTF-8 without BOM and LF newlines, with the same bytes in the API, file output and CLI stdout.
 Receipt JSON keeps ASCII escaping.
 
 ## Size and speed
 
 These measurements cover the existing PDF/workbook baseline before the HTML parser addition.
-They do not measure HTML conversion or the new installed footprint.
+They do not measure HTML or EPUB conversion or the new installed footprint.
 
 | measure | value |
 |---|---|
