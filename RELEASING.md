@@ -210,6 +210,39 @@ uses the following operator steps; normal tag-push publication remains automatic
 Verify actual public body/asset readback before declaring completion. A dispatched
 or successful publisher job alone does not establish accepted recovery.
 
+### Available 0.3.1 channels
+
+If npm publication remains unavailable, PyPI and GitHub standalone delivery can
+proceed independently. This does not complete the npm channel or issues #39/#40.
+Keep the fixed version, tag, original source, sealed packages and assets unchanged.
+The release maintainer publishes the exact admitted draft with the existing
+release helper and authorized `gh` access, then applies reviewed partial notes
+and verifies readback.
+Partial notes replace only the sealed staged availability paragraph: Python and
+standalone downloads are public; npm publication is pending; use pip, uv, pipx or
+native commands; the npm/npx registry commands are unavailable. All installation
+flows remain present for later channel completion.
+
+After publication, run the reviewed main-only binary verification operation with
+the three original recovery fields empty:
+
+```sh
+gh workflow run release.yml --repo kochetkov-ma/brewdoc --ref main -f operation=verify-v031-binaries -f prepared_run_id= -f approved_wheel_sha256= -f approved_sdist_sha256=
+```
+
+It admits the same fixed source/artifacts and public PyPI/GitHub bytes, then checks
+downloaded native bundles on all three supported hosts. It skips npm publication,
+npm tooling installation and npm/npx consumer checks, and skips full
+`release-complete`. Admit all three hosts' records through `native_evidence`
+before claiming native acceptance. Record Python/GitHub/native evidence separately;
+npm publication and public npm/npx consumers remain pending. Do not retry generic
+registry refusals as part of binary verification.
+
+Normal tag-push and `resume-v031` retain their full npm gates. Future continuation
+may admit the exact reviewed partial body only on the published release; final
+all-channel notes still require matching public npm bytes and actual three-host
+npm/npx proof. Successful native verification does not complete the overall task.
+
 ## Original 0.2.0 recovery
 
 Original recovery succeeded through the original workflow run. The separate
