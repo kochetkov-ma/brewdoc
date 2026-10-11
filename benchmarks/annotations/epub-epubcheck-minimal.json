@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "document_id": "epub-epubcheck-minimal",
+  "source_sha256": "6f446b9fbb00ce78f27d73c5693b5d6d3d0001d179c2266ae15dd7fe690e3677",
+  "title": "Minimal EPUB 3.0",
+  "topics": ["publication parser features", "declared-spine", "navigation-label"],
+  "language": "en",
+  "annotation_scope": "declared_spine",
+  "review_status": "complete",
+  "evidence_method": "All five archive members were read with standard-library ZIP/XML tools. Complete metadata, navigation and reading-body text were reviewed. No Brewdoc output or browser rendering establishes these source facts.",
+  "package": {
+    "version": "3.0",
+    "source_part": "EPUB/package.opf",
+    "unique_identifier_id": "q",
+    "titles": ["Minimal EPUB 3.0"],
+    "creators": [],
+    "languages": ["en"],
+    "identifiers": ["NOID"],
+    "unique_identifier": "NOID"
+  },
+  "navigation": {
+    "source_part": "EPUB/nav.xhtml",
+    "in_spine": false,
+    "entries": [{"depth": 0, "label": "content 001", "href": "content_001.xhtml"}]
+  },
+  "chapters": [
+    {
+      "index": 1,
+      "name": "content 001",
+      "source_part": "EPUB/content_001.xhtml",
+      "manifest_id": "content_001",
+      "linear": "yes",
+      "title": "Minimal EPUB",
+      "source_ids": [],
+      "direct_body_block_order": ["h1", "p"],
+      "headings": [{"level": 1, "text": "Loomings"}],
+      "paragraph_count": 1,
+      "text_samples": [{"paragraph": 1, "text": "Call me Ishmael."}],
+      "tables": [],
+      "images": [],
+      "links": []
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 1504,
+    "archive_members": 5,
+    "declared_expanded_bytes": 1482,
+    "max_xml_elements": 11,
+    "max_xml_depth": 6
+  },
+  "limitations": [
+    "This fixture is EPUB 3; it supplies no EPUB 2 source evidence.",
+    "It has no images, lists, tables, fallback resources or encryption declarations.",
+    "Source inspection does not establish conversion acceptance or visual fidelity."
+  ]
+}

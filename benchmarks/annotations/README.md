@@ -20,12 +20,13 @@ formats and local hashes retain their meanings. Added fields are:
 | `sha256`, `size_bytes` | Identity of the stored input bytes, independent of the current remote response. |
 | `annotation_path` | Repository-relative path to an existing annotation bound to the same input hash. |
 
-All 47 current inputs are `public`; none were generated for this corpus. The
+All 49 current inputs are `public`; none were generated for this corpus. The
 20 Calamine examples and 10 document or presentation examples are public
 upstream fixtures. Five MDN HTML examples use
-`origin_kind: upstream_learning_example`. Their `feature_probe` group is
-separate from provenance.
-The `core` group holds 12 original documents, including the Apache HTML reference.
+`origin_kind: upstream_learning_example`. EPUBCheck adds one public parser fixture.
+Their `feature_probe` group is separate from provenance.
+The `core` group holds 13 original documents, including the Apache HTML reference
+and Herland EPUB novel.
 All inputs already appear in the test suite, so neither group is held out.
 Private company documents and private source-derived test shapes are prohibited.
 
@@ -43,11 +44,11 @@ Annotation `schema_version` is 1. Required document fields are `document_id`,
 `review_status`, `limitations`, and exactly one of `pages`, `sheets`, `chapters`
 or `slides`.
 `document_id` and `source_sha256` must match the manifest. Enumerate every
-page, sheet, main-story chapter, declared slide or HTML body in source order, including
-empty sheets, image-only pages, hidden slides and empty slides.
+page, sheet, main-story chapter, declared slide, HTML body or EPUB spine item in
+source order, including empty sheets, image-only pages, hidden and empty slides.
 
-`annotation_scope` is `all_pages`, `all_sheets`, `main_story`, `all_slides` or
-`full_body` for HTML.
+`annotation_scope` is `all_pages`, `all_sheets`, `main_story`, `all_slides`,
+`full_body` for HTML or `declared_spine` for EPUB.
 `review_status` is `complete` or `partial`; state what was inspected and what
 remains uncertain.
 Completeness refers to the declared annotation work. It does not imply successful
@@ -134,6 +135,20 @@ interaction values or computed disabled state. Limitations state the inspection
 method and its uncertainty. These six sources do not cover every control,
 encoding refusal, malformed tree or resource boundary; synthetic unit cases
 remain separate. `complete` describes source inspection, not successful conversion.
+
+## EPUB spine records
+
+EPUB annotations use `chapters` in declared spine order, including front and back
+matter. Record manifest IDs, member paths, linear state, navigation labels,
+source headings, IDs, paragraph counts, links and declared image attributes.
+Distinguish absent attributes from declared empty strings. Metadata comes from
+the package, rather than filenames or nearby prose. Image pixels remain uninspected.
+
+Minimal EPUBCheck source review is complete. Herland has complete structural
+enumeration and front/back matter review, with narrative paragraph samples in
+chapters 1, 6 and 12. Its `partial` review status preserves that limitation.
+Neither fixture adds licensed EPUB 2, lists, tables, fallback or refusal evidence.
+Source annotations describe inspected input, not generated Markdown.
 
 ## Future generated cases
 

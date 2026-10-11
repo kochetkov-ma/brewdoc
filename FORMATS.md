@@ -11,16 +11,18 @@ other formats retain the two-dependency policy.
 | `.pdf` | pdfplumber | text layer required; anchored page units; each region routed by its own ruling |
 | `.docx` | stdlib `zipfile` + `xml.etree` | paragraphs and tables in reading order; anchored chapters retain duplicate and empty headings |
 | `.pptx` | stdlib `zipfile` + `xml.etree` | slides in declared order; text, tables, speaker notes and picture metadata placeholders |
+| `.epub` | stdlib `zipfile` + XML | EPUB 2/3 static XHTML; one anchored chapter per declared spine item |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | exact sheet selection in caller order with full-source ordinal keys; cached values in Markdown |
 | `.html` | selectolax Lexbor | local static body or fragment in DOM order; one anchored chapter; CPython 3.12-3.14 only |
 
 All supported routes emit `brewdoc.markdown/2`: quoted source title, deterministic metadata,
 artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
 PDF pages, selected empty sheets, heading-created empty DOCX chapters, and declared empty or hidden
-PPTX slides remain navigable.
+PPTX slides remain navigable. EPUB retains every declared spine item, including empty bodies
+and non-linear content.
 
 Every local receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
-`sheet`, `html`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
+`sheet`, `epub`, `html`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
 unit kind decides the content keys: `page/000001`, `chapter/000001`, `slide/000001`,
 `sheet/000001`. A suffix brewdoc does not read is refused with route `none` and unit kind `none`;
 every other refusal keeps its route's own name and unit kind, with zero units.
@@ -44,8 +46,8 @@ The first nonempty recovered head title labels `chapter/000001`; otherwise use `
 Only `.html` is accepted. Input must be strict UTF-8, optionally prefixed by a UTF-8 BOM.
 Charset declarations in the first 1,024 bytes after the BOM must name `utf-8` or `utf8`;
 malformed, unknown, conflicting or non-UTF-8 declarations refuse. Invalid bytes are not repaired.
-HTML preserves meaningful Unicode and emits UTF-8 without BOM, with LF newlines. Other routes
-retain ASCII output. HTML has no artifacts.
+HTML and EPUB preserve meaningful Unicode and emit UTF-8 without BOM, with LF newlines.
+PDF, DOCX, PPTX and workbooks retain ASCII output. HTML has no artifacts.
 
 Headings, prose, lists and emphasis retain recovered DOM order. Preformatted code preserves
 literal angle brackets, ampersands, newlines, tabs and repeated spaces in a fence longer than
@@ -107,6 +109,74 @@ Limits are inclusive; exceeding one refuses before writing output. MiB is 1,048,
 subtrees, 1 MiB UTF-8 per decoded attribute, 32 MiB included decoded text before whitespace
 reduction, 100,000 total span-expanded table positions including nested tables, and 64 MiB final
 UTF-8 Markdown including the envelope. Postparse checks do not guarantee native-parser memory safety.
+
+## EPUB
+
+Local `.epub` files use standard-library ZIP/XML; no HTML parser or native runtime is required.
+The supported profile accepts package versions 2.0 and 3.0, one container rootfile, one manifest
+and a nonempty spine. Qualified XHTML must have exactly one direct body. XML must be strict
+UTF-8 or UTF-16 with consistent BOM/declaration. Internal DTD subsets, entity declarations,
+XInclude and XHTML `base` or `xml:base` refuse. Bare HTML/NCX doctypes are never fetched.
+
+Spine order controls chapter order, including `linear="no"` items marked `Auxiliary content.`.
+Repeated spine references refuse; separate entries converging on an XHTML fallback retain
+their own ordinals. Unsupported required media needs a valid local declared XHTML fallback.
+EPUB 3 requires a declared TOC navigation document; EPUB 2 requires the spine's declared NCX.
+Publication navigation retains nested groups and repeated entries in source preorder after
+Contents. When the navigation document is in the spine, its consumed TOC is represented once
+while its other content and chapter remain. A TOC-only chapter links to Publication navigation.
+
+Chapter labels use the first matching navigation label, then XHTML title, included body heading,
+or `Chapter N`. Source headings remain. Chapter keys are `chapter/000001`; source IDs map to
+generated fragment anchors at their included regions. Duplicate IDs refuse. Required navigation
+must resolve to available spine content; ordinary unresolved body links become inert target
+records. HTTP(S) and mailto links remain links without fetching.
+
+Paragraphs, headings, emphasis, lists, quotes, tables and their tails retain XML order.
+Headings h1-h4 map to levels 3-6; deeper headings become labelled bold text. Ordered lists
+preserve starts, reversed order and explicit values. Complex or anchored list items use labelled
+boundaries around their child blocks. Quotes retain explicit nested boundaries.
+Code in body text and headings becomes safe fences retaining XML-normalized literal data;
+surrounding emphasis and safe links stay balanced. Table-cell code remains at its source cell
+as `Code: text="..."` with escaped literal data and numeric LF/tab/CR entities; monospace layout
+is omitted. Tables retain row-group order, captions, spans and empty continuation cells.
+Nested tables stay at their originating cell as coordinate records.
+
+Images emit `Image: alt="..."; title="..."; src="..."` at their source position. Missing attributes
+are unquoted `unspecified`; declared empty values remain `""`. SVG retains declared title,
+description and image-reference metadata. Pixels, graphical SVG and unsupported MathML/SVG
+semantics are omitted, along with CSS/layout, pagination, fonts, scripts, forms, active media
+and navigation semantics beyond the declared TOC. `hidden` and `aria-hidden="true"` omit subtrees;
+CSS is not evaluated. No extraction, network, JavaScript, OCR or DRM decryption occurs.
+
+Publication titles, creators, languages and identifiers follow existing metadata in that order.
+Declaration order, duplicates, empty values and Unicode are preserved; a declared unique
+identifier must resolve to one declared identifier. Source and body hashes keep their existing
+Metadata meaning. EPUB has no artifacts; `--sheet` and `--artifact` remain workbook-only.
+
+Malformed or missing required content, unsafe paths, ambiguous archive names, duplicate members
+or IDs, encrypted reading text, unsupported encryption, declared fixed layout and multiple
+rootfiles refuse the whole publication. Multiple rootfiles and fixed layout are supported-profile
+restrictions. Recognized IDPF/Adobe font obfuscation is accepted only for existing
+manifest-declared fonts, which are never read or decoded. Every hard refusal returns zero units,
+empty Markdown and no output writes.
+
+Limits are inclusive policy defaults, not measured capacity or a process memory cap:
+
+| Budget | Maximum |
+|---|---:|
+| Compressed source; sum of declared expanded bytes; actual bytes read | 32 MiB each |
+| ZIP members, including directories | 1,024 |
+| Declared and observed bytes per consumed member | 8 MiB |
+| XML elements per logical parse; across all parses | 65,536; 262,144 |
+| XML depth, root at 1; spine items | 64; 512 |
+| Table columns; slots per table; slots across publication | 256; 65,536; 262,144 |
+| Complete UTF-8 Markdown | 8 MiB |
+
+Every physical reread and logical parse consumes its aggregate budget; nested grids consume
+table slots. Expat checks XML depth/elements before tree construction. ZIP central-directory
+allocation precedes member-count admission; intermediate strings and existing output rollback
+bytes also consume memory. MiB is 1,048,576 bytes.
 
 ## URL acquisition
 
@@ -239,8 +309,7 @@ fetched. Charts, SmartArt, audio, video, embedded objects, animations, transitio
 layout/master-only text, styling and visual positioning are omitted. Required package, presentation
 and slide relationships or XML must resolve inside the archive; malformed or missing required parts
 refuse the document. A slide may have no picture or notes relationship, but a referenced part must
-be valid. PPTX is the only supported container that promises image placeholders. DOCX images
-remain omitted.
+be valid. EPUB image records preserve XHTML declarations. DOCX images remain omitted.
 
 ## Workbook artifacts
 
@@ -265,15 +334,13 @@ Order = implementation order, by value for agents.
 | # | in | mechanism | output |
 |---|---|---|---|
 | 1 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
-| 2 | `.epub` | `zipfile` + XHTML chapters; parser reuse requires separate acceptance | one chapter per spine item |
-| 3 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
-| 4 | `.eml` | `email` | headers, text body, attachment names |
+| 2 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
+| 3 | `.eml` | `email` | headers, text body, attachment names |
 
 Image behavior for planned containers is not accepted yet. Never OCR.
 
-Six planned suffixes share four adapter modules: `.odt` with `.odp` and `.md` with `.txt`
-each pair into one module; the other two rows take one each. Eleven source modules including
-HTML, fifteen at all planned formats. Each format is its own task and follows the ordered
+Five planned suffixes share three adapter modules: `.odt` with `.odp` and `.md` with `.txt`
+each pair into one module; `.eml` has its own. Each format is its own task and follows the ordered
 checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
 user approval.
 

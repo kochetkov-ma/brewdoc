@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "document_id": "epub-standardebooks-herland",
+  "source_sha256": "b830ce4d1d20e79387462b90c5a1e7c6b47dbb22d6c710d1ab488fe21d4747d7",
+  "title": "Herland",
+  "topics": ["utopian fiction", "declared-spine", "front-back-matter", "unicode-text"],
+  "language": "en-US",
+  "annotation_scope": "declared_spine",
+  "review_status": "partial",
+  "evidence_method": "Complete container, package and TOC were read. All 16 spine bodies were structurally enumerated for order, headings, IDs, element counts, links and images. Front/back matter was read in full. Narrative text was sampled at paragraphs 1, 2, 73, 144, 145 of chapter 1; 1, 2, 52, 102, 103 of chapter 6; and 1, 2, 49, 95, 96 of chapter 12. Chapter 6 verse was read in full. No visual layout or image pixels were inspected.",
+  "package": {
+    "version": "3.0",
+    "source_part": "epub/content.opf",
+    "unique_identifier_id": "uid",
+    "titles": ["Herland"],
+    "creators": ["Charlotte Perkins Gilman"],
+    "languages": ["en-US"],
+    "identifiers": ["https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland"],
+    "unique_identifier": "https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland"
+  },
+  "navigation": {
+    "source_part": "epub/toc.xhtml",
+    "in_spine": false,
+    "toc_entry_count": 16,
+    "order": "Document preorder matches the declared spine order.",
+    "other_navigation": "A separate landmarks subtree names Frontmatter and Herland."
+  },
+  "chapters": [
+    {
+      "index": 1, "name": "Titlepage", "source_part": "epub/text/titlepage.xhtml",
+      "manifest_id": "titlepage.xhtml", "linear": "yes", "source_ids": ["titlepage"],
+      "headings": [{"level": 1, "text": "Herland"}], "paragraph_count": 1,
+      "text_samples": [{"paragraph": 1, "text": "By Charlotte Perkins Gilman."}],
+      "images": [{"src": "../images/titlepage.png", "alt": "", "title": null}],
+      "links": [], "tables": [], "review_scope": "Complete body."
+    },
+    {
+      "index": 2, "name": "Imprint", "source_part": "epub/text/imprint.xhtml",
+      "manifest_id": "imprint.xhtml", "linear": "yes", "source_ids": ["imprint"],
+      "headings": [{"level": 2, "text": "Imprint"}], "paragraph_count": 4,
+      "images": [{"src": "../images/logo.png", "alt": "The Standard Ebooks logo.", "title": null}],
+      "links": [
+        {"href": "https://standardebooks.org/", "label": "Standard Ebooks"},
+        {"href": "https://www.gutenberg.org/ebooks/32", "label": "Project Gutenberg"},
+        {"href": "https://catalog.hathitrust.org/Record/011719932", "label": "HathiTrust Digital Library"},
+        {"href": "https://creativecommons.org/publicdomain/zero/1.0/", "label": "CC0 1.0 Universal Public Domain Dedication"},
+        {"href": "uncopyright.xhtml", "label": "Uncopyright"},
+        {"href": "https://standardebooks.org/", "label": "standardebooks.org"}
+      ],
+      "tables": [], "review_scope": "Complete body."
+    },
+    {
+      "index": 3, "name": "I: A Not Unnatural Enterprise", "source_part": "epub/text/chapter-1.xhtml",
+      "manifest_id": "chapter-1.xhtml", "linear": "yes", "source_ids": ["chapter-1"],
+      "headings": [{"level": 2, "text": "I"}], "title_paragraph": "A Not Unnatural Enterprise",
+      "paragraph_count": 145, "reviewed_paragraphs": [1, 2, 73, 144, 145],
+      "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 4, "name": "II: Rash Advances", "source_part": "epub/text/chapter-2.xhtml",
+      "manifest_id": "chapter-2.xhtml", "linear": "yes", "source_ids": ["chapter-2"],
+      "headings": [{"level": 2, "text": "II"}], "title_paragraph": "Rash Advances",
+      "paragraph_count": 107, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 5, "name": "III: A Peculiar Imprisonment", "source_part": "epub/text/chapter-3.xhtml",
+      "manifest_id": "chapter-3.xhtml", "linear": "yes", "source_ids": ["chapter-3"],
+      "headings": [{"level": 2, "text": "III"}], "title_paragraph": "A Peculiar Imprisonment",
+      "paragraph_count": 139, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 6, "name": "IV: Our Venture", "source_part": "epub/text/chapter-4.xhtml",
+      "manifest_id": "chapter-4.xhtml", "linear": "yes", "source_ids": ["chapter-4"],
+      "headings": [{"level": 2, "text": "IV"}], "title_paragraph": "Our Venture",
+      "paragraph_count": 124, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 7, "name": "V: A Unique History", "source_part": "epub/text/chapter-5.xhtml",
+      "manifest_id": "chapter-5.xhtml", "linear": "yes", "source_ids": ["chapter-5"],
+      "headings": [{"level": 2, "text": "V"}], "title_paragraph": "A Unique History",
+      "paragraph_count": 118, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 8, "name": "VI: Comparisons Are Odious", "source_part": "epub/text/chapter-6.xhtml",
+      "manifest_id": "chapter-6.xhtml", "linear": "yes", "source_ids": ["chapter-6"],
+      "headings": [{"level": 2, "text": "VI"}], "title_paragraph": "Comparisons Are Odious",
+      "paragraph_count": 103, "reviewed_paragraphs": [1, 2, 52, 102, 103],
+      "blockquote_count": 1, "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 9, "name": "VII: Our Growing Modesty", "source_part": "epub/text/chapter-7.xhtml",
+      "manifest_id": "chapter-7.xhtml", "linear": "yes", "source_ids": ["chapter-7"],
+      "headings": [{"level": 2, "text": "VII"}], "title_paragraph": "Our Growing Modesty",
+      "paragraph_count": 105, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 10, "name": "VIII: The Girls of Herland", "source_part": "epub/text/chapter-8.xhtml",
+      "manifest_id": "chapter-8.xhtml", "linear": "yes", "source_ids": ["chapter-8"],
+      "headings": [{"level": 2, "text": "VIII"}], "title_paragraph": "The Girls of Herland",
+      "paragraph_count": 110, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 11, "name": "IX: Our Relations and Theirs", "source_part": "epub/text/chapter-9.xhtml",
+      "manifest_id": "chapter-9.xhtml", "linear": "yes", "source_ids": ["chapter-9"],
+      "headings": [{"level": 2, "text": "IX"}], "title_paragraph": "Our Relations and Theirs",
+      "paragraph_count": 120, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 12, "name": "X: Their Religions and Our Marriages", "source_part": "epub/text/chapter-10.xhtml",
+      "manifest_id": "chapter-10.xhtml", "linear": "yes", "source_ids": ["chapter-10"],
+      "headings": [{"level": 2, "text": "X"}], "title_paragraph": "Their Religions and Our Marriages",
+      "paragraph_count": 128, "reviewed_paragraphs": [], "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 13, "name": "XI: Our Difficulties", "source_part": "epub/text/chapter-11.xhtml",
+      "manifest_id": "chapter-11.xhtml", "linear": "yes", "source_ids": ["chapter-11"],
+      "headings": [{"level": 2, "text": "XI"}], "title_paragraph": "Our Difficulties",
+      "paragraph_count": 101, "reviewed_paragraphs": [], "blockquote_count": 2,
+      "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 14, "name": "XII: Expelled", "source_part": "epub/text/chapter-12.xhtml",
+      "manifest_id": "chapter-12.xhtml", "linear": "yes", "source_ids": ["chapter-12"],
+      "headings": [{"level": 2, "text": "XII"}], "title_paragraph": "Expelled",
+      "paragraph_count": 96, "reviewed_paragraphs": [1, 2, 49, 95, 96],
+      "images": [], "links": [], "tables": []
+    },
+    {
+      "index": 15, "name": "Colophon", "source_part": "epub/text/colophon.xhtml",
+      "manifest_id": "colophon.xhtml", "linear": "yes", "source_ids": ["colophon"],
+      "headings": [{"level": 2, "text": "Colophon"}], "paragraph_count": 5,
+      "images": [{"src": "../images/logo.png", "alt": "The Standard Ebooks logo.", "title": null}],
+      "external_link_count": 9, "line_break_count": 25, "tables": [],
+      "review_scope": "Complete body, attribution and release metadata."
+    },
+    {
+      "index": 16, "name": "Uncopyright", "source_part": "epub/text/uncopyright.xhtml",
+      "manifest_id": "uncopyright.xhtml", "linear": "yes", "source_ids": ["uncopyright"],
+      "headings": [{"level": 2, "text": "Uncopyright"}], "paragraph_count": 4,
+      "blockquote_count": 1, "images": [], "tables": [],
+      "links": [{"href": "https://creativecommons.org/publicdomain/zero/1.0/", "label": "CC0 1.0 Universal Public Domain Dedication"}],
+      "review_scope": "Complete body and dedication."
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 985271, "archive_members": 35, "declared_expanded_bytes": 1215713,
+    "largest_member_bytes": 744280, "largest_reading_document_bytes": 29683,
+    "max_xml_elements": 159, "max_xml_depth": 7
+  },
+  "limitations": [
+    "Narrative prose was sampled only in chapters 1, 6 and 12; this is not an exhaustive novel review.",
+    "Body lists and tables are absent. Fallback, refusal and resource limits require synthetic evidence.",
+    "Source U+FEFF before em dashes and colophon U+00A0 are meaningful publication text.",
+    "CSS, fixed visual layout, image pixels and font rendering were not inspected.",
+    "The refreshed direct download returned XHTML; this does not authorize replacing the stored fixture."
+  ]
+}

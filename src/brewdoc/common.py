@@ -201,7 +201,7 @@ def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
     return "\n".join(line.rstrip() for line in text.split("\n"))
 
 
-def cell_text(value) -> str:
+def cell_text(value, *, preserve_unicode: bool = False) -> str:
     """Keep float representations, lowercase booleans and ISO date days; None is empty.
     Keep time and duration strings; stringify other values, replace LF with spaces and trim outer whitespace."""
     if value is None:
@@ -214,21 +214,36 @@ def cell_text(value) -> str:
         return str(value)
     if isinstance(value, float):
         return repr(value)
-    return str(value).replace("\n", " ").strip()
+    return str(value).replace("\n", " ").strip(" \t\r\n" if preserve_unicode else None)
 
 
-def markdown_table(rows) -> list[str]:
+def markdown_table(rows, *, preserve_unicode: bool = False,
+                   max_markdown_bytes: int | None = None) -> list[str]:
     """Rows -> a Markdown table, first row as the header; ragged rows are padded, never cut."""
     # The only place a cell's pipe is escaped, so no caller can escape it twice.
     width = max((len(row) for row in rows), default=0)
     if not width:
         return []
     out = []
+    size = 0
+    _check_markdown_size(3 * width + 1, max_markdown_bytes)
     for index, row in enumerate(rows):
-        cells = [cell_text(value).replace("|", "\\|") for value in row] + [""] * (width - len(row))
+        cells = []
+        row_size = 3 * width + 1
+        for value in row:
+            text = cell_text(value, preserve_unicode=preserve_unicode)
+            if max_markdown_bytes is not None:
+                row_size += _markdown_bytes(text) + text.count("|")
+            _check_markdown_size(size + row_size + bool(out), max_markdown_bytes)
+            cells.append(text.replace("|", "\\|"))
+        _check_markdown_size(size + row_size + bool(out), max_markdown_bytes)
+        cells += [""] * (width - len(row))
         out.append("| " + " | ".join(cells) + " |")
+        size += row_size + (len(out) > 1)
         if index == 0:
+            _check_markdown_size(size + 6 * width + 2, max_markdown_bytes)
             out.append("| " + " | ".join(["---"] * width) + " |")
+            size += 6 * width + 2
     return out
 
 
@@ -260,10 +275,56 @@ MARKDOWN_ESCAPES = str.maketrans({
     "\r": " ", "\n": " ", "\t": " ", "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
 
 
-def _escape_markdown_text(text: str) -> str:
-    """Preserve semantic text as ASCII without exposing Markdown or HTML syntax."""
-    escaped = str(text).translate(MARKDOWN_ESCAPES)
-    return escaped.encode("ascii", "xmlcharrefreplace").decode("ascii")
+def _markdown_encoding(route: str) -> str:
+    """Publication and HTML output use UTF-8; legacy adapters retain strict ASCII."""
+    return "utf-8" if route in ("html", "epub") else "ascii"
+
+
+def _markdown_bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _check_markdown_size(size: int, maximum: int | None) -> None:
+    """Refuse prospective generated output before allocating its expanded form."""
+    if maximum is not None and size > maximum:
+        raise BrewdocError("Markdown byte limit exceeded: maximum %d" % maximum)
+
+
+def _remaining_markdown_bytes(maximum: int | None, used: int) -> int | None:
+    """Reserve existing output and fixed framing before expanding the next fragment."""
+    if maximum is None:
+        return None
+    _check_markdown_size(used, maximum)
+    return maximum - used
+
+
+def _join_markdown_lines(lines: list[str], maximum: int | None) -> str:
+    """Check the normalized trailing newline before joining complete output."""
+    if maximum is None:
+        return "\n".join(lines).rstrip("\n") + "\n"
+    lines = list(lines)
+    while lines and not lines[-1].rstrip("\n"):
+        lines.pop()
+    if lines:
+        lines[-1] = lines[-1].rstrip("\n")
+    size = sum(_markdown_bytes(line) for line in lines) + max(0, len(lines) - 1) + 1
+    _check_markdown_size(size, maximum)
+    return "\n".join(lines) + "\n"
+
+
+def _escape_markdown_text(text: str, *, preserve_unicode: bool = False,
+                          max_markdown_bytes: int | None = None) -> str:
+    """Escape syntax; preserve Unicode only when the caller opts in."""
+    text = str(text)
+    if max_markdown_bytes is not None:
+        size = 0
+        for character in text:
+            escaped = MARKDOWN_ESCAPES.get(ord(character), character)
+            size += (_markdown_bytes(escaped) if preserve_unicode else
+                     len(escaped.encode("ascii", "xmlcharrefreplace")))
+            _check_markdown_size(size, max_markdown_bytes)
+    escaped = text.translate(MARKDOWN_ESCAPES)
+    return escaped if preserve_unicode else escaped.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
 
 def _unit_key(kind: str, ordinal: int) -> str:
@@ -274,38 +335,71 @@ def _unit_anchor(key: str) -> str:
     return "brewdoc-" + key.replace("/", "-")
 
 
-def _unit_heading(kind: str, ordinal: int, label: str) -> str:
+def _unit_heading(kind: str, ordinal: int, label: str, *, preserve_unicode: bool = False,
+                  max_markdown_bytes: int | None = None) -> str:
     if kind == "page":
+        _remaining_markdown_bytes(max_markdown_bytes, len(str(ordinal)) + 5)
         return "Page %d" % ordinal
-    title = _escape_markdown_text(label)
+    title = _escape_markdown_text(label, preserve_unicode=preserve_unicode,
+                                  max_markdown_bytes=_remaining_markdown_bytes(
+                                      max_markdown_bytes, len(kind) + len(str(ordinal)) + 5))
     return "%s %d: \"%s\"" % (kind.title(), ordinal, title)
 
 
-def _escape_source_html(line: str) -> str:
+def _escape_source_html(line: str, maximum: int | None = None) -> str:
     """Keep every source HTML-like fragment visible instead of active."""
+    if maximum is not None:
+        _check_markdown_size(_markdown_bytes(line) + 3 * (line.count("<") + line.count(">")), maximum)
     return line.replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _literal_fence(code: list[str]) -> list[str]:
+def _literal_fence(code: list[str], *, max_markdown_bytes: int | None = None) -> list[str]:
     """Fence source code verbatim; the fence outgrows every backtick run so none can close it."""
-    longest = max((len(run) for line in code for run in re.findall("`+", line)), default=0)
-    fence = "`" * max(3, longest + 1)
+    longest = max((match.end() - match.start() for line in code
+                   for match in re.finditer("`+", line)), default=0)
+    width = max(3, longest + 1)
+    if max_markdown_bytes is not None:
+        _check_markdown_size(2 * width + sum(_markdown_bytes(line) for line in code)
+                             + len(code) + 1, max_markdown_bytes)
+    fence = "`" * width
     return [fence, *code, fence]
 
 
 def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
-                  heads: set[str], numbers: set[str], tally: dict) -> tuple[str, tuple[str, ...]]:
+                  heads: set[str], numbers: set[str], tally: dict, *,
+                  preserve_unicode: bool = False,
+                  max_markdown_bytes: int | None = None) -> tuple[str, tuple[str, ...]]:
     """Render anchored content units before metadata so all loss tallies are final."""
     out = []
     keys = []
+    size = 0
+    bounded = max_markdown_bytes is not None
     for ordinal, label, blocks in units:
         key = _unit_key(kind, ordinal)
         keys.append(key)
-        out += ['<a id="%s"></a>' % _unit_anchor(key),
-                "## " + _unit_heading(kind, ordinal, label), ""]
+        anchor = '<a id="%s"></a>' % _unit_anchor(key)
+        heading = [anchor,
+                   "## " + _unit_heading(kind, ordinal, label, preserve_unicode=preserve_unicode,
+                                         max_markdown_bytes=_remaining_markdown_bytes(
+                                             max_markdown_bytes, size + len(anchor) + 6)), ""]
+        size += sum(_markdown_bytes(line) + 1 for line in heading) if bounded else 0
+        out += heading
+        anchors = set()
         for block_kind, payload in blocks:
-            if block_kind == "table":
-                rendered = markdown_table(payload)
+            if block_kind == "anchor":
+                if (not isinstance(payload, str)
+                        or re.fullmatch(r"brewdoc-chapter-(?!000000)[0-9]{6}-fragment-"
+                                        r"(?!000000)[0-9]{6}", payload) is None
+                        or not payload.startswith(_unit_anchor(key) + "-fragment-")
+                        or payload in anchors):
+                    raise BrewdocError("invalid or duplicate generated fragment anchor: %r" % payload)
+                anchors.add(payload)
+                _remaining_markdown_bytes(max_markdown_bytes, size + len(payload) + 14)
+                rendered = ['<a id="%s"></a>' % payload]
+            elif block_kind == "table":
+                rendered = markdown_table(payload, preserve_unicode=preserve_unicode,
+                                           max_markdown_bytes=_remaining_markdown_bytes(
+                                               max_markdown_bytes, size + 2))
             elif block_kind == "math":
                 rendered = payload
             else:
@@ -313,10 +407,22 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                 if block_kind == "block" and len(rendered) <= 2:
                     rendered = [line for line in rendered if line != "```"]
             if rendered and block_kind in ("block", "math"):
-                out += _literal_fence(rendered[1:-1]) + [""]
+                rendered = _literal_fence(rendered[1:-1], max_markdown_bytes=_remaining_markdown_bytes(
+                    max_markdown_bytes, size + 2)) + [""]
+                size += sum(_markdown_bytes(line) + 1 for line in rendered) if bounded else 0
+                out += rendered
+            elif rendered and block_kind == "anchor":
+                size += sum(_markdown_bytes(line) + 1 for line in rendered) if bounded else 0
+                out += rendered
             elif rendered:
-                out += [_escape_source_html(line) for line in rendered] + [""]
-    body = "\n".join(out).rstrip("\n") + "\n"
+                for line in rendered:
+                    escaped = _escape_source_html(line, _remaining_markdown_bytes(
+                        max_markdown_bytes, size + 2))
+                    size += _markdown_bytes(escaped) + 1 if bounded else 0
+                    out.append(escaped)
+                size += 1 if bounded else 0
+                out.append("")
+    body = _join_markdown_lines(out, max_markdown_bytes)
     return body, tuple(keys)
 
 
@@ -341,15 +447,20 @@ NOT_APPLICABLE = tuple((field, "not applicable") for field in CAPABILITY_FIELDS)
 
 
 def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
-                   unit_keys: tuple[str, ...], body: str, tally: dict) -> list[tuple[str, str]]:
-    """Hash raw source and rendered body separately with final unit and loss counts.
-    Encode HTML bodies as UTF-8 and other routes as ASCII."""
+                   unit_keys: tuple[str, ...], body: str, tally: dict, *,
+                   preserve_unicode: bool = False,
+                   max_markdown_bytes: int | None = None) -> list[tuple[str, str]]:
+    """Hash raw source and route-encoded body separately with final unit and loss counts."""
     source, suffix = path.read_bytes(), path.suffix.lower()
-    body_bytes = body.encode("utf-8" if route == "html" else "ascii")
+    body_bytes = body.encode(_markdown_encoding(route))
     rows = [
         ("Markdown schema", MARKDOWN_SCHEMA),
-        ("Source name", '"%s"' % _escape_markdown_text(path.name)),
-        ("Source suffix", suffix[:1] + _escape_markdown_text(suffix[1:])),
+        ("Source name", '"%s"' % _escape_markdown_text(
+            path.name, preserve_unicode=preserve_unicode,
+            max_markdown_bytes=_remaining_markdown_bytes(max_markdown_bytes, 2))),
+        ("Source suffix", suffix[:1] + _escape_markdown_text(
+            suffix[1:], preserve_unicode=preserve_unicode,
+            max_markdown_bytes=_remaining_markdown_bytes(max_markdown_bytes, 1))),
         ("Source bytes", str(len(source))),
         ("Source SHA-256", hashlib.sha256(source).hexdigest()),
         ("Route", route),
@@ -371,7 +482,8 @@ def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
                    for key in DROP_KEYS]
 
 
-def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
+def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...], *,
+                        max_markdown_bytes: int | None = None) -> list[str]:
     """Describe artifacts in supplied order without reading payloads; mark an empty inventory explicitly.
     Keep unknown counts distinct from byte metadata that does not apply."""
     if not artifacts:
@@ -386,28 +498,95 @@ def _artifacts_markdown(artifacts: tuple[ArtifactRef, ...]) -> list[str]:
                      location, artifact.media_type,
                      str(artifact.byte_size) if artifact.byte_size is not None else "not applicable",
                      artifact.sha256 or "not applicable"])
-    return markdown_table(rows)
+    return markdown_table(rows, max_markdown_bytes=max_markdown_bytes)
 
 
 def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
               units: list[tuple[int, str, list[tuple]]], tally: dict, *,
               not_carried: tuple[str, ...], heads=frozenset(), numbers=frozenset(),
               capabilities: tuple = NOT_APPLICABLE,
-              artifacts: tuple[ArtifactRef, ...] = ()) -> Rendered:
+              artifacts: tuple[ArtifactRef, ...] = (), preserve_unicode: bool = False,
+              publication_rows: tuple = (), publication_navigation: tuple = (),
+              max_markdown_bytes: int | None = None) -> Rendered:
     """Build schema 2 once content and loss counters are final; every route returns this shape."""
     if unit_kind not in UNIT_COUNTERS:
         raise BrewdocError("unknown unit kind %r; expected one of: %s"
                            % (unit_kind, ", ".join(UNIT_COUNTERS)))
-    body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally)
+    body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally,
+                                    preserve_unicode=preserve_unicode,
+                                    max_markdown_bytes=max_markdown_bytes)
     tally[UNIT_COUNTERS[unit_kind]] = len(unit_keys)
-    metadata = _metadata_rows(path, route, unit_kind, source_units, unit_keys, body, tally)
-    out = ['# "%s"' % _escape_markdown_text(path.name), "",
-           '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
-    out += markdown_table([["Field", "Value"], *metadata, *capabilities])
-    out += ["", "## Artifacts", ""] + _artifacts_markdown(artifacts) + ["", "## Known omissions", ""]
-    out += ["- " + _escape_markdown_text(item) for item in not_carried]
-    out += ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
-    out += ["- [%s](#%s)" % (_unit_heading(unit_kind, ordinal, label), _unit_anchor(
-        _unit_key(unit_kind, ordinal))) for ordinal, label, _blocks in units]
+    bounded = max_markdown_bytes is not None and bool(units)
+    envelope_maximum = max_markdown_bytes if bounded else None
+    size = _markdown_bytes(body) + 1 if bounded else 0
+    prefix = ['# ""', "", '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
+    framing = sum(len(line) + 1 for line in prefix)
+    name = _escape_markdown_text(path.name, preserve_unicode=preserve_unicode,
+                                 max_markdown_bytes=_remaining_markdown_bytes(
+                                     envelope_maximum, size + framing))
+    prefix[0] = '# "%s"' % name
+    size += framing + _markdown_bytes(name) if bounded else 0
+    out = prefix
+    metadata = _metadata_rows(path, route, unit_kind, source_units, unit_keys, body, tally,
+                              preserve_unicode=preserve_unicode,
+                              max_markdown_bytes=_remaining_markdown_bytes(envelope_maximum, size))
+    table = markdown_table([["Field", "Value"], *metadata, *capabilities, *publication_rows],
+                            preserve_unicode=preserve_unicode,
+                            max_markdown_bytes=_remaining_markdown_bytes(envelope_maximum, size + 1))
+    size += sum(_markdown_bytes(line) + 1 for line in table) if bounded else 0
+    out += table
+    section = ["", "## Artifacts", ""]
+    framing = sum(len(line) + 1 for line in section)
+    artifact_lines = _artifacts_markdown(artifacts, max_markdown_bytes=_remaining_markdown_bytes(
+        envelope_maximum, size + framing + 1))
+    size += framing + sum(_markdown_bytes(line) + 1 for line in artifact_lines) if bounded else 0
+    out += section + artifact_lines
+    section = ["", "## Known omissions", ""]
+    size += sum(len(line) + 1 for line in section) if bounded else 0
+    _check_markdown_size(size, envelope_maximum)
+    out += section
+    for item in not_carried:
+        text = _escape_markdown_text(item, preserve_unicode=preserve_unicode,
+                                     max_markdown_bytes=_remaining_markdown_bytes(
+                                         envelope_maximum, size + 3))
+        size += _markdown_bytes(text) + 3 if bounded else 0
+        out.append("- " + text)
+    section = ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
+    size += sum(len(line) + 1 for line in section) if bounded else 0
+    _check_markdown_size(size, envelope_maximum)
+    out += section
+    for ordinal, label, _blocks in units:
+        anchor = _unit_anchor(_unit_key(unit_kind, ordinal))
+        framing = len(anchor) + 8
+        heading = _unit_heading(unit_kind, ordinal, label, preserve_unicode=preserve_unicode,
+                                 max_markdown_bytes=_remaining_markdown_bytes(
+                                     envelope_maximum, size + framing))
+        size += _markdown_bytes(heading) + framing if bounded else 0
+        out.append("- [%s](#%s)" % (heading, anchor))
+    if publication_navigation:
+        section = ["", '<a id="brewdoc-publication-navigation"></a>', "### Publication navigation", ""]
+        size += sum(len(line) + 1 for line in section) if bounded else 0
+        _check_markdown_size(size, envelope_maximum)
+        out += section
+        destinations = {_unit_anchor(key) for key in unit_keys}
+        destinations.add("brewdoc-publication-navigation")
+        destinations.update(payload for _ordinal, _label, blocks in units
+                            for block_kind, payload in blocks if block_kind == "anchor")
+        previous_depth = -1
+        for depth, label, destination in publication_navigation:
+            if (type(depth) is not int or depth < 0 or depth > previous_depth + 1
+                    or destination is not None and destination not in destinations):
+                raise BrewdocError("invalid publication navigation entry")
+            previous_depth = depth
+            framing = 2 * depth + 3 + (len(destination) + 5 if destination is not None else 0)
+            text = _escape_markdown_text(label, preserve_unicode=preserve_unicode,
+                                          max_markdown_bytes=_remaining_markdown_bytes(
+                                              envelope_maximum, size + framing))
+            size += framing + _markdown_bytes(text) if bounded else 0
+            text = "[%s](#%s)" % (text, destination) if destination is not None else text
+            out.append("  " * depth + "- " + text)
+    _check_markdown_size(size, envelope_maximum)
     out += ["", body.rstrip("\n")]
-    return "\n".join(out).rstrip("\n") + "\n", tally, unit_keys, artifacts
+    markdown = _join_markdown_lines(out, max_markdown_bytes)
+    _check_markdown_size(_markdown_bytes(markdown), max_markdown_bytes)
+    return markdown, tally, unit_keys, artifacts

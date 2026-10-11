@@ -13,10 +13,18 @@ from brewdoc import service
 pytestmark = pytest.mark.corpus
 
 FIXTURES = Path(__file__).parent / "fixtures"
-RECEIPTS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
+RECEIPT_RECORDS = json.loads((FIXTURES / "receipts.json").read_text(encoding="ascii"))
+RECEIPTS = {
+    rel: {key: value for key, value in row.items() if key != "accepted_output"}
+    for rel, row in RECEIPT_RECORDS.items()
+}
+ACCEPTED_OUTPUTS = {
+    rel: row["accepted_output"] for rel, row in RECEIPT_RECORDS.items()
+    if "accepted_output" in row
+}
 # Derived from the live route table, never a literal: a new route must bring its corpus with it.
 SUPPORTED = tuple(sorted(service.ROUTES))
-UNSUPPORTED = (".csv", ".eml", ".epub", ".md", ".odp", ".odt", ".tsv", ".txt")
+UNSUPPORTED = (".csv", ".eml", ".md", ".odp", ".odt", ".tsv", ".txt")
 HTML_SUPPORTED = platform.python_implementation() == "CPython" and (3, 12) <= sys.version_info < (3, 15)
 RECEIPT_KEYS = ("route", "receipt_schema", "unit_kind", "units", "tables", "text_regions")
 SNAPSHOT_KEYS = {
@@ -42,8 +50,10 @@ def fixture_files(suffixes=None) -> list[str]:
                   and (suffixes is None or path.suffix.lower() in suffixes))
 
 
-RENDERABLE = [rel for rel in fixture_files(SUPPORTED) if rel != SCAN and Path(rel).suffix.lower() != ".html"]
+RENDERABLE = [rel for rel in fixture_files(SUPPORTED)
+              if rel != SCAN and Path(rel).suffix.lower() not in {".html", ".epub"}]
 HTML_FIXTURES = fixture_files((".html",))
+EPUB_FIXTURES = fixture_files((".epub",))
 
 
 def snapshot(rc: int, line: dict) -> dict:
@@ -106,6 +116,34 @@ def test_html_fixture_is_explicitly_refused_on_an_unsupported_runtime(rel, tmp_p
     ), "unsupported runtimes must explicitly refuse every HTML fixture with an unchanged output"
 
 
+@pytest.mark.parametrize("rel", EPUB_FIXTURES)
+def test_epub_fixture_preserves_reviewed_utf8_bytes_and_full_receipt(rel, tmp_path):
+    # GIVEN a licensed EPUB source with independently reviewed capture evidence
+    path = FIXTURES / rel
+    assert tuple(sorted(ACCEPTED_OUTPUTS)) == tuple(EPUB_FIXTURES), (
+        "exactly both licensed EPUB fixtures must have independent accepted-output evidence")
+    accepted = ACCEPTED_OUTPUTS[rel]
+    out = tmp_path / (path.name + ".md")
+    assert (out.exists(), hashlib.sha256(path.read_bytes()).hexdigest()) == (
+        False, accepted["source_sha256"],
+    ), "the output must start absent and the source must match its reviewed identity"
+    # WHEN the offline service renders the same source twice, including --out
+    rc, first_receipt, first = service.run(path, out)
+    second_rc, second_receipt, second = service.run(path)
+    # THEN complete receipts and Markdown match accepted evidence with only out normalized
+    assert (rc, second_rc, snapshot(rc, first_receipt)) == (0, 0, RECEIPTS[rel]), (
+        "both EPUB conversions must succeed with the reviewed counters and ordered unit keys")
+    assert ({**first_receipt, "out": None}, second_receipt) == (
+        accepted["receipt"], accepted["receipt"],
+    ), "both complete public receipts must match after only out normalization"
+    first_bytes = first.encode("utf-8")
+    assert (hashlib.sha256(first_bytes).hexdigest(), len(first_bytes)) == (
+        accepted["markdown_sha256"], accepted["markdown_utf8_bytes"],
+    ), "complete EPUB Markdown must retain its independently accepted UTF-8 hash and byte length"
+    assert (second.encode("utf-8"), out.read_bytes()) == (first_bytes, first_bytes), (
+        "repeated API conversion and --out must preserve exact reviewed UTF-8 bytes")
+
+
 def test_the_scanned_patent_is_refused_by_name():
     # GIVEN a real five-page scan with no text layer
     path = FIXTURES / SCAN
@@ -123,7 +161,7 @@ def test_every_unsupported_format_fixture_is_refused_by_suffix():
     # GIVEN every real document of a format the reader does not support
     unsupported = fixture_files(UNSUPPORTED)
     assert {Path(rel).suffix.lower() for rel in unsupported} == set(UNSUPPORTED), (
-        "the unsupported corpus must cover all eight refused suffixes")
+        "the unsupported corpus must cover all seven refused suffixes")
     # WHEN each one is read
     refused = {rel: refusal(rel) for rel in unsupported}
     # THEN one table holds every refusal, so a new supported suffix cannot churn per-file cases

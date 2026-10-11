@@ -2,14 +2,16 @@
 
 Run from the repository checkout with its prepared Python 3.12 environment.
 Use [corpus.json](corpus.json) and [capture_results.py](capture_results.py).
-Do not install or discover tools during measurement. The corpus contains 47
-inputs: 12 `core` documents and 35 `feature_probe` documents. Select all 47;
+Do not install or discover tools during measurement. The corpus contains 49
+inputs: 13 `core` documents and 36 `feature_probe` documents. Select all 49;
 report the groups separately. These inputs are also test fixtures, not a
 held-out evaluation set.
 
 A targeted HTML run selects the six `format: html` records and records that
 selection explicitly. Its 12 capture locations are a partial corpus run.
-Complete current runs have 94 locations. Historical runs retain their own
+An EPUB acceptance run selects the two existing `format: epub` records, with
+four accepted capture locations. Failed quality captures remain separate evidence.
+Complete current runs have 98 locations. Historical runs retain their own
 frozen manifests, input counts and results; this expansion does not alter them.
 Coordinate quiet timing windows under the active task's resource protocol.
 Concurrent heavy checks cannot establish performance acceptance.
@@ -221,7 +223,7 @@ is the authoritative raw evidence and remains unchanged. A reviewed, portable
 bundle in `benchmarks/results/<run-id>/` is versioned on the `benchmark` branch;
 the [full-run registry](results/README.md) links its summary and actual outputs.
 
-Select a completed full run explicitly for sharing. It must account for all 47
+Select a completed full run explicitly for sharing. It must account for all 49
 inputs in every pass, including refusals and failures, and retain provenance,
 source identity, output-integrity checks and source-based quality review.
 Quality failures belong in the bundle; a green quality verdict is not required.

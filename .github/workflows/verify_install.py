@@ -22,8 +22,11 @@ import tomllib
 import xml.etree.ElementTree as ET
 import zipfile
 
-SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".xlsx", ".xlsm", ".xls", ".xlsb", ".ods"}
+SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".epub", ".xlsx", ".xlsm", ".xls", ".xlsb", ".ods"}
 PRIVATE_PARTS = {".codex", ".agents", ".claude", ".venv", "docs", "AGENTS.md", "CLAUDE.md"}
+UNICODE_ROUTES = {"html", "epub"}
+EPUB_INPUTS = {"tests/fixtures/epub/epubcheck-minimal.epub",
+               "tests/fixtures/epub/standardebooks-herland.epub"}
 
 
 def digest(path: Path) -> str:
@@ -74,11 +77,17 @@ def prepare(checkout: Path, bundle: Path) -> None:
     wheel, sdist = distributions(bundle / "dist")
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
+        wheel_epub = "brewdoc/epub.py" in names
         tree = ast.parse(archive.read("brewdoc/__init__.py"))
     with tarfile.open(sdist) as archive:
-        names += archive.getnames()
+        members = archive.getmembers()
+        names += [item.name for item in members]
+        sdist_epub = [item for item in members
+                      if item.name.endswith("/src/brewdoc/epub.py") and item.isfile()]
     if any(PRIVATE_PARTS.intersection(Path(name).parts) for name in names):
         raise ValueError("Distribution includes private or local project files")
+    if not wheel_epub or len(sdist_epub) != 1:
+        raise ValueError("Both distributions must include the EPUB adapter")
     exports = next(ast.literal_eval(node.value) for node in tree.body
                    if isinstance(node, ast.Assign) and any(
                        isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets))
@@ -98,7 +107,8 @@ def prepare(checkout: Path, bundle: Path) -> None:
                 "checkout_sha": command(["git", "rev-parse", "HEAD"], checkout).stdout.decode().strip(),
                 "action_cache_hit": os.environ.get("BREWDOC_CACHE_HIT"),
                 "action_cache_key": os.environ.get("BREWDOC_CACHE_KEY"),
-                "source": {name: digest(checkout / name) for name in ("pyproject.toml", "uv.lock")},
+                "source": {name: digest(checkout / name) for name in (
+                    "pyproject.toml", "uv.lock", "benchmarks/corpus.json", "tests/fixtures/receipts.json")},
                 "files": {path.relative_to(bundle).as_posix(): {
                     "size": path.stat().st_size, "sha256": digest(path)}
                     for path in (wheel, sdist, runtime, optional, build)}}
@@ -117,9 +127,9 @@ def check_origin(module: Path, prefix: Path, checkout: Path, search_paths: list[
 def check_cli(result: subprocess.CompletedProcess, expected: tuple[int, dict, str], output: Path | None = None) -> dict:
     """Require the complete receipt line and stdout/file Markdown contract."""
     code, receipt, markdown = expected
-    body = markdown.encode("utf-8" if receipt["route"] == "html" else "ascii")
+    body = markdown.encode("utf-8" if receipt["route"] in UNICODE_ROUTES else "ascii")
     line = (json.dumps(receipt, ensure_ascii=True, sort_keys=True) + os.linesep).encode("ascii")
-    stdout_body = body if receipt["route"] == "html" else markdown.replace("\n", os.linesep).encode("ascii")
+    stdout_body = body if receipt["route"] in UNICODE_ROUTES else markdown.replace("\n", os.linesep).encode("ascii")
     wanted = line + (stdout_body if output is None and code == 0 else b"")
     if (result.returncode, result.stdout, result.stderr) != (code, wanted, b""):
         raise ValueError("CLI exit, receipt, Markdown placement or stderr changed")
@@ -130,7 +140,7 @@ def check_cli(result: subprocess.CompletedProcess, expected: tuple[int, dict, st
 
 
 def select_inputs(checkout: Path) -> list[tuple[dict, dict]]:
-    """Select the smallest indexed success per suffix, including a real VBA carrier."""
+    """Select each suffix, a real VBA carrier and both accepted EPUB fixtures."""
     receipts = json.loads((checkout / "tests/fixtures/receipts.json").read_text(encoding="utf-8"))
     documents = json.loads((checkout / "benchmarks/corpus.json").read_text(encoding="utf-8"))["documents"]
     chosen = {}
@@ -146,7 +156,81 @@ def select_inputs(checkout: Path) -> list[tuple[dict, dict]]:
             chosen[suffix] = (document, expected)
     if set(chosen) != SUFFIXES:
         raise ValueError("Indexed installation smoke is missing a supported suffix")
-    return [chosen[suffix] for suffix in sorted(chosen)]
+    epubs = [document for document in documents if Path(document["path"]).suffix.lower() == ".epub"]
+    if {document["path"] for document in epubs} != EPUB_INPUTS:
+        raise ValueError("Installed EPUB acceptance requires the two reviewed fixtures")
+    selected = [chosen[suffix] for suffix in sorted(chosen)]
+    selected.extend((document, receipts[Path(document["path"]).relative_to("tests/fixtures").as_posix()])
+                    for document in sorted(epubs, key=lambda item: item["id"])
+                    if document["path"] != chosen[".epub"][0]["path"])
+    return selected
+
+
+def check_accepted_output(source: Path, actual: tuple[int, dict, str], accepted: dict) -> None:
+    """Bind installed EPUB bytes and full receipt to independently reviewed evidence."""
+    keys = {"source_sha256", "markdown_sha256", "markdown_utf8_bytes", "receipt",
+            "review_reference", "review_scope", "normalization"}
+    if (set(accepted) != keys or not accepted["review_reference"] or not accepted["review_scope"]
+            or accepted["normalization"] != "receipt.out=null; Markdown bytes unchanged"):
+        raise ValueError("EPUB accepted-output evidence is incomplete")
+    code, receipt, markdown = actual
+    body = markdown.encode("utf-8")
+    observed = (code, digest(source), hashlib.sha256(body).hexdigest(), len(body), {**receipt, "out": None})
+    expected = (0, accepted["source_sha256"], accepted["markdown_sha256"],
+                accepted["markdown_utf8_bytes"], accepted["receipt"])
+    if observed != expected:
+        raise ValueError(f"Installed EPUB differs from reviewed output: {source.name}")
+
+
+def probe_epub(path: Path, actual: tuple[int, dict, str], accepted: dict, console: str) -> dict:
+    """Exercise EPUB consumers against accepted bytes, including ASCII-configured stdout."""
+    import brewdoc
+
+    check_accepted_output(path, actual, accepted)
+    code, receipt, markdown = actual
+    expected_tally = {"pages": 0, "sheets": 0, "chapters": receipt["units"], "slides": 0,
+                      **{key: receipt[key] for key in (
+                          "tables", "text_regions", "columns_split", "broken_ligature_words", "dropped")}}
+    if brewdoc.render_epub(path) != (markdown, expected_tally):
+        raise ValueError("Installed EPUB public wrapper changed")
+    out = Path.cwd() / "nested" / (path.name + ".md")
+    expected = (code, {**receipt, "out": str(out)}, markdown)
+    if brewdoc.run(path, out=out) != expected or out.read_bytes() != markdown.encode("utf-8"):
+        raise ValueError("Installed EPUB API output differs from reviewed bytes")
+    out.unlink()
+    cli = [check_cli(subprocess.run([console, str(path)], capture_output=True, timeout=120), actual)]
+    environment = {**clean_environment(), "PYTHONIOENCODING": "ascii"}
+    cli.append(check_cli(subprocess.run([console, str(path)], env=environment,
+                                        capture_output=True, timeout=120), actual))
+    cli.append(check_cli(subprocess.run([console, str(path), "--out", str(out)], env=environment,
+                                        capture_output=True, timeout=120), expected, out))
+    return {"input": path.name, "review_reference": accepted["review_reference"],
+            "review_scope": accepted["review_scope"], "markdown_sha256": accepted["markdown_sha256"],
+            "markdown_utf8_bytes": accepted["markdown_utf8_bytes"], "wrapper_tally": expected_tally,
+            "cli": cli}
+
+
+def probe_epub_refusal(console: str) -> dict:
+    """Require malformed EPUB to preserve an existing output through API and CLI."""
+    import brewdoc
+
+    path = Path.cwd() / "malformed.epub"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", b"application/epub+zip")
+        archive.writestr("META-INF/container.xml", b"<container")
+    out = Path.cwd() / "epub-refusal.md"
+    sentinel = b"existing output\n"
+    out.write_bytes(sentinel)
+    actual = brewdoc.run(path, out=out)
+    code, receipt, markdown = actual
+    if ((code, receipt["file_ok"], receipt["route"], receipt["units"], markdown,
+         out.read_bytes()) != (1, False, "epub", 0, "", sentinel) or not receipt["reason"]):
+        raise ValueError("Installed EPUB refusal changed existing output")
+    result = subprocess.run([console, str(path), "--out", str(out)], capture_output=True, timeout=120)
+    checked = check_cli(result, actual)
+    if out.read_bytes() != sentinel:
+        raise ValueError("Installed EPUB console refusal changed existing output")
+    return {"receipt": receipt, "cli": checked, "preserved_output_sha256": digest(out)}
 
 
 def installed_url_runtime(enabled: bool) -> dict:
@@ -230,11 +314,13 @@ def probe_js(enabled: bool) -> dict:
 def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     """Exercise real installed imports, every suffix and bounded console/output contracts."""
     import brewdoc
+    from brewdoc import epub
 
     manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
     installed = importlib.metadata.distribution("brewdoc")
     direct = json.loads(installed.read_text("direct_url.json") or "{}")
     check_origin(Path(brewdoc.__file__), Path(sys.prefix), checkout, sys.path, direct)
+    check_origin(Path(epub.__file__), Path(sys.prefix), checkout, sys.path, direct)
     if (brewdoc.__version__, installed.version, brewdoc.__all__) != (
             manifest["version"], manifest["version"], manifest["exports"]):
         raise ValueError("Installed version or public exports changed")
@@ -243,11 +329,12 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     scripts = Path(sys.prefix) / ("Scripts" if os.name == "nt" else "bin")
     console = str(scripts / ("brewdoc.exe" if os.name == "nt" else "brewdoc"))
     checked = command([console, "--self-check"], Path.cwd())
-    if (checked.stdout, checked.stderr) != (("self-check: ok (34 checks)" + os.linesep).encode(), b""):
+    if (checked.stdout, checked.stderr) != (("self-check: ok (38 checks)" + os.linesep).encode(), b""):
         raise ValueError("Installed console self-check verdict changed")
     routes = []
     cli = []
     artifacts = []
+    epubs = []
     for document, snapshot in select_inputs(checkout):
         source = checkout / document["path"]
         if (source.stat().st_size, digest(source)) != (document["size_bytes"], document["sha256"]):
@@ -256,11 +343,14 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
         shutil.copyfile(source, path)
         actual = brewdoc.run(path)
         code, receipt, markdown = actual
-        if {key: code if key == "rc" else receipt[key] for key in snapshot} != snapshot:
+        expected_snapshot = {key: value for key, value in snapshot.items() if key != "accepted_output"}
+        if {key: code if key == "rc" else receipt[key] for key in expected_snapshot} != expected_snapshot:
             raise ValueError(f"Installed route receipt changed: {source.name}")
         routes.append({"input": document["path"], "input_sha256": document["sha256"],
                        "receipt": receipt, "markdown": markdown, "markdown_sha256": hashlib.sha256(
-                           markdown.encode("utf-8" if path.suffix == ".html" else "ascii")).hexdigest()})
+                           markdown.encode("utf-8" if receipt["route"] in UNICODE_ROUTES else "ascii")).hexdigest()})
+        if path.suffix == ".epub":
+            epubs.append(probe_epub(path, actual, snapshot.get("accepted_output", {}), console))
         if path.suffix in {".html", ".xlsx"}:
             cli.append(check_cli(subprocess.run([console, str(path)], capture_output=True, timeout=120), actual))
             out = Path.cwd() / "nested" / (path.name + ".md")
@@ -300,7 +390,8 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False) -> dict:
     cli.append(check_cli(subprocess.run([console, str(unsupported)], capture_output=True, timeout=120), brewdoc.run(unsupported)))
     return {"python": sys.version, "module": str(Path(brewdoc.__file__).resolve()),
             "prefix": sys.prefix, "self_check": checked.stdout.decode(), "routes": routes,
-            "cli": cli, "artifacts": artifacts, "javascript": probe_js(render_js),
+            "cli": cli, "artifacts": artifacts, "epub": epubs,
+            "epub_refusal": probe_epub_refusal(console), "javascript": probe_js(render_js),
             "packages": sorted((item.metadata["Name"], item.version)
                                for item in importlib.metadata.distributions())}
 
