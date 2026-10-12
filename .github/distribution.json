@@ -40,7 +40,6 @@
     "name": "brewdoc",
     "packages": {
       "linux-x64": "brewdoc-linux-x64-glibc",
-      "windows-x64": "brewdoc-win32-x64",
       "macos-arm64": "brewdoc-darwin-arm64"
     },
     "node": "24.21.0",
@@ -52,11 +51,8 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Portable one-folder bundles for Linux x64, Windows x64 and macOS ARM64 with bundled Python and dependencies",
-    "npm and npx launch the same admitted native engine through platform packages",
-    "Offline EPUB 2/3 conversion in declared spine order with Unicode metadata and navigation",
-    "Explicit URL acquisition and optional isolated JavaScript capture on admitted platforms",
-    "PDF, DOCX, PPTX, workbook and static HTML conversion with deterministic receipts"
+    "Dedicated installation guide and concise CLI/API documentation",
+    "npm/npx packaging for Linux x64/glibc and macOS ARM64; Windows via GitHub native or Python"
   ],
   "releases": {
     "0.2.0": {

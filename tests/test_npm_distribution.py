@@ -1,6 +1,7 @@
 """Check npm staging identities and rejected native link layouts."""
 
 import hashlib
+import base64
 import importlib.util
 import io
 import json
@@ -211,24 +212,111 @@ def test_publish_failure_preserves_generic_refusal_when_json_decoder_exceeds_rec
 
 def test_publish_requests_json_only_for_missing_packages_and_preserves_platform_first_order(tmp_path, monkeypatch, npm_builder):
     # GIVEN exact package admission and an already public first platform package
-    names = ["linux.tgz", "windows.tgz", "macos.tgz", "main.tgz"]
+    names = ["linux.tgz", "macos.tgz", "main.tgz"]
     records = [{"filename": name} for name in names]
     manifest = {"packages": records}
-    answers = iter([True, False, False, False, True, True, True, True])
+    answers = iter([True, False, False, True, True, True])
     reads, calls = [], []
     monkeypatch.setattr(npm_builder, "verify_release", lambda unused: manifest)
     monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
     monkeypatch.setattr(npm_builder, "os", SimpleNamespace(environ={"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}))
     monkeypatch.setattr(npm_builder, "public_record", lambda record: reads.append(record["filename"]) or next(answers))
-    monkeypatch.setattr(npm_builder, "run_npm", lambda arguments, cwd, environment: calls.append((arguments, cwd, environment)))
+    monkeypatch.setattr(npm_builder, "run_npm", lambda arguments, cwd, environment, **options: calls.append((arguments, cwd, environment, options)))
     assert calls == [], "existing public byte admission precedes every publication attempt"
     # WHEN publication skips exact existing bytes and continues the missing packages
     actual = npm_builder.publish(tmp_path)
     # THEN the JSON flag preserves scripts, access, provenance and platform-first ordering
     expected = [(["publish", str((tmp_path / name).resolve()), "--ignore-scripts", "--access", "public", "--provenance", "--json"],
-                 tmp_path, {"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}) for name in names[1:]]
+                 tmp_path, {"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}, {"publication": record}) for name, record in zip(names[1:], records[1:], strict=True)]
     assert (actual, calls) == (None, expected), "only missing packages publish, with the main package last and no changed permissions"
     assert reads == names + names, "every package is checked before writes and again after its publication slot"
+
+
+def test_failed_publication_keeps_finite_output_and_writes_only_context_bound_encrypted_diagnostic(tmp_path, monkeypatch, capsys, npm_builder):
+    # GIVEN an admitted three-package release and valid optional private diagnostic context
+    diagnostic = tmp_path / "diagnostics"
+    diagnostic.mkdir()
+    controller = tmp_path / "controller"
+    (controller / ".github/workflows").mkdir(parents=True)
+    public_key = b"synthetic public key fixture\n"
+    (controller / ".github/npm-diagnostic-public.pem").write_bytes(public_key)
+    (controller / ".github/workflows/npm_diagnostic.cjs").write_text("// Synthetic process boundary.\n")
+    records = [{"filename": name + ".tgz", "metadata": {"name": name, "version": "0.3.2"},
+                "sha256": "a" * 64, "source_sha": "b" * 40} for name in
+               ("brewdoc-linux-x64-glibc", "brewdoc-darwin-arm64", "brewdoc")]
+    environment = {"NODE_AUTH_TOKEN": "CANARY_AUTH_SECRET", "BREWDOC_NPM_DIAGNOSTIC_DIR": str(diagnostic),
+                   "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "73", "GITHUB_RUN_ATTEMPT": "2",
+                   "PATH": "/synthetic/bin", "SystemRoot": "C:/Windows"}
+    payload = json.dumps({"error": {"code": "E403", "summary": "CANARY_SUMMARY_SECRET", "detail": "CANARY_DETAIL_SECRET"}}).encode()
+    crypto_calls, envelopes = [], []
+
+    def process(arguments, **options):
+        """Keep npm output synthetic and emulate only the encryption process edge."""
+        if arguments[1] == "npm":
+            return subprocess.CompletedProcess(arguments, 1, payload, b"CANARY_STDERR_SECRET")
+        crypto_calls.append((arguments, options))
+        envelope = {"schema": 1, "algorithm": "RSA-OAEP-SHA256+A256GCM",
+                    "key_sha256": hashlib.sha256(public_key).hexdigest(),
+                    "encrypted_key": base64.b64encode(b"k" * 384).decode(), "iv": base64.b64encode(b"i" * 12).decode(),
+                    "tag": base64.b64encode(b"t" * 16).decode(), "ciphertext": base64.b64encode(b"x" * len(options["input"])).decode()}
+        envelopes.append(envelope)
+        return subprocess.CompletedProcess(arguments, 0, json.dumps(envelope).encode(), b"")
+
+    monkeypatch.setattr(npm_builder, "ROOT", controller)
+    monkeypatch.setattr(npm_builder, "verify_release", lambda unused: {"packages": records})
+    monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
+    monkeypatch.setattr(npm_builder, "public_record", lambda unused: False)
+    monkeypatch.setattr(npm_builder, "npm_command", lambda arguments, npx=False: ["node", "npm", *arguments])
+    monkeypatch.setattr(npm_builder.os, "environ", environment)
+    monkeypatch.setattr(npm_builder.shutil, "which", lambda unused: "node")
+    monkeypatch.setattr(npm_builder.subprocess, "run", process)
+    assert list(diagnostic.iterdir()) == [], "private diagnostics start without files"
+    # WHEN current publication fails before any public version becomes available
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.publish(tmp_path)
+    # THEN public failure remains finite while only bound ciphertext is persisted
+    assert str(failure.value) == "npm publish failed (1); code=E403; cause=registry-forbidden; authenticated output was suppressed", "private capture cannot change or expose the public npm failure"
+    assert [path.name for path in diagnostic.iterdir()] == ["brewdoc-linux-x64-glibc.json"], "optional failed publication must create exactly one encrypted package diagnostic"
+    assert json.loads((diagnostic / "brewdoc-linux-x64-glibc.json").read_bytes()) == envelopes[0], "the persisted file contains only the encrypted envelope"
+    assert json.loads(crypto_calls[0][1]["input"]) == {"schema": 1, "package": "brewdoc-linux-x64-glibc", "version": "0.3.2",
+        "tarball_sha256": "a" * 64, "source_sha": "b" * 40, "controller_sha": "c" * 40,
+        "run_id": 73, "run_attempt": 2, "code": "E403", "cause": "registry-forbidden", "summary": "CANARY_SUMMARY_SECRET"}, "ciphertext input must bind the exact package, source, controller and failed run"
+    assert crypto_calls[0][1]["env"] == {"PATH": "/synthetic/bin", "SystemRoot": "C:/Windows"}, "encryption must not inherit npm authentication"
+    assert capsys.readouterr() == ("", ""), "authenticated error and encryption streams remain unprinted"
+
+
+@pytest.mark.parametrize("record_present,run_id,process_count", [
+    pytest.param(False, "73", 1, id="missing-package-context"),
+    pytest.param(True, "0", 1, id="invalid-run-context"),
+    pytest.param(True, "73", 2, id="encryption-process-failure"),
+])
+def test_optional_diagnostic_failure_preserves_public_refusal_without_plaintext_files(
+        tmp_path, monkeypatch, capsys, npm_builder, record_present, run_id, process_count):
+    # GIVEN missing or invalid context, or a failed encryption process with secret-shaped output.
+    records = {False: None, True: {"metadata": {"name": "brewdoc", "version": "0.3.2"},
+                                  "sha256": "a" * 64, "source_sha": "b" * 40}}
+    environment = {"BREWDOC_NPM_DIAGNOSTIC_DIR": str(tmp_path), "NODE_AUTH_TOKEN": "CANARY_AUTH_SECRET",
+                   "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": run_id, "GITHUB_RUN_ATTEMPT": "2"}
+    payload = json.dumps({"error": {"code": "E403", "summary": "CANARY_SUMMARY_SECRET"}}).encode()
+    responses = iter([subprocess.CompletedProcess([], 1, payload, b"CANARY_NPM_STDERR_SECRET"),
+                      subprocess.CompletedProcess([], 1, b"CANARY_CRYPTO_STDOUT_SECRET", b"CANARY_CRYPTO_STDERR_SECRET")])
+    calls = []
+
+    def process(arguments, **options):
+        """Record bounded process requests and return synthetic failures."""
+        calls.append(arguments)
+        return next(responses)
+
+    monkeypatch.setattr(npm_builder, "npm_command", lambda *unused: ["node", "npm", "publish"])
+    monkeypatch.setattr(npm_builder.shutil, "which", lambda unused: "node")
+    monkeypatch.setattr(npm_builder.subprocess, "run", process)
+    assert list(tmp_path.iterdir()) == [], "The failure fallback starts without diagnostic files"
+    # WHEN the existing publication failure attempts optional private capture.
+    with pytest.raises(RuntimeError) as failure:
+        npm_builder.run_npm(["publish"], tmp_path, environment, publication=records[record_present])
+    # THEN missing capture never changes the finite public failure or writes plaintext.
+    assert str(failure.value) == "npm publish failed (1); code=E403; cause=registry-forbidden; authenticated output was suppressed", "Private diagnostic failure cannot replace the npm refusal"
+    assert (len(calls), list(tmp_path.iterdir()), capsys.readouterr()) == (process_count, [], ("", "")), "Invalid context or encryption failure must produce no artifact or public secret output"
 
 
 @pytest.mark.parametrize("native_mode,tar_mode", [
@@ -313,13 +401,90 @@ def test_package_versions_and_platform_filters_are_exact(npm_builder):
     # THEN optional dependencies and platform admission remain exact.
     assert main["optionalDependencies"] == {
         "brewdoc-linux-x64-glibc": version,
-        "brewdoc-win32-x64": version,
         "brewdoc-darwin-arm64": version,
     }, "Platform dependencies must share one exact version"
+    assert main["brewdocTargets"] == {
+        "linux-x64": {"os": "linux", "cpu": "x64", "libc": "glibc", "executable": "binary/brewdoc",
+                      "package": "brewdoc-linux-x64-glibc", "minimumLibc": "2.35"},
+        "macos-arm64": {"os": "darwin", "cpu": "arm64", "executable": "binary/brewdoc", "package": "brewdoc-darwin-arm64"},
+    }, "The main package must advertise exactly the two admitted npm platforms"
     assert {key: linux[key] for key in ("name", "version", "os", "cpu", "libc")} == {
         "name": "brewdoc-linux-x64-glibc", "version": version,
         "os": ["linux"], "cpu": ["x64"], "libc": ["glibc"],
     }, "Linux platform filters changed"
+
+
+def test_windows_npm_metadata_refuses_before_a_package_can_be_generated(npm_builder):
+    # GIVEN the explicitly excluded Windows npm target
+    target = "windows-x64"
+    assert target == "windows-x64", "the refused request is the Windows npm platform"
+    # WHEN package metadata is requested for Windows
+    with pytest.raises(ValueError) as failure:
+        npm_builder.package_metadata("0.3.2", target)
+    # THEN the policy refusal is explicit rather than a missing mapping key
+    assert failure.value.args == ("Unsupported npm target: windows-x64",), "Windows users need an intentional unsupported-target refusal"
+
+
+def test_windows_native_archive_cannot_enter_npm_packing(tmp_path, monkeypatch, npm_builder):
+    # GIVEN independently admitted Windows native evidence for GitHub distribution
+    native = tmp_path / "native"
+    native.mkdir()
+    npm_builder.write_json(native / "verification.json", {"verdict": "PASS"})
+    manifest = {"target": "windows-x64", "version": "0.3.2", "schema": 1}
+    monkeypatch.setattr(npm_builder, "native_builder", lambda: SimpleNamespace(admit_manifest=lambda unused: manifest))
+    monkeypatch.setattr(npm_builder, "release_version", lambda: "0.3.2")
+    assert manifest["target"] == "windows-x64", "GitHub native admission must not imply Windows npm admission"
+    # WHEN the npm producer receives the independently supported native archive
+    with pytest.raises(ValueError, match="Native manifest target, version or schema differs"):
+        npm_builder.pack_native(native, tmp_path / "npm")
+    # THEN no Windows npm package or staging directory is created
+    assert (tmp_path / "npm").exists() is False, "Windows native availability cannot start npm packing"
+
+
+def test_legacy_windows_npm_release_refuses_before_any_publisher_process(tmp_path, monkeypatch, npm_builder):
+    # GIVEN a historical four-package inventory that still includes Windows npm
+    names = ["brewdoc-linux-x64-glibc", "brewdoc-win32-x64", "brewdoc-darwin-arm64", "brewdoc"]
+    npm_builder.write_json(tmp_path / "npm-manifest.json", {"schema": 1, "version": "0.3.2", "source_sha": "a" * 40,
+        "node": npm_builder.NODE_VERSION, "npm": npm_builder.NPM_VERSION,
+        "packages": [{"metadata": {"name": name}} for name in names]})
+    monkeypatch.setattr(npm_builder, "release_version", lambda: "0.3.2")
+    calls = []
+    monkeypatch.setattr(npm_builder.subprocess, "run", lambda *arguments, **options: calls.append(arguments))
+    assert names[1] == "brewdoc-win32-x64", "the inventory contains the retired Windows npm publication slot"
+    # WHEN normal publication validates its package set
+    with pytest.raises(ValueError, match="publication order or package set differs"):
+        npm_builder.publish(tmp_path)
+    # THEN no npm process or registry publication is attempted
+    assert calls == [], "legacy Windows npm assets refuse before authentication or publisher execution"
+
+
+def test_npm_aggregate_exports_exactly_linux_macos_and_main_packages(tmp_path, monkeypatch, npm_builder):
+    # GIVEN the two admitted platform archives with one exact version and source
+    records = []
+    for target in ("linux-x64", "macos-arm64"):
+        folder = tmp_path / target
+        folder.mkdir()
+        filename = npm_builder.PACKAGES[target] + "-0.3.2.tgz"
+        (folder / filename).write_bytes(b"synthetic admitted archive")
+        record = {"target": target, "filename": filename, "version": "0.3.2", "source_sha": "a" * 40,
+                  "metadata": npm_builder.package_metadata("0.3.2", target)}
+        npm_builder.write_json(folder / "platform-record.json", record)
+        records.append(record)
+    checked = []
+    monkeypatch.setattr(npm_builder, "release_version", lambda: "0.3.2")
+    monkeypatch.setattr(npm_builder, "verify_tarball", lambda path, record: checked.append(record["target"]))
+    main = {"filename": "brewdoc-0.3.2.tgz", "version": "0.3.2", "source_sha": "a" * 40,
+            "metadata": npm_builder.package_metadata("0.3.2")}
+    monkeypatch.setattr(npm_builder, "pack_directory", lambda folder, output, extra: main)
+    assert [record["target"] for record in records] == ["linux-x64", "macos-arm64"], "the exact two-platform input is complete"
+    # WHEN aggregation assembles the main npm package after platform admission
+    npm_builder.aggregate(tmp_path, tmp_path / "release")
+    # THEN the receipt contains the exact three-package publication order
+    manifest = npm_builder.read_json(tmp_path / "release/npm-manifest.json")
+    assert manifest == {"schema": 1, "version": "0.3.2", "source_sha": "a" * 40,
+        "node": npm_builder.NODE_VERSION, "npm": npm_builder.NPM_VERSION, "packages": [*records, main],
+        "verification_scope": "full"}, "the main package must follow Linux and macOS without a Windows publication slot"
+    assert checked == ["linux-x64", "macos-arm64"], "only the two admitted platform archives are read back"
 
 
 def test_pinned_npm_pack_object_result_is_admitted(tmp_path, monkeypatch, npm_builder):
@@ -377,7 +542,7 @@ def windows_platform_tarball(tmp_path, builder, *, payload=b"Windows native exec
               "probes": [{"probe": name, "path": "tests/fixtures/input.xlsx"} for name in ("sheet-order", "vba", "epub2", "formula")]}
     verification = {"verdict": "PASS", "target": "windows-x64", "version": "0.3.1", "source_sha": "a" * 40,
                     "archive_sha256": "d" * 64}
-    metadata = builder.package_metadata("0.3.1", "windows-x64")
+    metadata = {"name": "brewdoc-win32-x64", "version": "0.3.1", "os": ["win32"], "cpu": ["x64"]}
     payloads = {"package.json": json.dumps(metadata).encode(), "native-manifest.json": json.dumps(native).encode(),
                 "native-verification.json": json.dumps(verification).encode(), "binary/brewdoc.exe": payload}
     path, files = tmp_path / "brewdoc-win32-x64-0.3.1.tgz", {}
@@ -532,8 +697,8 @@ def test_explicit_smoke_and_legacy_full_scopes_remain_distinct(npm_builder, fiel
 
 
 def test_mixed_native_scopes_refuse_before_aggregate_writes(tmp_path, monkeypatch, npm_builder):
-    # GIVEN three platform records with one full record among smoke records.
-    for target, scope in zip(npm_builder.PACKAGES, ("smoke", "full", "smoke"), strict=True):
+    # GIVEN two platform records with one full record among smoke records.
+    for target, scope in zip(npm_builder.PACKAGES, ("smoke", "full"), strict=True):
         folder = tmp_path / target
         folder.mkdir()
         npm_builder.write_json(folder / "platform-record.json", {
@@ -562,7 +727,7 @@ def test_manifest_scope_mismatch_refuses_before_npm_or_network(tmp_path, monkeyp
     assert (calls, (tmp_path / "report.json").exists()) == ([], False), "Mismatched mode reached installation"
 
 
-def test_central_public_check_binds_all_four_tarball_integrities(tmp_path, monkeypatch, npm_builder):
+def test_central_public_check_binds_all_three_tarball_integrities(tmp_path, monkeypatch, npm_builder):
     # GIVEN a complete smoke package set with fixed integrity identities.
     records = [{"metadata": {"name": name}, "integrity": "sha512-" + name} for name in [*npm_builder.PACKAGES.values(), "brewdoc"]]
     manifest = {"verification_scope": "smoke", "version": "0.3.1", "source_sha": "a" * 40, "packages": records}
@@ -573,7 +738,7 @@ def test_central_public_check_binds_all_four_tarball_integrities(tmp_path, monke
         checked.append(record["metadata"]["name"])
         return True
     monkeypatch.setattr(npm_builder, "public_record", public)
-    assert len(records) == 4, "Central admission needs every public package"
+    assert len(records) == 3, "Central admission needs both native packages and the main launcher"
     # WHEN one central public byte gate writes reusable evidence.
     output = tmp_path / "public.json"
     npm_builder.check_public(tmp_path, output)

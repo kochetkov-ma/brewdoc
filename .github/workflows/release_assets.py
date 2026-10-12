@@ -24,15 +24,12 @@ import stat
 REPOSITORY = "kochetkov-ma/brewdoc"
 CHECKOUT = Path(__file__).resolve().parents[2]
 TARGETS = ("linux-x64", "windows-x64", "macos-arm64")
+NPM_TARGETS = ("linux-x64", "macos-arm64")
 MAX_ASSET = 512 * 1024 * 1024
 CONTROLS = {"release-manifest.json", "SHA256SUMS", "staged-body.md"}
 CI_ARTIFACTS = ("ci-dist", "ci-native-assets", "ci-npm-release",
-                *("ci-npm-consumer-" + target for target in TARGETS))
+                *("ci-npm-consumer-" + target for target in NPM_TARGETS))
 TOOLS = {"python": "3.12.14", "uv": "0.12.21", "node": "24.21.0", "npm": "12.2.0"}
-V031_SOURCE = "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7"
-V031_MANIFEST_SHA256 = "e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38"
-V031_RELEASE_ID = 409891511
-V031_PRODUCER_RUN_ID = 38169296455
 RELEASE_CONTROLS = {".github/workflows/release.yml", ".github/workflows/release_assets.py",
                     "tests/test_release_assets.py", "RELEASING.md"}
 
@@ -191,6 +188,8 @@ def reuse_ci(checkout: Path, output: Path, tag: str, source_sha: str) -> dict:
     for target in TARGETS:
         native = binaries["targets"][target]
         native_report(read_json(output / f"ci-native-assets/verification/{target}.json"), native, source_sha, version, target)
+    for target in NPM_TARGETS:
+        native = binaries["targets"][target]
         report = read_json(output / f"ci-npm-consumer-{target}/ci-npm-probe-{target}.json")
         npm_report(report, target, {"version": version, "source_sha": source_sha}, native, npm, "local")
     refreshed = api(f"actions/runs/{run['id']}")
@@ -273,7 +272,7 @@ def prepare(checkout: Path, bundle: Path, native: Path, output: Path, body: Path
             npm: Path | None = None, producer_record: Path | None = None) -> dict:
     """Reuse artifact admission, then seal the exact upload set and draft body."""
     if npm is None:
-        raise ValueError("The new release requires all four npm packages")
+        raise ValueError("The new release requires all three npm packages")
     packages = helper("verify_install")
     producer = read_json(bundle / "ci-package/manifest.json")
     packages.verify_manifest(bundle, producer)
@@ -345,72 +344,11 @@ def checksums(assets: dict) -> str:
     return "".join(f"{row['sha256']}  {name}\n" for name, row in sorted(assets.items()))
 
 
-def partial_v031_body(staged_body: str) -> str:
-    """Replace the single staged availability paragraph, preserving all other text."""
-    staged = ("This release is staged. The commands and download links below apply only after "
-              "this exact version and channel are published and verified.")
-    partial = ("Python distributions and standalone downloads are public. npm registry publication is pending. "
-               "Use the pip, uv, pipx or standalone installation commands below. "
-               "The npm and npx registry commands below are unavailable.")
-    paragraphs = staged_body.split("\n\n")
-    if paragraphs.count(staged) != 1:
-        raise ValueError("Expected exactly one staged availability paragraph")
-    paragraphs[paragraphs.index(staged)] = partial
-    return "\n\n".join(paragraphs)
-
-
-def admit_v031(folder: Path, output: Path) -> dict:
-    """Bind the fixed published package bytes to a separate actual main controller."""
-    if output.resolve().is_relative_to(folder.resolve()) or output.exists() or output.is_symlink():
-        raise ValueError("Controller receipt must be new and separate from release assets")
-    if identity(folder / "release-manifest.json")["sha256"] != V031_MANIFEST_SHA256:
-        raise ValueError("Fixed 0.3.1 release manifest differs")
-    manifest = admit(folder, "v0.3.1", V031_SOURCE)
-    if (manifest["producer"]["run_id"], manifest["producer"]["run_attempt"]) != (V031_PRODUCER_RUN_ID, 1):
-        raise ValueError("Fixed 0.3.1 original producer differs")
-    inputs = github_event().get("inputs", {})
-    if (not isinstance(inputs, dict) or inputs.get("operation") not in ("resume-v031", "verify-v031-binaries")
-            or any(inputs.get(name, "") != "" for name in
-                   ("prepared_run_id", "approved_wheel_sha256", "approved_sdist_sha256"))):
-        raise ValueError("Fixed continuation inputs differ")
-    controller_sha = command(["git", "-C", str(CHECKOUT), "rev-parse", "HEAD"]).decode().strip()
-    run_id, attempt = os.environ.get("GITHUB_RUN_ID", ""), os.environ.get("GITHUB_RUN_ATTEMPT", "")
-    if (os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
-            or os.environ.get("GITHUB_REF") != "refs/heads/main"
-            or os.environ.get("GITHUB_SHA") != controller_sha or not re.fullmatch(r"[0-9a-f]{40}", controller_sha)
-            or not run_id.isdecimal() or int(run_id) <= 0 or not attempt.isdecimal() or int(attempt) <= 0):
-        raise ValueError("Continuation controller identity differs")
-    run = api(f"actions/runs/{run_id}")
-    expected = {"id": int(run_id), "run_attempt": int(attempt), "head_sha": controller_sha,
-                "event": "workflow_dispatch", "head_branch": "main", "path": ".github/workflows/release.yml"}
-    if ({key: run.get(key) for key in expected} != expected
-            or run.get("repository", {}).get("full_name") != REPOSITORY
-            or run.get("head_repository", {}).get("full_name") != REPOSITORY):
-        raise ValueError("Continuation controller run differs")
-    tag_preflight(manifest)
-    pypi_public(folder, manifest)
-    release, assets = release_state(folder, manifest)
-    staged_body = (folder / "staged-body.md").read_text(encoding="utf-8")
-    accepted_body = release["body"] == staged_body
-    if not accepted_body and release["draft"] is False:
-        accepted_body = release["body"] == partial_v031_body(staged_body)
-    if release["id"] != V031_RELEASE_ID or not accepted_body:
-        raise ValueError("Fixed 0.3.1 existing release or staged body differs")
-    require_complete(folder, manifest, release, assets)
-    record = {"schema": 1, "operation": inputs["operation"], "tag": "v0.3.1", "source_sha": V031_SOURCE,
-              "manifest_sha256": V031_MANIFEST_SHA256, "producer_run_id": V031_PRODUCER_RUN_ID,
-              "producer_run_attempt": 1, "release_id": V031_RELEASE_ID,
-              "controller": {"source_sha": controller_sha, "run_id": int(run_id), "run_attempt": int(attempt),
-                             "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
-    write_json(output, record)
-    return record
-
-
 def admit(folder: Path, tag: str, source_sha: str) -> dict:
     """Require the sealed complete set before every remote operation."""
     manifest = read_json(folder / "release-manifest.json")
     if manifest.get("npm") is not True:
-        raise ValueError("The new release requires all four npm packages")
+        raise ValueError("The new release requires all three npm packages")
     if (manifest["schema"], manifest["repository"], manifest["tag"], manifest["source_sha"]) != (
             1, REPOSITORY, tag, source_sha) or tag != "v" + manifest["version"]:
         raise ValueError("Release tag, repository or source differs")
@@ -470,7 +408,7 @@ def tag_preflight(manifest: dict) -> None:
 def release_state(folder: Path, manifest: dict, *, missing: bool = False) -> tuple[dict | None, dict]:
     """Reject foreign releases and unexpected, duplicate or differently sized assets."""
     if manifest.get("npm") is not True:
-        raise ValueError("The new release requires all four npm packages")
+        raise ValueError("The new release requires all three npm packages")
     tag_preflight(manifest)
     release = api(f"releases/tags/{manifest['tag']}", missing=True)
     if release is None:
@@ -761,6 +699,8 @@ def npm_evidence(directory: Path, target: str, manifest: dict, native: dict, npm
 
 def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dict, mode: str) -> None:
     """Require the exact npm coverage profile and its actual cancellation evidence."""
+    if target not in NPM_TARGETS:
+        raise ValueError("npm target is unsupported")
     builder = helper("build_npm")
     scope = builder.verification_scope(npm)
     if builder.verification_scope(native) != scope or builder.verification_scope(report) != scope:
@@ -791,9 +731,7 @@ def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dic
             raise ValueError("npm public signature or provenance evidence differs")
     cancellation = report["cancellation"]
     expected_cancellation = {"native_observed": True, "native_terminated": True,
-                             "javascript": "unsupported" if target == "windows-x64" else "observed-and-terminated"}
-    if target == "windows-x64" and scope == "smoke":
-        expected_cancellation.update({"dns_observed": False, "trigger": "offline-html-output", "launcher_exit": "nonzero"})
+                             "javascript": "observed-and-terminated"}
     if ({key: cancellation.get(key) for key in expected_cancellation} != expected_cancellation
             or type(cancellation.get("dns_observed")) is not bool
             or type(cancellation["owned_processes"]) is not int or cancellation["owned_processes"] < 1):
@@ -810,6 +748,8 @@ def admit_public(folder: Path, manifest: dict, evidence: Path) -> dict:
     for target in TARGETS:
         native = binaries["targets"][target]
         native_evidence(evidence / target, target, manifest, native, release, assets)
+    for target in NPM_TARGETS:
+        native = binaries["targets"][target]
         npm_evidence(evidence / target, target, manifest, native, npm)
     pypi_public(folder, manifest)
     if helper("build_npm").verification_scope(npm) == "smoke":
@@ -820,12 +760,15 @@ def admit_public(folder: Path, manifest: dict, evidence: Path) -> dict:
             raise ValueError("Central public npm byte evidence differs")
     else:
         helper("build_npm").check_public(folder)
+    consumers = {target: {"native": "PASS"} for target in TARGETS}
+    for target in NPM_TARGETS:
+        consumers[target].update({"npm": "PASS", "npx": "PASS"})
     return {"schema": 1, "version": manifest["version"], "source_sha": manifest["source_sha"],
             "pypi": {"published": True}, "github": {"assets": {record["archive"]["filename"]: {
                 key: record["archive"][key] for key in ("bytes", "sha256")} for record in binaries["targets"].values()}},
             "npm": {"packages": {row["metadata"]["name"]: {"version": manifest["version"], "integrity": row["integrity"]}
                                   for row in npm["packages"]}},
-            "consumers": {target: {"native": "PASS", "npm": "PASS", "npx": "PASS"} for target in TARGETS}}
+            "consumers": consumers}
 
 
 def finalize(folder: Path, manifest: dict, evidence: Path, body: Path) -> None:
@@ -872,9 +815,6 @@ def main(argv: list[str] | None = None) -> int:
     scope.add_argument("--base", required=True)
     scope.add_argument("--head", required=True)
     scope.add_argument("--github-output", type=Path, required=True)
-    continuation = commands.add_parser("admit-v031", allow_abbrev=False)
-    continuation.add_argument("--input", type=Path, required=True)
-    continuation.add_argument("--output", type=Path, required=True)
     for operation in ("stage", "publish", "verify-public", "download-target", "admit-public", "finalize"):
         subparser = commands.add_parser(operation, allow_abbrev=False)
         subparser.add_argument("--input", type=Path, required=True)
@@ -901,9 +841,6 @@ def main(argv: list[str] | None = None) -> int:
         selected = ci_scope(arguments.checkout, arguments.base, arguments.head)
         with arguments.github_output.open("a", encoding="utf-8") as output:
             output.write(f"smoke={'true' if selected else 'false'}\n")
-        return 0
-    if arguments.operation == "admit-v031":
-        admit_v031(arguments.input, arguments.output)
         return 0
     if arguments.operation == "prepare":
         manifest = prepare(arguments.checkout, arguments.bundle, arguments.native, arguments.output, arguments.body,

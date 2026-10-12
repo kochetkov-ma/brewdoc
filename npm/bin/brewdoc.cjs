@@ -7,6 +7,7 @@ const { dirname, join } = require('node:path');
 
 /** Select only admitted targets and supported libc versions. */
 function selectTarget(targets, platform, arch, glibc) {
+  if (platform === 'win32') return undefined;
   return Object.values(targets).find(target => {
     if (target.os !== platform || target.cpu !== arch) return false;
     if (target.libc !== 'glibc') return true;
@@ -28,7 +29,9 @@ function launch() {
     process.exitCode = 1;
   }
   if (!target) {
-    refuse(`unsupported native target ${process.platform}/${process.arch} or operating-system/libc version`);
+    refuse(process.platform === 'win32'
+      ? 'npm is unsupported on Windows; download the standalone Windows archive from https://github.com/kochetkov-ma/brewdoc/releases'
+      : `unsupported native target ${process.platform}/${process.arch} or operating-system/libc version`);
     return;
   }
   let executable;

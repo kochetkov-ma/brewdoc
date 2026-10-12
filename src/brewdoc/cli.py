@@ -43,20 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for document, sheet, artifact, and self-check requests."""
     parser = argparse.ArgumentParser(
         prog=RENDERED_BY,
-        description="Render a PDF, a Word document, a presentation, a spreadsheet, EPUB or static HTML as "
-                    "deterministic, sanitised, LLM-readable "
-                    "Markdown. PDF regions route by their own ruling edges: a lined table becomes "
-                    "a Markdown table, an unlined captioned table is cropped then read, other "
-                    "regions become fixed-width or plain text, and two-column prose is cropped at "
-                    "the gutter. A spreadsheet becomes one anchored '## Sheet N: \"<name>\"' "
-                    "section per sheet, using only the --sheet names when given. A .docx becomes "
-                    "one anchored '## Chapter N: \"<heading>\"' section per Word heading and "
-                    "keeps its tables. A .pptx becomes one anchored "
-                    "'## Slide N: \"<title>\"' section per declared slide. An .epub becomes one "
-                    "Unicode chapter per declared spine item. Static .html becomes one "
-                    "chapter and requires CPython 3.12-3.14 with selectolax 0.4.13. Other runtimes "
-                    "explicitly refuse HTML; a missing or broken parser on supported CPython "
-                    "fails HTML conversion and self-check.",
+        description="Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. "
+                    "No model weights, OCR or external services.",
         epilog="Both paths may be absolute or relative; a relative one is resolved against the "
                "current working directory, never against this script's location, and --out "
                "creates its parent directories. "

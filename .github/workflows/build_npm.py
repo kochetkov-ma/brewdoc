@@ -31,10 +31,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = "https://registry.npmjs.org"
 NODE_VERSION = "24.21.0"
 NPM_VERSION = "12.2.0"
-PACKAGES = {"linux-x64": "brewdoc-linux-x64-glibc", "windows-x64": "brewdoc-win32-x64",
-            "macos-arm64": "brewdoc-darwin-arm64"}
+PACKAGES = {"linux-x64": "brewdoc-linux-x64-glibc", "macos-arm64": "brewdoc-darwin-arm64"}
 TARGETS = {"linux-x64": {"os": "linux", "cpu": "x64", "libc": "glibc", "executable": "binary/brewdoc"},
-           "windows-x64": {"os": "win32", "cpu": "x64", "executable": "binary/brewdoc.exe"},
            "macos-arm64": {"os": "darwin", "cpu": "arm64", "executable": "binary/brewdoc"}}
 PUBLISH_CAUSES = {"E400": "bad-request", "E401": "authentication-rejected", "E403": "registry-forbidden",
                   "E404": "registry-not-found", "E409": "version-conflict", "E429": "rate-limit",
@@ -103,8 +101,10 @@ def release_version() -> str:
 
 def package_metadata(version: str, target: str | None = None) -> dict:
     """Generate exact dependency and platform metadata without lifecycle scripts."""
+    if target is not None and target not in PACKAGES:
+        raise ValueError(f"Unsupported npm target: {target}")
     metadata = {"name": PACKAGES[target] if target else "brewdoc", "version": version,
-                "description": "Convert documents to deterministic Markdown with Brewdoc.",
+                "description": "Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.",
                 "license": "MIT", "repository": {"type": "git", "url": "git+https://github.com/kochetkov-ma/brewdoc.git"},
                 "homepage": "https://github.com/kochetkov-ma/brewdoc#readme",
                 "publishConfig": {"access": "public", "registry": REGISTRY}}
@@ -239,11 +239,10 @@ def npm_command(arguments: list[str], npx: bool = False) -> list[str]:
     return [str(executable), str(npm), *arguments]
 
 
-def publish_failure(payload: bytes) -> tuple[str, str]:
-    """Return finite diagnostics without exposing authenticated npm output."""
-    unknown = ("UNKNOWN", "unclassified")
+def publish_error(payload: bytes) -> dict | None:
+    """Admit one bounded npm error object without exposing its contents."""
     if len(payload) > 64 * 1024:
-        return unknown
+        return None
 
     def unique_object(pairs):
         """Reject conflicting JSON keys before classification."""
@@ -254,10 +253,19 @@ def publish_failure(payload: bytes) -> tuple[str, str]:
     try:
         value = json.loads(payload.decode("utf-8"), object_pairs_hook=unique_object)
     except (ValueError, UnicodeError, RecursionError):
-        return unknown
+        return None
     error = value.get("error") if isinstance(value, dict) else None
     if (not isinstance(error, dict) or not isinstance(error.get("code"), str)
             or any(not isinstance(error.get(field, ""), str) for field in ("summary", "detail"))):
+        return None
+    return error
+
+
+def publish_failure(payload: bytes) -> tuple[str, str]:
+    """Return finite diagnostics without exposing authenticated npm output."""
+    unknown = ("UNKNOWN", "unclassified")
+    error = publish_error(payload)
+    if error is None:
         return unknown
     code = error["code"] if error["code"] in PUBLISH_CAUSES else "UNKNOWN"
     cause = PUBLISH_CAUSES.get(code, "unclassified")
@@ -282,13 +290,63 @@ def publish_failure(payload: bytes) -> tuple[str, str]:
     return code, next(iter(matches)) if matches else cause
 
 
+def store_publication_diagnostic(payload: bytes, record: dict | None, environment: dict) -> None:
+    """Keep a bounded error summary only as context-bound public-key ciphertext."""
+    output = environment.get("BREWDOC_NPM_DIAGNOSTIC_DIR")
+    if not output or not isinstance(record, dict):
+        return
+    try:
+        error = publish_error(payload)
+        metadata = record["metadata"]
+        package = metadata["name"]
+        if (error is None or package not in {*PACKAGES.values(), "brewdoc"}
+                or not error.get("summary") or len(error["summary"].encode("utf-8")) > 4096):
+            return
+        run_id, attempt = environment.get("GITHUB_RUN_ID", ""), environment.get("GITHUB_RUN_ATTEMPT", "")
+        if (not isinstance(run_id, str) or not run_id.isdecimal() or int(run_id) <= 0
+                or not isinstance(attempt, str) or not attempt.isdecimal() or int(attempt) <= 0):
+            return
+        code, cause = publish_failure(payload)
+        context = {"schema": 1, "package": package, "version": metadata["version"],
+                   "tarball_sha256": record["sha256"], "source_sha": record["source_sha"],
+                   "controller_sha": environment.get("GITHUB_SHA", ""), "run_id": int(run_id),
+                   "run_attempt": int(attempt), "code": code, "cause": cause, "summary": error["summary"]}
+        plaintext = json.dumps(context, ensure_ascii=False).encode("utf-8")
+        node = shutil.which("node")
+        if not node or len(plaintext) > 8192:
+            return
+        clean = {key: environment[key] for key in ("PATH", "SystemRoot", "SYSTEMROOT") if key in environment}
+        result = subprocess.run([node, str(ROOT / ".github/workflows/npm_diagnostic.cjs")],
+                                input=plaintext, capture_output=True, timeout=10, env=clean)
+        if result.returncode or len(result.stdout) > 16 * 1024:
+            return
+        envelope = json.loads(result.stdout)
+        fields = {"schema", "algorithm", "key_sha256", "encrypted_key", "iv", "tag", "ciphertext"}
+        if (not isinstance(envelope, dict) or set(envelope) != fields or type(envelope["schema"]) is not int
+                or envelope["schema"] != 1 or envelope["algorithm"] != "RSA-OAEP-SHA256+A256GCM"
+                or envelope["key_sha256"] != digest((ROOT / ".github/npm-diagnostic-public.pem").read_bytes())):
+            return
+        lengths = {"encrypted_key": 384, "iv": 12, "tag": 16, "ciphertext": len(plaintext)}
+        if any(len(base64.b64decode(envelope[name], validate=True)) != size for name, size in lengths.items()):
+            return
+        directory = Path(output)
+        if directory.is_symlink():
+            return
+        directory.mkdir(parents=True, exist_ok=True)
+        with (directory / f"{package}.json").open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(envelope, sort_keys=True) + "\n")
+    except (OSError, ValueError, TypeError, KeyError, UnicodeError, RecursionError, subprocess.SubprocessError):
+        return
+
+
 def run_npm(arguments: list[str], cwd: Path, environment: dict, timeout: int = 180,
-            npx: bool = False) -> subprocess.CompletedProcess:
+            npx: bool = False, publication: dict | None = None) -> subprocess.CompletedProcess:
     """Bound npm tool calls and keep failure output separate from receipt stdout."""
     result = subprocess.run(npm_command(arguments, npx), cwd=cwd, env=environment, capture_output=True, timeout=timeout)
     if result.returncode:
         if arguments[0] == "publish":
             code, cause = publish_failure(result.stdout)
+            store_publication_diagnostic(result.stdout, publication, environment)
             raise RuntimeError(f"npm publish failed ({result.returncode}); code={code}; cause={cause}; authenticated output was suppressed")
         raise RuntimeError(f"npm command failed ({result.returncode}): {arguments[0]}\n"
                            + (result.stdout + result.stderr).decode("utf-8", errors="replace"))
@@ -418,8 +476,8 @@ def aggregate(input_dir: Path, output: Path) -> None:
     """Admit the complete platform set before creating the main CLI package."""
     paths = sorted(input_dir.rglob("platform-record.json"))
     records = {read_json(path)["target"]: (path, read_json(path)) for path in paths}
-    if len(paths) != 3 or set(records) != set(PACKAGES):
-        raise ValueError("npm aggregation requires exactly three platform records")
+    if len(paths) != 2 or set(records) != set(PACKAGES):
+        raise ValueError("npm aggregation requires exactly two platform records")
     version = release_version()
     identities = {(record["version"], record["source_sha"]) for _, record in records.values()}
     if len(identities) != 1 or next(iter(identities))[0] != version:
@@ -451,7 +509,7 @@ def aggregate(input_dir: Path, output: Path) -> None:
 
 
 def verify_release(input_dir: Path) -> dict:
-    """Admit exactly four npm package archives with one version and source identity."""
+    """Admit exactly three npm package archives with one version and source identity."""
     manifest = read_json(input_dir / "npm-manifest.json")
     version = manifest["version"]
     expected_names = [*PACKAGES.values(), "brewdoc"]
@@ -507,7 +565,7 @@ def publish(input_dir: Path) -> None:
     for record, admitted in zip(manifest["packages"], existing, strict=True):
         if not admitted:
             run_npm(["publish", str((input_dir / record["filename"]).resolve()), "--ignore-scripts", "--access", "public", "--provenance", "--json"],
-                    input_dir, os.environ.copy())
+                    input_dir, os.environ.copy(), publication=record)
         if not public_record(record):
             raise ValueError("Published npm version is absent from the registry")
 
@@ -525,7 +583,7 @@ def check_public(input_dir: Path, output: Path | None = None) -> None:
 
 
 def local_registry(input_dir: Path, manifest: dict) -> ThreadingHTTPServer:
-    """Serve only the four admitted packages for real offline npm resolution."""
+    """Serve only the three admitted packages for real offline npm resolution."""
     records = {record["metadata"]["name"]: record for record in manifest["packages"]}
 
     class Handler(BaseHTTPRequestHandler):
@@ -794,14 +852,15 @@ def cancellation_probe(launcher: Path, work: Path, environment: dict, javascript
 def probe(input_dir: Path, target: str, mode: str, output: Path, smoke: bool = False,
           public_evidence: Path | None = None) -> None:
     """Prove npm global/local and actual npx consumers outside the checkout."""
+    if target not in PACKAGES:
+        raise ValueError(f"Unsupported npm target: {target}")
     manifest = verify_release(input_dir)
     scope = "smoke" if smoke else "full"
     if verification_scope(manifest) != scope:
         raise ValueError("npm consumer verification scope differs")
     selected = next(record for record in manifest["packages"] if record.get("target") == target)
     system, machine = platform.system(), platform.machine().lower()
-    expected = {"linux-x64": ("Linux", "x86_64"), "windows-x64": ("Windows", "amd64"),
-                "macos-arm64": ("Darwin", "arm64")}
+    expected = {"linux-x64": ("Linux", "x86_64"), "macos-arm64": ("Darwin", "arm64")}
     if (system, machine) != expected[target]:
         raise ValueError("npm consumer must run on its matching native target")
     if mode == "public":

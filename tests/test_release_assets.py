@@ -21,11 +21,6 @@ RELEASE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RELEASE)
 SOURCE = "a" * 40
 VERSION = "0.3.0"
-V031_STAGED_AVAILABILITY = ("This release is staged. The commands and download links below apply only after this exact "
-                           "version and channel are published and verified.")
-V031_PARTIAL_AVAILABILITY = ("Python distributions and standalone downloads are public. npm registry publication is pending. "
-                            "Use the pip, uv, pipx or standalone installation commands below. "
-                            "The npm and npx registry commands below are unavailable.")
 
 
 def producer_run():
@@ -33,6 +28,44 @@ def producer_run():
     return {"id": 17, "run_attempt": 2, "event": "push", "head_branch": "main", "head_sha": SOURCE,
             "status": "completed", "conclusion": "success", "path": ".github/workflows/ci.yml",
             "repository": {"full_name": RELEASE.REPOSITORY}, "head_repository": {"full_name": RELEASE.REPOSITORY}}
+
+
+def test_ci_admission_accepts_native_bundle_and_only_two_npm_consumer_artifacts():
+    # GIVEN one sealed producer and reports for both supported npm hosts
+    names = ("ci-dist", "ci-native-assets", "ci-npm-release", "ci-npm-consumer-linux-x64", "ci-npm-consumer-macos-arm64")
+    rows = [{"id": index, "name": name, "expired": False, "size_in_bytes": 12,
+             "expires_at": "2999-01-01T00:00:00Z", "digest": "sha256:" + "c" * 64,
+             "workflow_run": {"id": 17, "head_sha": SOURCE}} for index, name in enumerate(names, 1)]
+    assert len(rows) == 5, "native Windows is bundled without a Windows npm consumer artifact"
+    # WHEN the complete producer set is admitted without a Windows npm artifact
+    actual = RELEASE.admit_ci_artifacts(rows, producer_run())
+    # THEN each original artifact is retained under its exact canonical name
+    assert actual == dict(zip(names, rows)), "two supported npm hosts complete the artifact set"
+
+
+def test_retired_v031_cli_refuses_before_reading_release_bytes(tmp_path, monkeypatch, capsys):
+    # GIVEN a retired entrypoint and paths that must never reach release admission
+    calls = []
+    monkeypatch.setattr(RELEASE, "identity", lambda path: calls.append(path) or {"bytes": 0, "sha256": "0" * 64})
+    assert calls == [], "the retired operation starts without any manifest read"
+    # WHEN the controller receives the old fixed-version command
+    with pytest.raises(SystemExit) as error:
+        RELEASE.main(["admit-v031", "--input", str(tmp_path / "release"), "--output", str(tmp_path / "receipt.json")])
+    # THEN usage refusal precedes every manifest read and receipt write
+    captured = capsys.readouterr()
+    assert (error.value.code, calls, captured.out, (tmp_path / "receipt.json").exists()) == (
+        2, [], "", False), "the retired CLI cannot admit or resume original v0.3.1 publication"
+
+
+def test_npm_report_refuses_windows_before_accessing_consumer_metadata():
+    # GIVEN a native-only Windows target without any npm evidence
+    report = {}
+    assert report == {}, "native Windows provides no synthetic npm consumer metadata"
+    # WHEN npm admission receives the unsupported target
+    with pytest.raises(ValueError, match="npm target is unsupported"):
+        RELEASE.npm_report(report, "windows-x64", {}, {}, {}, "public")
+    # THEN unsupported-target refusal leaves the report untouched
+    assert report == {}, "npm admission cannot fabricate Windows publication evidence"
 
 
 @pytest.mark.parametrize("delta", [{"event": "pull_request"}, {"head_branch": "feature"},
@@ -56,7 +89,7 @@ def test_ci_artifact_admission_refuses_incomplete_or_unverifiable_sets(change):
              "expires_at": "2999-01-01T00:00:00Z",
              "digest": "sha256:" + "c" * 64, "workflow_run": {"id": 17, "head_sha": SOURCE}}
             for index, name in enumerate(RELEASE.CI_ARTIFACTS)]
-    assert len(rows) == 6, "one package, native, npm and three consumer artifacts are required"
+    assert len(rows) == 5, "package, native, npm and two consumer artifacts are required"
     mutations = {"missing": lambda: rows.pop(), "duplicate": lambda: rows.append(copy.deepcopy(rows[0])),
                  "expired": lambda: rows[0].update(expired=True), "digest": lambda: rows[0].update(digest=""),
                  "run": lambda: rows[0]["workflow_run"].update(head_sha="d" * 40)}
@@ -155,11 +188,11 @@ def test_ci_scope_keeps_smoke_for_untrusted_or_partial_push_evidence(tmp_path, m
 
 
 def npm_archives(output, targets):
-    """Produce four small real tarballs through the npm owner's exact metadata contract."""
+    """Produce small real tarballs through the npm owner's exact metadata contract."""
     builder = RELEASE.helper("build_npm")
     output.mkdir()
     records = []
-    for target in [*RELEASE.TARGETS, None]:
+    for target in [*builder.PACKAGES, None]:
         metadata = builder.package_metadata(VERSION, target)
         payloads = {"package.json": json.dumps(metadata).encode()}
         record = {"version": VERSION, "source_sha": SOURCE, "metadata": metadata}
@@ -300,6 +333,7 @@ def ci_smoke_artifacts(tmp_path, monkeypatch):
         report["javascript"]["acquisition"] = javascript[windows]
         report["children"]["exited_owner"] = {"code": 1, "stdout_bytes": 0, "stderr_bytes": 0}
         RELEASE.write_json(native / f"verification/{target}.json", report)
+    for target in ("linux-x64", "macos-arm64"):
         directory = tmp_path / f"ci-npm-consumer-{target}"
         directory.mkdir()
         consumer_folders[directory.name] = directory
@@ -309,7 +343,7 @@ def ci_smoke_artifacts(tmp_path, monkeypatch):
     npm_manifest = RELEASE.read_json(npm / "npm-manifest.json")
     packages = {row["metadata"]["name"]: row["integrity"] for row in npm_manifest["packages"]}
     epub = next(row for row in probes if row["probe"] == "epub2")
-    for target, record in binaries["targets"].items():
+    for target in ("linux-x64", "macos-arm64"):
         package = next(row["metadata"]["name"] for row in npm_manifest["packages"] if row.get("target") == target)
         report = {"schema": 1, "verdict": "PASS", "verification_scope": "smoke", "mode": "local",
                   "target": target, "version": VERSION, "source_sha": SOURCE,
@@ -319,7 +353,7 @@ def ci_smoke_artifacts(tmp_path, monkeypatch):
                                               "markdown_sha256": epub["markdown_sha256"]}], "npx": []}[name]}
                       for name in ("global", "npx")},
                   "cancellation": {"native_observed": True, "native_terminated": True, "dns_observed": False,
-                      "owned_processes": 2, "javascript": {True: "unsupported", False: "observed-and-terminated"}[target == "windows-x64"],
+                      "owned_processes": 2, "javascript": "observed-and-terminated",
                       "trigger": "offline-html-output", "launcher_exit": "nonzero"}}
         RELEASE.write_json(consumer_folders[f"ci-npm-consumer-{target}"] / f"ci-npm-probe-{target}.json", report)
     names = ["pyproject.toml", "uv.lock", "src/brewdoc/__init__.py", ".github/distribution.json"]
@@ -434,7 +468,7 @@ def test_endpoint_media_selection_preserves_failure_and_byte_ceiling_guards(tmp_
 def test_ci_reuse_preserves_exact_synthetic_transport_bytes_and_original_attempt(tmp_path, monkeypatch):
     # GIVEN complete real ZIP artifacts from a retained successful main attempt
     checkout, rows, _transports, _responses = ci_smoke_artifacts(tmp_path, monkeypatch)
-    assert len(rows) == 6, "the producer has the complete six-artifact admission set"
+    assert len(rows) == 5, "the producer has the complete five-artifact admission set"
     # WHEN release reuses the trusted producer through real transport and report validators
     record = RELEASE.reuse_ci(checkout, tmp_path / "reused", "v" + VERSION, SOURCE)
     # THEN successful prior-job bytes retain their source and run attempt without rebuilding
@@ -614,179 +648,6 @@ def public_registry(monkeypatch, folder, manifest):
     monkeypatch.setattr(RELEASE.urllib.request, "urlopen", open_url)
 
 
-def v031_continuation_fixture(tmp_path, monkeypatch):
-    """Seal synthetic fixed-source packages while isolating controller and public I/O."""
-    monkeypatch.setitem(globals(), "VERSION", "0.3.1")
-    monkeypatch.setitem(globals(), "SOURCE", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7")
-    folder, manifest = sealed_release(tmp_path, monkeypatch)
-    manifest["producer"] = {"run_id": 38169296455, "run_attempt": 1}
-    RELEASE.write_json(folder / "release-manifest.json", manifest)
-    digest = hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest()
-    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", digest)
-    responses, calls = fake_api(monkeypatch, folder, manifest)
-    release = responses["releases/tags/v0.3.1"]
-    release["id"] = 409891511
-    rows = responses["releases/42/assets?per_page=100"]
-    responses["releases/409891511/assets?per_page=100"] = rows
-    responses["actions/runs/73"] = {"id": 73, "run_attempt": 2, "head_sha": "c" * 40,
-        "event": "workflow_dispatch", "head_branch": "main", "path": ".github/workflows/release.yml",
-        "repository": {"full_name": RELEASE.REPOSITORY}, "head_repository": {"full_name": RELEASE.REPOSITORY}}
-    draft_io(monkeypatch, folder, rows)
-    public_io(monkeypatch, folder)
-    public_registry(monkeypatch, folder, manifest)
-    event = tmp_path / "dispatch.json"
-    event.write_text(json.dumps({"inputs": {"operation": "resume-v031"}}), encoding="utf-8")
-    for name, value in {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
-                        "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "73", "GITHUB_RUN_ATTEMPT": "2",
-                        "GITHUB_EVENT_PATH": str(event)}.items():
-        monkeypatch.setenv(name, value)
-    monkeypatch.setattr(RELEASE, "command", lambda *args, **kwargs: ("c" * 40 + "\n").encode())
-    return folder, manifest, responses, calls, event, digest
-
-
-def v031_channel_fixture(tmp_path, monkeypatch):
-    """Keep fixed-source bytes while giving the staged body one canonical availability paragraph."""
-    folder, manifest, responses, calls, event, _digest = v031_continuation_fixture(tmp_path, monkeypatch)
-    prefix, suffix = "# Brewdoc 0.3.1\n\n", "\n\n## Install\n\npip install brewdoc==0.3.1\n"
-    staged, partial = prefix + V031_STAGED_AVAILABILITY + suffix, prefix + V031_PARTIAL_AVAILABILITY + suffix
-    payload = staged.encode("utf-8")
-    (folder / "staged-body.md").write_bytes(payload)
-    manifest["body"] = {"bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
-    RELEASE.write_json(folder / "release-manifest.json", manifest)
-    digest = hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest()
-    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", digest)
-    responses["releases/tags/v0.3.1"]["body"] = staged
-    for row in responses["releases/409891511/assets?per_page=100"]:
-        row["size"] = (folder / row["name"]).stat().st_size
-    return folder, manifest, responses, calls, event, digest, staged, partial
-
-
-@pytest.mark.parametrize("operation,body_kind,draft", [
-    ("verify-v031-binaries", "staged", True), ("resume-v031", "partial", False),
-    ("verify-v031-binaries", "partial", False),
-], ids=["verify-staged", "resume-public-partial", "verify-public-partial"])
-def test_fixed_v031_operations_admit_staged_or_exact_public_partial_body_and_record_actual_operation(tmp_path, monkeypatch, operation, body_kind, draft):
-    # GIVEN exact original fixed-source bytes and an accepted staged or public partial body
-    folder, manifest, responses, calls, event, digest, staged, partial = v031_channel_fixture(tmp_path, monkeypatch)
-    release = responses["releases/tags/v0.3.1"]
-    release.update(draft=draft, body={"staged": staged, "partial": partial}[body_kind])
-    event.write_text(json.dumps({"inputs": {"operation": operation}}), encoding="utf-8")
-    assert RELEASE.admit(folder, "v0.3.1", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7") == manifest, "the original sealed source and staged body remain admissible"
-    # WHEN the fixed controller admits the exact requested operation and existing release
-    actual = RELEASE.admit_v031(folder, tmp_path / "receipt.json")
-    # THEN the receipt preserves immutable package provenance and records the actual operation
-    expected = {"schema": 1, "operation": operation, "tag": "v0.3.1",
-        "source_sha": "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", "manifest_sha256": digest,
-        "producer_run_id": 38169296455, "producer_run_attempt": 1, "release_id": 409891511,
-        "controller": {"source_sha": "c" * 40, "run_id": 73, "run_attempt": 2,
-                       "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
-    assert (actual, RELEASE.read_json(tmp_path / "receipt.json")) == (expected, expected), "partial-channel admission cannot relabel source or operation"
-    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "admission never publishes or changes release assets"
-
-
-@pytest.mark.parametrize("operation,draft,body_kind,legacy,reason", [
-    ("resume-v031", True, "partial", {}, "existing release or staged body differs"),
-    ("verify-v031-binaries", False, "changed", {}, "existing release or staged body differs"),
-    ("publish", False, "partial", {}, "inputs differ"),
-    ("verify-v031-binaries", False, "partial", {"prepared_run_id": "17"}, "inputs differ"),
-], ids=["private-partial", "changed-public-body", "invalid-operation", "legacy-input"])
-def test_fixed_v031_operations_refuse_private_partial_changed_body_or_invalid_inputs(tmp_path, monkeypatch, operation, draft, body_kind, legacy, reason):
-    # GIVEN original fixed-source bytes with a conflicting body state or controller input
-    folder, _manifest, responses, calls, event, _digest, staged, partial = v031_channel_fixture(tmp_path, monkeypatch)
-    release = responses["releases/tags/v0.3.1"]
-    assert (release["id"], release["body"]) == (409891511, staged), "the existing release starts with its exact original staged body"
-    release.update(draft=draft, body={"partial": partial, "changed": partial + "Unexpected public claim.\n"}[body_kind])
-    event.write_text(json.dumps({"inputs": {"operation": operation, **legacy}}), encoding="utf-8")
-    # WHEN the fixed controller checks partial-channel admission
-    with pytest.raises(ValueError, match=reason):
-        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
-    # THEN rejected state cannot produce a controller receipt or mutate any remote asset
-    assert ([call for call in calls if "--method" in call or call[1] == "release"],
-            (tmp_path / "receipt.json").exists()) == ([], False), "private or changed partial state must refuse before publication"
-
-
-def test_partial_v031_body_replaces_only_one_exact_availability_paragraph():
-    # GIVEN the staged paragraph between unchanged heading and installation commands
-    staged = "# Brewdoc 0.3.1\n\n" + V031_STAGED_AVAILABILITY + "\n\n## Install\n\npip install brewdoc==0.3.1\n"
-    assert staged.count(V031_STAGED_AVAILABILITY) == 1, "the body contains one complete staged availability paragraph"
-    # WHEN partial-channel rendering updates the availability paragraph
-    actual = RELEASE.partial_v031_body(staged)
-    # THEN all other bytes and the final newline remain identical
-    assert actual == "# Brewdoc 0.3.1\n\n" + V031_PARTIAL_AVAILABILITY + "\n\n## Install\n\npip install brewdoc==0.3.1\n", "partial rendering changes only the deterministic availability paragraph"
-
-
-@pytest.mark.parametrize("staged,occurrences", [("# Brewdoc 0.3.1\n\nNo staged paragraph.\n", 0),
-                                               (V031_STAGED_AVAILABILITY + "\n\n" + V031_STAGED_AVAILABILITY, 2),
-                                               ("Embedded prefix " + V031_STAGED_AVAILABILITY, 1)], ids=["missing", "duplicate", "embedded-prefix"])
-def test_partial_v031_body_refuses_missing_duplicate_or_embedded_availability(staged, occurrences):
-    # GIVEN a body without exactly one isolated canonical staged availability paragraph
-    assert staged.count(V031_STAGED_AVAILABILITY) == occurrences, "the fixture preserves the intended missing, duplicated or embedded shape"
-    # WHEN the renderer tries to produce deterministic partial-channel guidance
-    with pytest.raises(ValueError) as failure:
-        RELEASE.partial_v031_body(staged)
-    # THEN malformed body structure produces the exact deterministic refusal
-    assert failure.value.args == ("Expected exactly one staged availability paragraph",), "invalid body structure must refuse rather than produce partial release prose"
-
-
-def test_fixed_v031_continuation_rejects_wrong_original_seal_before_any_remote_io(tmp_path, monkeypatch):
-    # GIVEN synthetic release bytes that cannot match the immutable original release seal
-    folder, _manifest = sealed_release(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(RELEASE.subprocess, "run", lambda *args, **kwargs: calls.append(args))
-    assert RELEASE.V031_MANIFEST_SHA256 == "e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38", "production recovery retains the actual immutable manifest seal"
-    # WHEN fixed-version admission observes the different manifest bytes
-    with pytest.raises(ValueError, match="Fixed 0.3.1 release manifest differs"):
-        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
-    # THEN refusal precedes remote reads and controller receipt creation
-    assert (calls, (tmp_path / "receipt.json").exists()) == ([], False), "a foreign seal cannot enter recovery"
-
-
-def test_fixed_v031_continuation_records_actual_controller_separately_from_original_source(tmp_path, monkeypatch):
-    # GIVEN admitted original package bytes and a different actual main controller commit
-    folder, manifest, _responses, calls, _event, digest = v031_continuation_fixture(tmp_path, monkeypatch)
-    assert (manifest["version"], manifest["source_sha"], manifest["producer"]) == (
-        "0.3.1", "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", {"run_id": 38169296455, "run_attempt": 1}), "packages retain their immutable original identity"
-    # WHEN fixed continuation admits source, controller, existing release and actual PyPI bytes
-    actual = RELEASE.admit_v031(folder, tmp_path / "receipt.json")
-    # THEN the receipt preserves original release provenance and the real recovery controller
-    expected = {"schema": 1, "operation": "resume-v031", "tag": "v0.3.1",
-        "source_sha": "7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7", "manifest_sha256": digest,
-        "producer_run_id": 38169296455, "producer_run_attempt": 1, "release_id": 409891511,
-        "controller": {"source_sha": "c" * 40, "run_id": 73, "run_attempt": 2,
-                       "workflow": ".github/workflows/release.yml", "ref": "refs/heads/main"}}
-    assert (actual, RELEASE.read_json(tmp_path / "receipt.json")) == (expected, expected), "recovery never relabels the controller as the package source"
-    assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "fixed admission performs no publication mutation"
-
-
-@pytest.mark.parametrize("change,reason", [
-    ("producer-run", "original producer differs"), ("producer-attempt", "original producer differs"),
-    ("controller-run", "controller run differs"), ("controller-ref", "controller identity differs"),
-    ("legacy-input", "inputs differ"), ("release-id", "existing release or staged body differs"),
-    ("pypi-bytes", "asset bytes differ"),
-])
-def test_fixed_v031_continuation_refuses_foreign_origin_controller_release_or_public_bytes(tmp_path, monkeypatch, change, reason):
-    # GIVEN exact synthetic fixed-source inputs with one conflicting recovery boundary
-    folder, manifest, responses, calls, event, _digest = v031_continuation_fixture(tmp_path, monkeypatch)
-    assert manifest["producer"] == {"run_id": 38169296455, "run_attempt": 1}, "the original producer starts admitted"
-    mutations = {"producer-run": lambda: manifest["producer"].update(run_id=17),
-                 "producer-attempt": lambda: manifest["producer"].update(run_attempt=2),
-                 "controller-run": lambda: responses["actions/runs/73"].update(head_sha="d" * 40),
-                 "controller-ref": lambda: monkeypatch.setenv("GITHUB_REF", "refs/heads/feature"),
-                 "legacy-input": lambda: event.write_text(json.dumps({"inputs": {"operation": "resume-v031", "prepared_run_id": "17"}})),
-                 "release-id": lambda: responses["releases/tags/v0.3.1"].update(id=42),
-                 "pypi-bytes": lambda: public_io(monkeypatch, folder, {
-                     "brewdoc-0.3.1-py3-none-any.whl": b"x" * manifest["assets"]["brewdoc-0.3.1-py3-none-any.whl"]["bytes"]})}
-    mutations[change]()
-    RELEASE.write_json(folder / "release-manifest.json", manifest)
-    monkeypatch.setattr(RELEASE, "V031_MANIFEST_SHA256", hashlib.sha256((folder / "release-manifest.json").read_bytes()).hexdigest())
-    # WHEN fixed-version admission reaches the conflicting observable evidence
-    with pytest.raises(ValueError, match=reason):
-        RELEASE.admit_v031(folder, tmp_path / "receipt.json")
-    # THEN no failed boundary can create an admitted controller receipt or publication write
-    assert ([call for call in calls if "--method" in call or call[1] == "release"],
-            (tmp_path / "receipt.json").exists()) == ([], False), "untrusted recovery evidence cannot authorize publication"
-
-
 def complete_public_evidence(tmp_path, folder, manifest, assets):
     """Write the three platform reports using the concrete owner-produced schemas."""
     binaries = RELEASE.read_json(folder / "binaries.json")
@@ -801,6 +662,9 @@ def complete_public_evidence(tmp_path, folder, manifest, assets):
             report["javascript"] = {"acquisition": {"refusal_stage": "prerequisites", "counts": {"requests": 0}}}
             report["children"]["exited_owner"] = {"code": 1, "stdout_bytes": 0, "stderr_bytes": 0}
             RELEASE.write_json(directory / "verification.json", report)
+    for target in ("linux-x64", "macos-arm64"):
+        native = binaries["targets"][target]
+        directory = tmp_path / "reports" / target
         package = next(row["metadata"]["name"] for row in npm["packages"] if row.get("target") == target)
         consumer = {"self_check": 38, "selected_package": package, "atomic_refusal": True, "help_sha256": "e" * 64,
                     "fixtures": [{"path": row["path"], "markdown_sha256": row["markdown_sha256"]} for row in native["oracle"]]}
@@ -810,8 +674,7 @@ def complete_public_evidence(tmp_path, folder, manifest, assets):
             "consumers": {name: copy.deepcopy(consumer) for name in ("global", "local", "npx")},
             "signatures": {"verified_packages": 2, "verified_attestations": 2, "stdout_sha256": "f" * 64},
             "cancellation": {"native_observed": True, "native_terminated": True,
-                "javascript": {"windows-x64": "unsupported", "linux-x64": "observed-and-terminated",
-                               "macos-arm64": "observed-and-terminated"}[target], "dns_observed": False, "owned_processes": 2}})
+                "javascript": "observed-and-terminated", "dns_observed": False, "owned_processes": 2}})
     return tmp_path / "reports"
 
 
@@ -827,7 +690,7 @@ def test_prepare_seals_one_complete_native_and_python_set(tmp_path, monkeypatch)
         "SHA256SUMS", "binaries.json", "brewdoc-0.3.0-linux-x64.tar.gz", "brewdoc-0.3.0-macos-arm64.tar.gz",
         "brewdoc-0.3.0-py3-none-any.whl", "brewdoc-0.3.0-windows-x64.zip", "brewdoc-0.3.0.tar.gz",
         "brewdoc-0.3.0.tgz", "brewdoc-darwin-arm64-0.3.0.tgz", "brewdoc-linux-x64-glibc-0.3.0.tgz",
-        "brewdoc-win32-x64-0.3.0.tgz", "npm-manifest.json", "release-manifest.json", "staged-body.md"
+        "npm-manifest.json", "release-manifest.json", "staged-body.md"
     ], "the asset directory contains only admitted files"
 
 
@@ -904,7 +767,7 @@ def test_release_state_finds_unique_existing_draft_when_tag_endpoint_returns_404
     responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
     release = responses["releases/42"]
     rows = responses["releases/42/assets?per_page=100"]
-    assert (release["draft"], len(rows)) == (True, 13), "the existing draft already holds the complete exact upload set"
+    assert (release["draft"], len(rows)) == (True, 12), "the existing draft already holds the complete exact upload set"
     # WHEN release lookup admits absence only after checking authenticated drafts
     actual = RELEASE.release_state(folder, manifest, missing=True)
     # THEN the existing draft is returned instead of admitting duplicate creation
@@ -933,11 +796,11 @@ def test_hidden_draft_lookup_refuses_ambiguous_truncated_or_malformed_listing(tm
 
 
 def test_stage_reuses_complete_hidden_draft_without_creation_or_upload(tmp_path, monkeypatch):
-    # GIVEN one existing draft whose exact thirteen assets already passed staging
+    # GIVEN one existing draft whose exact twelve assets already passed staging
     folder, manifest = sealed_release(tmp_path, monkeypatch)
     responses, calls = hidden_draft_api(monkeypatch, folder, manifest)
     draft_io(monkeypatch, folder, responses["releases/42/assets?per_page=100"])
-    assert len(responses["releases/42/assets?per_page=100"]) == 13, "the hidden draft already contains all required bytes"
+    assert len(responses["releases/42/assets?per_page=100"]) == 12, "the hidden draft already contains all required bytes"
     # WHEN staging resumes through the authenticated draft fallback
     actual = RELEASE.stage(folder, manifest)
     # THEN complete byte readback succeeds without duplicate creation or replacement
@@ -951,7 +814,7 @@ def test_stage_accepts_complete_public_release_with_exact_staged_body_without_mu
     responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
     downloads = public_io(monkeypatch, folder)
     assert (responses["releases/tags/v0.3.0"]["draft"], len(responses["releases/42/assets?per_page=100"])) == (
-        False, 13), "the public release already contains the complete accepted set"
+        False, 12), "the public release already contains the complete accepted set"
     # WHEN staging resumes after the previous publication transition
     actual = RELEASE.stage(folder, manifest)
     # THEN exact byte verification completes without any release or asset mutation
@@ -961,16 +824,16 @@ def test_stage_accepts_complete_public_release_with_exact_staged_body_without_mu
 
 
 @pytest.mark.parametrize("delta,asset_count,replace_bytes,reason", [
-    ({"body": "Changed release instructions.\n"}, 13, False, "staged body differs"),
-    ({}, 12, False, "asset set is incomplete"),
-    ({}, 13, True, "asset bytes differ"),
+    ({"body": "Changed release instructions.\n"}, 12, False, "staged body differs"),
+    ({}, 11, False, "asset set is incomplete"),
+    ({}, 12, True, "asset bytes differ"),
 ], ids=["changed-body", "partial-assets", "changed-bytes"])
 def test_public_release_staging_refuses_changed_body_partial_assets_or_bytes(tmp_path, monkeypatch, delta, asset_count, replace_bytes, reason):
     # GIVEN a public release with one conflicting staged-body or asset identity
     folder, manifest = sealed_release(tmp_path, monkeypatch)
     responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
     release, rows = responses["releases/tags/v0.3.0"], responses["releases/42/assets?per_page=100"]
-    assert (release["draft"], len(rows)) == (False, 13), "the release starts public with all thirteen assets"
+    assert (release["draft"], len(rows)) == (False, 12), "the release starts public with all twelve assets"
     release.update(delta)
     rows[:] = rows[:asset_count]
     name = "brewdoc-0.3.0-py3-none-any.whl"
@@ -1063,7 +926,7 @@ def test_stage_uploads_only_missing_assets_after_exact_existing_readback(tmp_pat
     assets = responses["releases/42/assets?per_page=100"]
     del assets[-2:]
     draft_io(monkeypatch, folder, assets)
-    assert len(assets) == 11, "the draft already holds all eleven payload assets"
+    assert len(assets) == 10, "the draft already holds all ten payload assets"
     # WHEN staging resumes after byte verification of every present asset
     RELEASE.stage(folder, manifest)
     # THEN only the manifest and complete checksums are uploaded without clobber
@@ -1097,7 +960,7 @@ def test_publish_verifies_complete_draft_and_every_public_asset(tmp_path, monkey
     assert responses["releases/tags/v0.3.0"]["draft"] is True, "the candidate starts unpublished"
     # WHEN publication verifies its draft bytes and staged body
     RELEASE.publish(folder, manifest)
-    # THEN only draft visibility changes and all thirteen public assets are downloaded
+    # THEN only draft visibility changes and all twelve public assets are downloaded
     assert [call for call in calls if call[1] == "release"] == [
         ["gh", "release", "edit", "v0.3.0", "--draft=false", "--repo", "kochetkov-ma/brewdoc"]
     ], "the helper publishes the admitted draft without replacing assets"
@@ -1215,7 +1078,7 @@ def test_npm_evidence_binds_install_npx_provenance_and_cancellation(tmp_path, mo
     native = RELEASE.read_json(folder / "binaries.json")["targets"]["linux-x64"]
     directory = tmp_path / "npm-consumers"
     directory.mkdir()
-    names = {"linux-x64": "brewdoc-linux-x64-glibc", "windows-x64": "brewdoc-win32-x64", "macos-arm64": "brewdoc-darwin-arm64"}
+    names = {"linux-x64": "brewdoc-linux-x64-glibc", "macos-arm64": "brewdoc-darwin-arm64"}
     packages = [{"target": target, "metadata": {"name": name}, "integrity": "sha512-synthetic"} for target, name in names.items()]
     packages.append({"metadata": {"name": "brewdoc"}, "integrity": "sha512-main"})
     npm = {"node": "24.21.0", "npm": "12.2.0", "packages": packages}
@@ -1259,7 +1122,7 @@ def test_prepare_refuses_omitted_npm_before_any_input_or_remote_access(tmp_path,
     monkeypatch.setattr(RELEASE.subprocess, "run", lambda *args, **kwargs: calls.append(args))
     assert calls == [], "there is no repository or network access before admission"
     # WHEN the new release is prepared without its mandatory npm package set
-    with pytest.raises(ValueError, match="requires all four npm packages"):
+    with pytest.raises(ValueError, match="requires all three npm packages"):
         RELEASE.prepare(tmp_path / "missing-source", tmp_path / "missing-package", tmp_path / "missing-native",
                         tmp_path / "release", tmp_path / "missing-body")
     # THEN preparation refuses before reading or writing anything
@@ -1275,7 +1138,7 @@ def test_remote_mutations_refuse_manifest_without_mandatory_npm(tmp_path, monkey
     monkeypatch.setattr(RELEASE.subprocess, "run", lambda *args, **kwargs: calls.append(args))
     assert manifest["npm"] is False, "the adversarial manifest attempts the removed non-npm lane"
     # WHEN either public mutation entry is called directly
-    with pytest.raises(ValueError, match="requires all four npm packages"):
+    with pytest.raises(ValueError, match="requires all three npm packages"):
         getattr(RELEASE, operation)(folder, manifest)
     # THEN no preflight, upload or visibility change is attempted
     assert calls == [], "mandatory npm omission refuses before every remote operation"
@@ -1295,7 +1158,7 @@ def test_prepare_cli_requires_explicit_npm_input_before_source_access(tmp_path, 
     assert (error.value.code, "--npm" in captured.err, captured.out) == (2, True, ""), "CLI omission is a usage failure with no asset output"
 
 
-def test_admit_public_binds_all_three_native_and_npm_consumers(tmp_path, monkeypatch):
+def test_admit_public_binds_three_native_hosts_and_two_npm_hosts(tmp_path, monkeypatch):
     # GIVEN exact public bytes and complete reports from all three native hosts
     folder, manifest = sealed_release(tmp_path, monkeypatch)
     responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
@@ -1303,13 +1166,35 @@ def test_admit_public_binds_all_three_native_and_npm_consumers(tmp_path, monkeyp
     public_registry(monkeypatch, folder, manifest)
     evidence = complete_public_evidence(tmp_path, folder, manifest, responses["releases/42/assets?per_page=100"])
     assert sorted(path.name for path in evidence.iterdir()) == ["linux-x64", "macos-arm64", "windows-x64"], "every native host has concrete reports"
+    assert sorted(path.name for path in (evidence / "windows-x64").iterdir()) == [
+        "archive.download.json", "verification.json"], "Windows supplies native proof without npm evidence"
     # WHEN the helper independently admits actual public channel bytes and runtime identities
     accepted = RELEASE.admit_public(folder, manifest, evidence)
     # THEN availability is produced only from complete matching evidence without public writes
     assert accepted["consumers"] == {"linux-x64": {"native": "PASS", "npm": "PASS", "npx": "PASS"},
-        "windows-x64": {"native": "PASS", "npm": "PASS", "npx": "PASS"},
-        "macos-arm64": {"native": "PASS", "npm": "PASS", "npx": "PASS"}}, "normal npm and npx consumers gate every advertised platform"
+        "windows-x64": {"native": "PASS"},
+        "macos-arm64": {"native": "PASS", "npm": "PASS", "npx": "PASS"}}, "npm and npx consumers gate Linux and macOS while Windows retains native admission"
     assert [call for call in calls if call[1] == "release"] == [], "availability admission performs only public reads"
+
+
+@pytest.mark.parametrize("missing", ["linux-x64/npm-public.json", "macos-arm64/npm-public.json",
+                                   "windows-x64/verification.json"], ids=["linux-npm", "macos-npm", "windows-native"])
+def test_public_admission_still_requires_supported_npm_hosts_and_windows_native(tmp_path, monkeypatch, missing):
+    # GIVEN complete public evidence with one required runtime report removed
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = fake_api(monkeypatch, folder, manifest, draft=False)
+    public_io(monkeypatch, folder)
+    public_registry(monkeypatch, folder, manifest)
+    evidence = complete_public_evidence(tmp_path, folder, manifest, responses["releases/42/assets?per_page=100"])
+    report = evidence / missing
+    assert report.is_file() is True, "the report exists before the intended evidence omission"
+    report.unlink()
+    # WHEN public acceptance observes the missing supported runtime proof
+    with pytest.raises(ValueError, match="Missing or linked release evidence"):
+        RELEASE.admit_public(folder, manifest, evidence)
+    # THEN incomplete consumers cannot update a release or fabricate the missing proof
+    assert ([call for call in calls if call[1] == "release"], report.exists()) == (
+        [], False), "native Windows and both supported npm hosts remain mandatory"
 
 
 def test_finalize_refuses_arbitrary_public_body_before_edit(tmp_path, monkeypatch):
@@ -1342,7 +1227,7 @@ def test_finalize_publishes_only_exact_regenerated_public_guide(tmp_path, monkey
     expected = guide.render(guide.admit(RELEASE.CHECKOUT, folder / "binaries.json", folder / "npm-manifest.json", "public", availability))
     body = tmp_path / "public-body.md"
     body.write_text(expected, encoding="utf-8")
-    assert "This release is staged." not in expected, "public guidance follows completed exact channel and consumer admission"
+    assert responses["releases/tags/v0.3.0"]["body"] == "Staged release instructions.\n", "the existing public body awaits finalization"
     # WHEN finalization independently repeats the gate and compares the entire body
     RELEASE.finalize(folder, manifest, evidence, body)
     # THEN only the exact notes file is published and read back
