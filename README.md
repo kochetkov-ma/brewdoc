@@ -127,3 +127,10 @@ Timing-only expiry can preserve valid partial content; hard failures refuse outp
 
 [Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/benchmarks/results/README.md)
 [Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/LICENSE)
+
+## Related projects
+
+- [BrewPage](https://brewpage.app): free hosting for HTML, Markdown, JSON and files; each upload returns a shareable HTTPS link.
+- [BrewPage MCP server](https://github.com/kochetkov-ma/brewpage-openapi/tree/main/mcp-server): npm package `brewpage-mcp` for publishing to BrewPage from MCP clients.
+- [claude-brewcode](https://github.com/kochetkov-ma/claude-brewcode): plugin suite for Claude Code, with [documentation](https://doc-claude.brewcode.app). Its brewdoc plugin is a different tool from this brewdoc CLI.
+- [brewcode.app](https://brewcode.app): home site of the Brew projects.
