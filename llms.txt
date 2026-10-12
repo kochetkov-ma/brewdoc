@@ -1,58 +1,49 @@
 # brewdoc
 
-> Convert PDF, DOCX, PPTX, spreadsheets, EPUB and static HTML into deterministic
-> Markdown with a JSON receipt. No OCR or models. Local conversion is offline.
+> Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
 
-## Install and scope
+Local conversion after installation is offline and downloads no runtime components.
+Supported formats and readable-file constraints are defined in FORMATS.md.
 
-- [Installation and CLI](https://github.com/kochetkov-ma/brewdoc/blob/main/README.md): pip, uv/uvx/uv tool and pipx need the documented Python runtime. Choose an exact published version.
-- [Latest release and full guide](https://github.com/kochetkov-ma/brewdoc/releases/latest): version-specific assets, checksums, installation, update and removal. Use the channels whose public consumer checks passed for that release.
-- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md): supported formats, omissions, HTML/EPUB and URL/JavaScript boundaries.
-- [Release process](https://github.com/kochetkov-ma/brewdoc/blob/main/RELEASING.md): source and artifact identity checks.
+- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
+- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/README.md): deterministic Markdown and machine-readable results.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/FORMATS.md): supported/refused inputs, omissions and resource budgets.
+- [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest): concise features, actual assets and channel availability.
+- Examples select 0.3.2; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.2). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
 
-## CLI and Python API
+## CLI and API
 
 ```sh
 brewdoc file.pdf --out file.md
-brewdoc book.epub --out book.md
 brewdoc book.xlsx --sheet Calc --sheet Inputs --out book.md
 brewdoc --self-check
 ```
 
-Conversion prints one JSON receipt line to stdout. Without --out, Markdown follows
-that line. --out resolves against the caller's current directory and creates parents.
-Markdown uses brewdoc.markdown/2. Local receipts use brewdoc.receipt/1; URL receipts
-use brewdoc.receipt/2. --sheet and --artifact apply only to workbooks; use the
-[artifact keys listed in Markdown](https://github.com/kochetkov-ma/brewdoc/blob/main/README.md#usage).
-Exit 0 means
-conversion succeeded, 1 means refusal, and 2 means invalid usage. Self-check is offline
-and has its own output. Conversion success does not prove content fidelity.
+Conversion prints a JSON receipt first; without --out, Markdown follows on stdout.
+Paths resolve against the caller's directory; --out creates parents. --sheet and
+--artifact are repeatable and workbook-only. Markdown is brewdoc.markdown/2;
+local receipts are brewdoc.receipt/1, URL receipts brewdoc.receipt/2.
+Exit 0 means conversion, 1 refusal and 2 invalid usage. Success does not prove fidelity.
 
 ```python
 import brewdoc
-
 code, receipt, markdown = brewdoc.run("book.epub", out="book.md")
 markdown, tally = brewdoc.render_html("page.html")
 ```
 
-The public API also exports PDF, DOCX, presentation, EPUB and workbook renderers,
-artifact access and self_check. Local run/render APIs do not acquire URLs.
+Local run/render APIs and self-check never acquire URLs.
 
-## Explicit URL acquisition
+## Deliberate HTTP acquisition
 
 ```sh
-brewdoc --url https://example.com --out page.md
 brewdoc --url https://example.com --render-js --timeout 30 --out page.md
 ```
 
-URL acquisition validates public destinations, DNS, redirects, TLS and request/byte
-budgets. The default waiting budget is 30 seconds; --timeout accepts positive finite
-seconds. Ordinary requests use GET, with only the narrow credential-free HN Algolia
-XHR POST exception during JS capture. Local files never fetch resources or execute JS.
-Optional JS uses an installed QuickJS-ng engine and bundled DOM in a separate bounded
-process. It downloads no browser, driver or runtime component during invocation.
-Supported JS platforms and prerequisite refusals are documented in the format limits.
-Timing-only expiry can preserve a valid partial capture; hard failures refuse output.
+--url deliberately fetches a public HTTP(S) page. DNS, destinations, redirects,
+TLS, requests and byte budgets are validated. The default waiting budget is 30
+seconds. JS uses installed/bundled components and may preserve valid partial
+content on timing-only expiry; hard failures refuse. Ordinary requests use GET;
+only the narrow credential-free HN Algolia XHR POST exception is admitted.
+See the format limits for supported JS runtimes and prerequisite refusals.
 
-This file is a readable entry point. Clients may use its links explicitly; automatic
-discovery or ingestion is not promised.
+This is a readable entry point, without a promise of automatic client discovery.

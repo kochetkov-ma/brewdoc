@@ -89,6 +89,8 @@ def admit(checkout: Path, native_path: Path, npm_path: Path, phase: str,
     if (native_path.parent / "SHA256SUMS").read_text(encoding="ascii") != "\n".join(checksums) + "\n":
         raise ValueError("Guide native checksum inventory differs")
     npm_policy = policy["npm"]
+    if set(npm_policy["packages"]) != {"linux-x64", "macos-arm64"}:
+        raise ValueError("Guide npm target set differs")
     if (npm.get("schema"), npm.get("version"), npm.get("source_sha"), npm.get("node"), npm.get("npm")) != (
             1, version, source, npm_policy["node"], npm_policy["npm"]):
         raise ValueError("Guide npm release identity differs")
@@ -125,7 +127,9 @@ def admit(checkout: Path, native_path: Path, npm_path: Path, phase: str,
             key: record["archive"][key] for key in ("bytes", "sha256")} for record in native["targets"].values()}
         expected_packages = {record["metadata"]["name"]: {
             "version": version, "integrity": record["integrity"]} for record in packages}
-        expected_consumers = {target: {"native": "PASS", "npm": "PASS", "npx": "PASS"} for target in policy["targets"]}
+        expected_consumers = {target: {"native": "PASS"} for target in policy["targets"]}
+        for target in npm_policy["packages"]:
+            expected_consumers[target].update(npm="PASS", npx="PASS")
         if (availability.get("schema"), availability.get("version"), availability.get("source_sha"),
                 availability.get("pypi"), availability.get("github"), availability.get("npm"), availability.get("consumers")) != (
                 1, version, source, {"published": True}, {"assets": expected_assets},
@@ -135,250 +139,58 @@ def admit(checkout: Path, native_path: Path, npm_path: Path, phase: str,
             "targets": {target: native["targets"][target] for target in policy["targets"]}, "npm": npm}
 
 
-def python_install(version: str) -> str:
-    """Give independent Python install, version, conversion and removal flows."""
-    return f'''### pip
-
-Requires an installed Python 3.12 or newer. HTML/URL require CPython 3.12-3.14.
-Use a dedicated environment. These commands need no activation or PATH change.
-
-Linux/macOS:
-
-```sh
-python3.12 -m venv .venv
-.venv/bin/python -m pip install "brewdoc=={version}"
-.venv/bin/python -c "from importlib.metadata import version; print(version('brewdoc'))"
-.venv/bin/brewdoc --self-check
-.venv/bin/brewdoc file.pdf --out file.md
-```
-
-Windows PowerShell:
-
-```powershell
-py -3.12 -m venv .venv
-.\\.venv\\Scripts\\python.exe -m pip install "brewdoc=={version}"
-.\\.venv\\Scripts\\python.exe -c "from importlib.metadata import version; print(version('brewdoc'))"
-.\\.venv\\Scripts\\brewdoc.exe --self-check
-.\\.venv\\Scripts\\brewdoc.exe file.pdf --out file.md
-```
-
-To update an older environment to this release, use its explicit Python path:
-
-```sh
-.venv/bin/python -m pip install --upgrade "brewdoc=={version}"
-.venv/bin/brewdoc --self-check
-```
-
-Windows PowerShell:
-
-```powershell
-.\\.venv\\Scripts\\python.exe -m pip install --upgrade "brewdoc=={version}"
-.\\.venv\\Scripts\\brewdoc.exe --self-check
-```
-
-To remove, run `.venv/bin/python -m pip uninstall brewdoc` on Unix or
-`.\\.venv\\Scripts\\python.exe -m pip uninstall brewdoc` in PowerShell.
-Dependencies remain; remove the dedicated .venv directory when no longer needed.
-
-### uv
-
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). uv can obtain
-Python when needed. Temporary runs use their own cached environment:
-
-```sh
-uvx --python 3.12 --from "brewdoc=={version}" brewdoc --self-check
-uvx --python 3.12 --from "brewdoc=={version}" brewdoc file.pdf --out file.md
-```
-
-Temporary uvx runs add no persistent command to PATH. Choose a different exact
-published version on the next invocation to update; there is no tool to uninstall.
-`uv cache clean brewdoc` removes cached package data, not a managed tool.
-
-For a persistent command:
-
-```sh
-uv tool install --python 3.12 "brewdoc=={version}"
-uv tool update-shell
-```
-
-Open a new terminal, then verify and convert:
-
-```sh
-uv tool list
-brewdoc --self-check
-brewdoc file.pdf --out file.md
-```
-
-`uv tool list` shows the installed version. Use `command -v brewdoc` on Unix or
-`Get-Command brewdoc` in PowerShell to check the command selected by PATH.
-To update an older tool to this release:
-
-```sh
-uv tool install --force --python 3.12 "brewdoc=={version}"
-brewdoc --self-check
-```
-
-Remove with `uv tool uninstall brewdoc`.
-
-### pipx
-
-Requires [pipx](https://pipx.pypa.io/stable/how-to/install-pipx.html) and Python 3.12 installed.
-
-```sh
-pipx install --python 3.12 "brewdoc=={version}"
-pipx ensurepath
-```
-
-Open a new terminal, then verify and convert:
-
-```sh
-pipx list
-brewdoc --self-check
-brewdoc file.pdf --out file.md
-```
-
-`pipx list` shows the installed version; check the selected executable with
-`command -v brewdoc` or PowerShell `Get-Command brewdoc`.
-To update an older application to this release:
-
-```sh
-pipx install --force --python 3.12 "brewdoc=={version}"
-brewdoc --self-check
-```
-
-Remove with `pipx uninstall brewdoc`. For a later release, select an exact published
-version and read its own prerequisites and guide.
-'''
-
-
-def native_install(facts: dict) -> str:
-    """Keep checksums, complete bundle directories and actual runtime limits visible."""
-    version, policy = facts["version"], facts["policy"]
-    base = f"{REPOSITORY}/releases/download/v{version}"
-    rows = ["### Standalone downloads", "", "Python is bundled. Keep the whole extracted brewdoc directory.", "",
-            "| Target | Download | Verified target | JavaScript |", "|---|---|---|---|"]
-    for target, record in facts["targets"].items():
-        archive = record["archive"]
-        js = "Included" if policy["targets"][target]["render_js"] else "Refused before requests"
-        rows.append(f"| {target} | [{archive['filename']}]({base}/{archive['filename']}) | {record['minimum_tested']} | {js} |")
-    rows.extend(["", f"Download [SHA256SUMS]({base}/SHA256SUMS) beside your selected archive.",
-                 "Checksums detect changed bytes; they are not detached publisher signatures.", ""])
-    for target in ("linux-x64", "macos-arm64"):
-        archive = facts["targets"][target]["archive"]["filename"]
-        checker = "sha256sum" if target == "linux-x64" else "shasum -a 256"
-        rows.extend([f"{target}:", "", "```sh", f'curl -fLO "{base}/{archive}"',
-                     f'curl -fLO "{base}/SHA256SUMS"', f"{checker} {archive}",
-                     f"awk '$2 == \"{archive}\" {{ print }}' SHA256SUMS", "```", "",
-                     "Continue only when the two SHA-256 values match.", "", "```sh",
-                     f"mkdir brewdoc-{version}-{target}", f"tar -xzf {archive} -C brewdoc-{version}-{target}",
-                     f'cd "brewdoc-{version}-{target}"', "cat brewdoc/version.json",
-                     "./brewdoc/brewdoc --self-check", "./brewdoc/brewdoc /absolute/path/file.pdf --out file.md",
-                     'export PATH="$PWD/brewdoc:$PATH"', "```", ""])
-    archive = facts["targets"]["windows-x64"]["archive"]["filename"]
-    rows.extend(["Windows PowerShell:", "", "```powershell",
-                 f'Invoke-WebRequest "{base}/{archive}" -OutFile "{archive}"',
-                 f'Invoke-WebRequest "{base}/SHA256SUMS" -OutFile SHA256SUMS',
-                 f'(Get-FileHash "{archive}" -Algorithm SHA256).Hash.ToLower()',
-                 f'Select-String -Path SHA256SUMS -SimpleMatch "  {archive}"', "```", "",
-                 "Continue only when the SHA-256 values match.", "", "```powershell",
-                 f'Expand-Archive "{archive}" -DestinationPath "brewdoc-{version}-windows-x64"',
-                 f'Set-Location "brewdoc-{version}-windows-x64"',
-                 "Get-Content .\\brewdoc\\version.json", ".\\brewdoc\\brewdoc.exe --self-check",
-                 '.\\brewdoc\\brewdoc.exe "C:\\path\\file.pdf" --out file.md',
-                 '$env:Path = "$PWD\\brewdoc;$env:Path"', "```", "",
-                 "The manifest supplies the bundled version; Brewdoc has no version flag.",
-                 "The PATH changes above last for the current terminal. For persistence, add the",
-                 "absolute brewdoc directory to your shell profile or Windows user PATH, then open",
-                 "a new terminal. Check selection with command -v brewdoc or Get-Command brewdoc.", "",
-                 "To update, download and verify another exact published release, extract a fresh",
-                 "complete directory, self-check it and repoint PATH. Remove the old directory only",
-                 "after verification. To uninstall, remove its dedicated directory and PATH entry.",
-                 "Keep _internal and licenses beside the executable. Do not merge bundle versions.", "",
-                 "Signing:", "", *[f"- {platform}: {status}." for platform, status in policy["signing"].items()], "",
-                 "OS publisher/security policy may prevent launching these builds. No security",
-                 "override is required or suggested by these instructions.", ""])
-    return "\n".join(rows)
-
-
 def render(facts: dict) -> str:
-    """Produce one complete release body without publishing or acquiring anything."""
+    """Render concise notes; registry commands require admitted public consumers."""
     version = facts["version"]
-    condition = ("This release is staged. The commands and download links below apply only after "
-                 "this exact version and channel are published and verified.\n\n" if facts["phase"] == "staged" else "")
+    base = f"{REPOSITORY}/releases/download/v{version}"
     features = "\n".join(f"- {feature}." for feature in facts["policy"]["release_features"])
+    condition = ("Staged release. Install commands and downloads apply after publication and verification.\n\n"
+                 if facts["phase"] == "staged" else "")
+    npm = ("npm/npx for Linux x64 (glibc) and macOS ARM64:\n\n"
+           f"```sh\nnpm install --global brewdoc@{version}\n"
+           f"npx --yes --package brewdoc@{version} brewdoc --self-check\n```\n\n"
+           if facts["phase"] == "public" else "npm/npx availability awaits public verification.\n\n")
+    downloads = " | ".join(
+        f"[{target}]({base}/{record['archive']['filename']})" for target, record in facts["targets"].items())
     return f'''## brewdoc {version}
+
+Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
+
+PDF, DOCX, PPTX, workbooks, HTML and EPUB. Local conversion produces Markdown and a JSON receipt offline.
 
 {features}
 
-[Python wheel]({REPOSITORY}/releases/download/v{version}/brewdoc-{version}-py3-none-any.whl) |
-[Source distribution]({REPOSITORY}/releases/download/v{version}/brewdoc-{version}.tar.gz)
-
-{condition}Use your own file.pdf. Conversion prints one JSON receipt line and writes Markdown
-to --out. Without --out, Markdown follows the receipt on stdout. Local conversion
-and self-check are offline. Exit 0 confirms conversion, 1 refusal and 2 usage error.
-
-{python_install(version)}
-### Optional URL JavaScript capture
-
-Python installs use "brewdoc[render-js]=={version}" instead of the base package.
-JS requires CPython 3.12-3.14 on macOS ARM64 or 64-bit glibc Linux; unsupported
-runtimes refuse before requests. Standalone/npm bundles include their admitted
-JS components on Linux x64 and macOS ARM64; Windows refuses JS.
+{condition}Choose one Python install method (Python 3.12+, pip in an active virtual environment):
 
 ```sh
-brewdoc --url https://example.com --render-js --timeout 30 --out page.md
+python -m pip install "brewdoc=={version}"
+uv tool install --python 3.12 "brewdoc=={version}"
+pipx install --python 3.12 "brewdoc=={version}"
 ```
 
-The default waiting budget is 30 seconds. Components are installed/bundled already;
-no browser or JS runtime is downloaded during invocation. URL acquisition uses
-validated HTTP(S), ordinarily GET, plus the narrow credential-free HN Algolia
-XHR POST exception. See [URL limits]({REPOSITORY}/blob/v{version}/FORMATS.md#url-acquisition).
-
-### npm and npx
-
-Requires Node {facts['npm']['node']} with npm {facts['npm']['npm']} (tested consumer
-versions). No separate Python is required on the three admitted native targets.
-Use the global package for a persistent command:
+{npm}Standalone downloads with bundled Python: {downloads}.
+Verify [SHA256SUMS]({base}/SHA256SUMS) and keep the complete extracted directory.
 
 ```sh
-npm install --global brewdoc@{version}
-npm list --global brewdoc --depth=0
 brewdoc --self-check
 brewdoc file.pdf --out file.md
 ```
 
-Check command selection with command -v brewdoc or PowerShell Get-Command brewdoc.
-Update an older tool to this release with `npm install --global brewdoc@{version}`.
-Remove with `npm uninstall --global brewdoc`. Keep optional dependencies enabled;
-unsupported targets or missing platform packages refuse explicitly.
-
-For a temporary invocation:
-
-```sh
-npx --yes --package brewdoc@{version} brewdoc --self-check
-npx --yes --package brewdoc@{version} brewdoc file.pdf --out file.md
-```
-
-npx uses npm's cache and does not create a persistent global tool. Choose another
-exact version on the next invocation to update. There is no installed tool to
-uninstall; avoid clearing unrelated npm cache data.
-
-{native_install(facts)}
-[Latest release]({REPOSITORY}/releases/latest) |
-[Full usage]({REPOSITORY}/blob/v{version}/README.md) |
-[License]({REPOSITORY}/blob/v{version}/LICENSE)
+[Full installation guide]({REPOSITORY}/blob/v{version}/INSTALL.md) |
+[Formats and limits]({REPOSITORY}/blob/v{version}/FORMATS.md)
 '''
 
 
 def check_document(text: str, version: str, policy: dict) -> None:
     """Refuse stale versions, unsupported assets and a nonexistent CLI flag."""
     specs = re.findall(r"brewdoc(?:\[render-js\])?(?:==|@)(\d+\.\d+\.\d+)", text)
+    guides = re.findall(re.escape(REPOSITORY) + r"/blob/v(\d+\.\d+\.\d+)/(?:INSTALL|README|FORMATS)\.md", text)
     downloads = re.findall(r"/releases/download/v(\d+\.\d+\.\d+)/([^\s)\"'`]+)", text)
     assets = {f"brewdoc-{version}-{target}.{facts['archive']}" for target, facts in policy["targets"].items()}
     assets.update({f"brewdoc-{version}-py3-none-any.whl", f"brewdoc-{version}.tar.gz",
                    "SHA256SUMS", "binaries.json", "npm-manifest.json", "release-manifest.json"})
     assets.update(f"{name}-{version}.tgz" for name in (*policy["npm"]["packages"].values(), policy["npm"]["name"]))
-    if ("brewdoc --version" in text or any(found != version for found in specs)
+    if ("brewdoc --version" in text or any(found != version for found in (*specs, *guides))
             or any(tag != version or name not in assets for tag, name in downloads)):
         raise ValueError("Maintained guide flag, version or asset differs")
 
@@ -398,7 +210,7 @@ def main(argv=None) -> int:
         version = project_version(args.checkout)
         policy = read_json(args.checkout / ".github/distribution.json")
         if args.mode == "check":
-            for name in ("README.md", "llms.txt"):
+            for name in ("README.md", "INSTALL.md", "llms.txt"):
                 check_document((args.checkout / name).read_text(encoding="utf-8"), version, policy)
             return 0
         if args.native_manifest is None or args.npm_manifest is None or args.output is None:

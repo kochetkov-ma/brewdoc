@@ -75,14 +75,17 @@ jobs:
       - name: Verify native CLI and accepted outputs outside the checkout
         run: uv run --no-project --python 3.12.14 python .github/workflows/build_standalone.py verify --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist" --output "${{ runner.temp }}/ci-native-${{ matrix.target }}" --target "${{ matrix.target }}" --smoke
       - uses: actions/setup-node@v7.1.0
+        if: matrix.target != 'windows-x64'
         with:
           node-version: "24.21.0"
           package-manager-cache: false
       - uses: actions/cache@v6.1.0
+        if: matrix.target != 'windows-x64'
         with:
           path: ${{ runner.temp }}/npm-downloads/_cacache
           key: ${{ runner.os }}-${{ runner.arch }}-node24.21.0-npm12.2.0-${{ hashFiles('uv.lock', 'npm/**', '.github/workflows/build_npm.py') }}
       - name: Install pinned npm beside the selected Node runtime
+        if: matrix.target != 'windows-x64'
         shell: bash
         run: |
           BREWDOC_NPM_PREFIX=$(node -p 'const path = require("node:path"); path.resolve(path.dirname(process.execPath), process.platform === "win32" ? "." : "..")')
@@ -90,6 +93,7 @@ jobs:
         env:
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-downloads
       - name: Pack the verified platform before native file attributes leave this runner
+        if: matrix.target != 'windows-x64'
         run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py pack --native-dir "${{ runner.temp }}/ci-native-${{ matrix.target }}" --output "${{ runner.temp }}/ci-npm-${{ matrix.target }}"
       - name: Preserve native bundle and runtime evidence
         if: always()
@@ -105,7 +109,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Preserve sealed npm platform tarball and admission record
-        if: always()
+        if: always() && matrix.target != 'windows-x64'
         uses: actions/upload-artifact@v7.0.2
         with:
           overwrite: true
@@ -168,7 +172,7 @@ jobs:
           digest-mismatch: error
       - name: Assemble the main package only after every native platform passes
         run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py aggregate --input "${{ runner.temp }}/ci-npm-targets" --output "${{ runner.temp }}/ci-npm-release"
-      - name: Admit the complete four-package npm set
+      - name: Admit the complete three-package npm set
         run: uv run --no-project --python 3.12.14 python .github/workflows/build_npm.py verify --input "${{ runner.temp }}/ci-npm-release"
       - uses: actions/upload-artifact@v7.0.2
         with:
@@ -195,8 +199,6 @@ jobs:
             os: ubuntu-22.04
           - target: macos-arm64
             os: macos-15
-          - target: windows-x64
-            os: windows-2025
     steps:
       - uses: actions/checkout@v7.0.1
         with:

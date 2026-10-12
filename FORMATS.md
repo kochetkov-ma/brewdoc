@@ -1,364 +1,293 @@
 # Formats
 
-What brewdoc reads today, what is planned, what is excluded, what is deferred and what it will never do.
-Base runtime dependencies are `pdfplumber` and `python-calamine`. Static HTML adds one conditional native parser;
-other formats retain the two-dependency policy.
+Supported extensions cover the profiles below, not every possible file. PDF needs a text layer;
+unreadable, malformed and unsupported input is refused by name. Base dependencies are pdfplumber
+and python-calamine; static HTML adds its conditional native parser. Other routes use those or stdlib.
 
 ## Supported
 
-| in | reader | mechanism |
+| Input | Reader | Content |
 |---|---|---|
-| `.pdf` | pdfplumber | text layer required; anchored page units; each region routed by its own ruling |
-| `.docx` | stdlib `zipfile` + `xml.etree` | paragraphs and tables in reading order; anchored chapters retain duplicate and empty headings |
-| `.pptx` | stdlib `zipfile` + `xml.etree` | slides in declared order; text, tables, speaker notes and picture metadata placeholders |
-| `.epub` | stdlib `zipfile` + XML | EPUB 2/3 static XHTML; one anchored chapter per declared spine item |
-| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | exact sheet selection in caller order with full-source ordinal keys; cached values in Markdown |
-| `.html` | selectolax Lexbor | local static body or fragment in DOM order; one anchored chapter; CPython 3.12-3.14 only |
+| `.pdf` | pdfplumber | Anchored pages; each region routes by its own ruling; text layer required |
+| `.docx` | stdlib ZIP/XML | Ordered paragraphs/tables; duplicate and empty heading-created chapters |
+| `.pptx` | stdlib ZIP/XML | Declared slides, text/tables/notes and picture metadata; hidden/empty slides retained |
+| `.epub` | stdlib ZIP/XML | EPUB 2/3 static XHTML; every declared spine item, including empty/non-linear content |
+| `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | Cached values; exact selected sheets in caller order with full-source ordinals |
+| `.html` | selectolax Lexbor | Local static body/fragment in DOM order; one chapter; CPython 3.12-3.14 |
 
-All supported routes emit `brewdoc.markdown/2`: quoted source title, deterministic metadata,
-artifact inventory, known omissions, linked contents, then anchored content units. Empty physical
-PDF pages, selected empty sheets, heading-created empty DOCX chapters, and declared empty or hidden
-PPTX slides remain navigable. EPUB retains every declared spine item, including empty bodies
-and non-linear content.
+All routes emit brewdoc.markdown/2: quoted title, deterministic metadata, artifact inventory,
+known omissions, linked contents and anchored units. Empty physical pages/sheets/chapters/slides
+stay navigable. Local receipts use brewdoc.receipt/1 with route, unit kind and count:
+routes are pdf, doc, presentation, sheet, epub and html.
+PDF page/000001, DOCX/EPUB/HTML chapter/000001, PPTX slide/000001, workbook sheet/000001.
+Unsupported suffixes use route/kind none; other refusals retain their route/kind and zero units.
+HTML/EPUB preserve Unicode as UTF-8 without BOM and LF newlines; other routes emit ASCII.
+MiB means 1,048,576 bytes. Local conversion never acquires external resources.
 
-Every local receipt line uses `brewdoc.receipt/1`, which names the route (`pdf`, `doc`, `presentation`,
-`sheet`, `epub`, `html`), its unit kind (`page`, `chapter`, `slide`, `sheet`) and how many units were rendered. The
-unit kind decides the content keys: `page/000001`, `chapter/000001`, `slide/000001`,
-`sheet/000001`. A suffix brewdoc does not read is refused with route `none` and unit kind `none`;
-every other refusal keeps its route's own name and unit kind, with zero units.
+## PDF
+
+Region order: fully ruled table; unfinished ruling recovered from baselines on its structural
+grid; horizontal head/foot rules; unruled tabular band as layout-preserved text; captioned
+Table N cropped to the next blank band; two-column prose split at the density gutter; plain lines.
+Images/figures and their drawn text, page-spanning tables and rotated text are not carried.
+For tables crossing pages, columns recover but wrapped rows stay separate.
+Sub/superscripts are folded into the line. Broken font ligatures are counted/folded, not guessed.
 
 ## Static HTML
 
-HTML requires CPython 3.12-3.14 and this exact marked dependency:
+Requires CPython 3.12-3.14 and this exact conditional dependency:
 
 ```text
 selectolax==0.4.13; python_version < '3.15' and platform_python_implementation == 'CPython'
 ```
 
-Brewdoc's overall Python requirement remains `>=3.12`. The `.html` suffix and `render_html`
-API remain registered on other runtimes and explicitly refuse with route `html`, kind `chapter`,
-zero units, empty Markdown and no output writes. Self-check verifies this refusal and all old
-formats. A missing or broken native parser on supported CPython is an environment failure:
-HTML refuses and self-check exits 1. There is no alternate parser.
+Overall Python support stays >=3.12. Other runtimes retain the HTML API/route but refuse with
+html/chapter, zero units, empty Markdown and no writes; self-check verifies that and other routes.
+A missing/broken parser on supported CPython fails HTML and self-check. No alternate parser.
 
-Read the full recovered body or fragment, including navigation, main content, sidebars and footer.
-The first nonempty recovered head title labels `chapter/000001`; otherwise use `Untitled`.
-Only `.html` is accepted. Input must be strict UTF-8, optionally prefixed by a UTF-8 BOM.
-Charset declarations in the first 1,024 bytes after the BOM must name `utf-8` or `utf8`;
-malformed, unknown, conflicting or non-UTF-8 declarations refuse. Invalid bytes are not repaired.
-HTML and EPUB preserve meaningful Unicode and emit UTF-8 without BOM, with LF newlines.
-PDF, DOCX, PPTX and workbooks retain ASCII output. HTML has no artifacts.
+Read the complete recovered body/fragment, including navigation/sidebars/footer. First nonempty
+head title labels chapter/000001, otherwise Untitled. Only .html and strict UTF-8 with optional
+BOM are accepted. Charset declarations in the first 1,024 bytes after BOM must be utf-8/utf8;
+malformed, unknown, conflicting/non-UTF-8 declarations or invalid bytes refuse. No HTML artifacts.
 
-Headings, prose, lists and emphasis retain recovered DOM order. Preformatted code preserves
-literal angle brackets, ampersands, newlines, tabs and repeated spaces in a fence longer than
-any source backtick run. Inline code outside tables uses the same fenced-block fallback at its
-reading-order position, omitting inline layout. Table-cell code uses `Code: text="..."` with
-escaped literal data, omitting monospace layout. Literal LF, tab and CR in cell code and quoted
-control metadata become `&#10;`, `&#9;` and `&#13;` after escaping source ampersands.
-Emphasis and safe links balance separately around each nonempty text segment across a fence.
-Code-only emphasis adds no delimiter paragraphs. A safe anchor enclosing only literal code or
-image placeholders retains its destination once as `[Link target](destination)` after that content.
-Ordinary text links and existing cell links around code/images get no duplicate fallback.
-Safe anchors consumed inside code/pre retain labelled records after the literal representation:
-`[Link target](destination); text="..."`. Records keep recovered source order in body paragraphs
-or the same table cell. Labels preserve Unicode, repeated spaces and decoded characters with
-the quoted literal escaping above, including escaped source quotes. Retained literal whitespace
-is data; an anchor without retained characters is empty. Hidden/excluded, unsafe/missing-target
-or empty anchors add no record.
-Each body target paragraph counts once in `text_regions`; cell target fragments add no regions
-or tables. Each consumed source anchor adds one record; separate anchors with identical URLs
-stay distinct. Nested code/pre do not duplicate those records.
-Quotes use matching `Quote (level N):` and `End quote (level N).` paragraphs around their
-children, preserving nested scopes and order without Markdown blockquote layout.
+Prose/headings/lists/emphasis retain recovered DOM order. Pre and inline code outside tables
+become literal fences longer than any source backtick run; angle brackets, ampersands, whitespace,
+LF/tabs and repeated spaces are retained. Inline layout is omitted. Cell code uses
+`Code: text="..."` with escaped literals; LF/tab/CR become &#10;/&#9;/&#13; after source ampersand
+escaping. Emphasis and safe links balance around each nonempty segment across fences;
+code-only emphasis produces no delimiter paragraph.
 
-Plain list items emit their marker once; later paragraphs use blank lines and continuation
-indentation. Items containing a standalone fence, table/caption, control record, image placeholder
-or quote use `List item (level N, marker "-"):` and `End list item (level N).` boundaries.
-Ordered markers retain their number. Affected ancestor items use the same scopes so all child
-blocks stay enclosed in DOM order. Plain nested items inside a labelled scope use indentation
-relative to that scope; unaffected lists keep normal Markdown layout. Each emitted paragraph,
-literal block, control or link-target record counts once, including list continuations.
-List/quote boundary labels and empty or delimiter-only fragments add no text regions.
+Safe anchors enclosing only code/images retain one `[Link target](destination)` after them;
+ordinary text/cell links do not duplicate it. Anchors consumed inside code/pre retain ordered
+`[Link target](destination); text="..."` records, in paragraphs or their original cell.
+Labels retain Unicode, decoded characters, repeated spaces and escaped quotes. Retained whitespace
+is data; empty, hidden/excluded, unsafe or missing-target anchors add no record. Separate anchors
+with identical URLs stay distinct; nested code/pre does not duplicate them. Body target paragraphs
+count once in text_regions; cell fragments add no regions/tables. Each consumed anchor adds one record.
 
-Tables keep captions and recovered row/cell order across head, body and foot sections. Spans
-expand into a rectangular grid with origin content once and empty continuations. Nested tables
-stay inside their parent cell as labelled row/column records with origin coordinates and spans.
-Controls preserve source-declared fields, values and boolean attribute presence in fixed-order
-records. Forms, labels, fieldsets, buttons, inputs, textarea/output, every select option and
-datalist suggestion, progress/meter and details/summary stay in source order. Closed details,
-unselected options and disabled controls remain present. Missing attributes are `unspecified`;
-supplied empty strings remain empty. Browser defaults and current user values are not inferred.
-Supplied password/file input values are redacted; hidden inputs are omitted explicitly.
+Quotes use `Quote (level N):` / `End quote (level N).` boundaries. Plain list items emit their
+marker once, then blank lines/continuation indentation. Items containing fences, tables/captions,
+controls, images or quotes use `List item (level N, marker "-"):` / `End list item (level N).`
+boundaries; affected ancestors use the same scopes. Ordered markers retain numbers. Plain nested
+items indent relative to labelled scopes; unaffected lists keep Markdown layout. Emitted paragraphs,
+literal blocks, controls and link targets count once; boundary/empty/delimiter-only fragments do not.
 
-Only HTTP, HTTPS, mailto, relative and fragment link targets become links after normalized scheme
-checks. Other targets are inert text; form actions and overrides always remain inert metadata.
-Images preserve supplied alt/title and source category in a placeholder without pixels or fetching.
-Data, unsupported and missing image targets are omitted. Source Markdown/HTML is escaped;
+Tables retain captions and recovered head/body/foot row/cell order. Spans expand to rectangular
+grids with origin content once and empty continuations. Nested tables remain in their cell as
+labelled row/column records with origin coordinates/spans. Controls use fixed-order source-declared
+fields, values and boolean presence. Forms/labels/fieldsets/buttons/inputs, textarea/output,
+all select options/datalist suggestions, progress/meter and details/summary stay in source order.
+Closed details, unselected options and disabled controls remain. Missing attributes are unspecified;
+empty strings stay empty. No inferred defaults/current user values. Password/file values are
+redacted; hidden inputs are omitted explicitly.
+
+Only normalized HTTP/HTTPS/mailto/relative/fragment targets become links. Other targets are inert;
+form actions/overrides are always metadata. Images keep supplied alt/title/source category without
+pixels/fetching; data/unsupported/missing targets are omitted. Source Markdown/HTML is escaped;
 source IDs never become output anchors.
 
-Comments, head content, scripts, styles, templates and active embeds are excluded. Direct `hidden`,
-`aria-hidden="true"`, effective inline `display:none` or `visibility:hidden` exclude whole
-subtrees. Inline declarations respect supported values, order and `!important`; external and
-embedded stylesheets are not evaluated. Unknown nonexcluded elements retain useful children.
-SVG title/description/text, canvas fallback and body noscript text remain available. Omissions
-name graphical SVG, canvas pixels, MathML semantics, active media and dynamic browser content.
-This is static source conversion, not browser-complete extraction.
+Comments/head/scripts/styles/templates/active embeds are excluded. Direct hidden,
+aria-hidden=true and effective inline display:none/visibility:hidden omit entire subtrees.
+Inline declarations respect supported values/order/!important; stylesheets are not evaluated.
+Unknown nonexcluded elements retain children. SVG title/description/text, canvas fallback and
+body noscript remain; graphical SVG, canvas pixels, MathML, active media and dynamic content are
+omitted. This is static conversion, not browser-complete extraction.
 
-Limits are inclusive; exceeding one refuses before writing output. MiB is 1,048,576 bytes:
-8 MiB raw input, depth 256 (recovered root at 1), 200,000 recovered elements including excluded
-subtrees, 1 MiB UTF-8 per decoded attribute, 32 MiB included decoded text before whitespace
-reduction, 100,000 total span-expanded table positions including nested tables, and 64 MiB final
-UTF-8 Markdown including the envelope. Postparse checks do not guarantee native-parser memory safety.
+Inclusive limits, exceeded before output writes: raw input 8 MiB; depth 256 with root at 1;
+200,000 recovered elements including excluded subtrees; 1 MiB UTF-8 per decoded attribute;
+32 MiB included decoded text before whitespace reduction; 100,000 expanded table positions
+including nested tables; final UTF-8 Markdown/envelope 64 MiB. Postparse admission is not a
+native-parser memory-safety guarantee.
 
 ## EPUB
 
-Local `.epub` files use standard-library ZIP/XML; no HTML parser or native runtime is required.
-The supported profile accepts package versions 2.0 and 3.0, one container rootfile, one manifest
-and a nonempty spine. Qualified XHTML must have exactly one direct body. XML must be strict
-UTF-8 or UTF-16 with consistent BOM/declaration. Internal DTD subsets, entity declarations,
-XInclude and XHTML `base` or `xml:base` refuse. Bare HTML/NCX doctypes are never fetched.
+Local .epub uses stdlib ZIP/XML without an HTML parser/native runtime. Accepts package 2.0/3.0,
+one rootfile/manifest and a nonempty spine. Qualified XHTML needs exactly one direct body.
+XML is strict UTF-8/UTF-16 with consistent BOM/declaration. Internal DTD subsets, entity declarations,
+XInclude and XHTML base/xml:base refuse; bare HTML/NCX doctypes are never fetched.
 
-Spine order controls chapter order, including `linear="no"` items marked `Auxiliary content.`.
-Repeated spine references refuse; separate entries converging on an XHTML fallback retain
-their own ordinals. Unsupported required media needs a valid local declared XHTML fallback.
-EPUB 3 requires a declared TOC navigation document; EPUB 2 requires the spine's declared NCX.
-Publication navigation retains nested groups and repeated entries in source preorder after
-Contents. When the navigation document is in the spine, its consumed TOC is represented once
-while its other content and chapter remain. A TOC-only chapter links to Publication navigation.
+Spine order includes linear=no as Auxiliary content. Repeated references refuse; entries sharing
+an XHTML fallback retain separate ordinals. Required unsupported media needs a declared local XHTML
+fallback. EPUB3 requires declared TOC navigation; EPUB2 its spine-declared NCX. Nested/repeated
+navigation stays in source preorder after Contents. A navigation item in the spine represents its
+consumed TOC once while retaining other content/chapter; TOC-only chapters link to Publication navigation.
 
-Chapter labels use the first matching navigation label, then XHTML title, included body heading,
-or `Chapter N`. Source headings remain. Chapter keys are `chapter/000001`; source IDs map to
-generated fragment anchors at their included regions. Duplicate IDs refuse. Required navigation
-must resolve to available spine content; ordinary unresolved body links become inert target
-records. HTTP(S) and mailto links remain links without fetching.
+Labels choose first matching navigation label, XHTML title, included heading, then Chapter N.
+Headings remain; chapter/000001 keys and generated fragment anchors replace source IDs. Duplicate
+IDs refuse. Required navigation resolves to available spine content; unresolved ordinary body links
+become inert records. HTTP(S)/mailto links remain without fetching.
 
-Paragraphs, headings, emphasis, lists, quotes, tables and their tails retain XML order.
-Headings h1-h4 map to levels 3-6; deeper headings become labelled bold text. Ordered lists
-preserve starts, reversed order and explicit values. Complex or anchored list items use labelled
-boundaries around their child blocks. Quotes retain explicit nested boundaries.
-Code in body text and headings becomes safe fences retaining XML-normalized literal data;
-surrounding emphasis and safe links stay balanced. Table-cell code remains at its source cell
-as `Code: text="..."` with escaped literal data and numeric LF/tab/CR entities; monospace layout
-is omitted. Tables retain row-group order, captions, spans and empty continuation cells.
-Nested tables stay at their originating cell as coordinate records.
+Paragraphs/headings/emphasis/lists/quotes/tables/tails retain XML order. h1-h4 map to levels 3-6;
+deeper headings are labelled bold text. Ordered lists keep starts/reversed order/explicit values.
+Complex/anchored items and nested quotes use labelled boundaries. Body/heading code uses safe
+fences retaining XML-normalized literals and balanced emphasis/links. Cell code keeps escaped
+Code records and numeric LF/tab/CR entities without monospace layout. Tables keep group order,
+captions, spans and empty continuations; nested tables remain coordinate records in their origin cell.
 
-Images emit `Image: alt="..."; title="..."; src="..."` at their source position. Missing attributes
-are unquoted `unspecified`; declared empty values remain `""`. SVG retains declared title,
-description and image-reference metadata. Pixels, graphical SVG and unsupported MathML/SVG
-semantics are omitted, along with CSS/layout, pagination, fonts, scripts, forms, active media
-and navigation semantics beyond the declared TOC. `hidden` and `aria-hidden="true"` omit subtrees;
-CSS is not evaluated. No extraction, network, JavaScript, OCR or DRM decryption occurs.
+Images use `Image: alt="..."; title="..."; src="..."` in source position; missing attributes are
+unquoted unspecified, supplied empty values remain "". SVG preserves title/description/image-reference
+metadata. Pixels, graphical SVG/unsupported MathML/SVG semantics, CSS/layout/pagination/fonts, scripts,
+forms, active media and navigation beyond TOC are omitted. hidden/aria-hidden=true omit subtrees;
+CSS is not evaluated. No archive extraction, network, JS, OCR or DRM decryption occurs.
 
-Publication titles, creators, languages and identifiers follow existing metadata in that order.
-Declaration order, duplicates, empty values and Unicode are preserved; a declared unique
-identifier must resolve to one declared identifier. Source and body hashes keep their existing
-Metadata meaning. EPUB has no artifacts; `--sheet` and `--artifact` remain workbook-only.
+Titles/creators/languages/identifiers follow existing metadata in that order, retaining declaration
+order, duplicates, empty values and Unicode. A declared unique identifier must resolve. Source/body
+hash meanings remain. No EPUB artifacts; --sheet/--artifact remain workbook-only.
+Malformed/missing required content, unsafe paths, ambiguous names, duplicate members/IDs, encrypted
+reading text/unsupported encryption, fixed layout and multiple rootfiles refuse the entire book.
+Recognized IDPF/Adobe font obfuscation is accepted only for existing declared fonts, never read/decoded.
+Hard refusals return zero units, empty Markdown and no writes.
 
-Malformed or missing required content, unsafe paths, ambiguous archive names, duplicate members
-or IDs, encrypted reading text, unsupported encryption, declared fixed layout and multiple
-rootfiles refuse the whole publication. Multiple rootfiles and fixed layout are supported-profile
-restrictions. Recognized IDPF/Adobe font obfuscation is accepted only for existing
-manifest-declared fonts, which are never read or decoded. Every hard refusal returns zero units,
-empty Markdown and no output writes.
-
-Limits are inclusive policy defaults, not measured capacity or a process memory cap:
-
-| Budget | Maximum |
+| Inclusive budget | Maximum |
 |---|---:|
-| Compressed source; sum of declared expanded bytes; actual bytes read | 32 MiB each |
-| ZIP members, including directories | 1,024 |
-| Declared and observed bytes per consumed member | 8 MiB |
-| XML elements per logical parse; across all parses | 65,536; 262,144 |
+| Compressed source; declared expanded total; actual bytes read | 32 MiB each |
+| ZIP members including directories | 1,024 |
+| Declared/observed bytes per consumed member | 8 MiB |
+| XML elements per parse; across parses | 65,536; 262,144 |
 | XML depth, root at 1; spine items | 64; 512 |
-| Table columns; slots per table; slots across publication | 256; 65,536; 262,144 |
+| Table columns; slots/table; slots/publication | 256; 65,536; 262,144 |
 | Complete UTF-8 Markdown | 8 MiB |
 
-Every physical reread and logical parse consumes its aggregate budget; nested grids consume
-table slots. Expat checks XML depth/elements before tree construction. ZIP central-directory
-allocation precedes member-count admission; intermediate strings and existing output rollback
-bytes also consume memory. MiB is 1,048,576 bytes.
+Every physical reread/logical parse and nested grid consumes its aggregate budget. Expat checks
+XML depth/elements before tree construction; ZIP central-directory allocation precedes member admission. Intermediate
+strings/output rollback also consume memory. These are policy limits, not capacity or memory caps.
 
 ## URL acquisition
 
-`--url URL` explicitly acquires a static HTTP(S) page, then passes a frozen UTF-8
-snapshot through the existing HTML converter. Local `.html` and Python APIs keep
-their offline contracts. Relative links and image targets resolve against the final
-URL and valid source base; this resolution does not fetch images or linked pages.
-The full recovered body remains in source order, without automatic article selection.
-Local files and static URL capture do not execute JavaScript.
+--url explicitly acquires a static HTTP(S) page, then converts a frozen UTF-8 snapshot. Local HTML
+and APIs remain offline. Relative links/images resolve against final URL/valid base without fetching
+images/linked pages. The complete recovered body retains source order; no automatic article selection.
+Local files and static capture do not execute scripts.
 
-Only public destinations and default ports 80/443 are accepted. Every DNS answer,
-connection peer and redirect destination must pass the destination policy. TLS keeps
-certificate and hostname verification. GET requests omit ambient credentials,
-cookies and proxy environment settings. At most five redirects are followed;
-HTTPS-to-HTTP redirects, unsupported schemes and private/special-use addresses
-refuse. Static acquisition has 8 MiB transferred/decompressed HTML limits. Only
-`text/html` with absent or UTF-8/UTF8 charset is accepted; invalid UTF-8 and
-conflicting declarations refuse. Identity and bounded gzip are accepted encodings.
+Only public destinations/default ports 80/443 pass. All DNS answers, peers and redirects are
+validated. TLS verifies certificates/hostnames. GET excludes ambient credentials/cookies/proxy
+environment. At most five redirects; downgrades, unsupported schemes/private/special-use addresses
+refuse. Transferred/decompressed HTML is limited to 8 MiB. Accept text/html with absent or UTF-8/UTF8
+charset, identity or bounded gzip encoding; invalid UTF-8 bytes/conflicting declarations refuse.
 
-`--timeout SECONDS` sets the maximum loading/waiting budget for one `--url` call,
-default 30 seconds. It accepts positive finite seconds within the supported
-clock range. One budget covers prerequisites, DNS, connections, TLS, redirects,
-the main body, scripts, resources and optional JS waiting. Ready captures return
-immediately. For example, `--timeout 60` allows longer acquisition and JS waiting;
-there is no separate five-second network or twelve-second JS waiting ceiling.
-After waiting stops, trusted recovery is bounded to one second and worker cleanup
-to another 1.1 seconds. Local conversion and output of the accepted snapshot follow;
-the option does not guarantee an exact overall CLI duration.
+--timeout is a positive finite waiting budget within clock range, default 30 seconds. One budget
+covers prerequisites/DNS/connections/TLS/redirects/body/scripts/resources/JS waiting. Ready content
+returns immediately; no separate five-second network or twelve-second JS ceiling. Recovery is
+bounded to one second, cleanup to another 1.1 seconds. Local conversion/output follow; total CLI
+duration need not equal the wait budget.
 
-`--render-js` additionally requires the installed `brewdoc[render-js]` extra:
-QuickJS-ng 0.17.0.1 with bundled LinkeDOM 0.18.13. No Node, browser or runtime
-component download is used. The native public API and resource prerequisites are
-checked before HTTP. JS requires macOS ARM64 or 64-bit glibc Linux (x86_64/aarch64)
-with proved native prerequisites. Windows, macOS Intel, musl Linux, 32-bit systems and
-unsupported ABIs explicitly refuse JS.
+--render-js requires installed brewdoc[render-js]: QuickJS-ng 0.17.0.1 with bundled LinkeDOM 0.18.13.
+No Node/browser/runtime downloads. Native ABI/resource prerequisites are checked before HTTP.
+JS requires macOS ARM64 or 64-bit glibc Linux x86_64/aarch64; Windows, macOS Intel, musl, 32-bit and
+unsupported ABIs refuse. Execution is a separate process without filesystem/shell APIs or reused
+browser state; native limits are not an OS sandbox against engine vulnerabilities.
 
-`--render-js` explicitly executes the selected page's scripts locally in a separate
-process. No filesystem or shell APIs are exposed, and browser state is not reused.
-The finite subset includes DOM mutations, classic scripts, relative imported
-modules and dynamic imports, Promise jobs, function timers, GET fetch and async
-GET XHR. Async XHR admits one public search POST profile: documents at
-https://hn.algolia.com may query the public Item_dev endpoint at
-https://uj5wyc0l7x-dsn.algolia.net/1/indexes/Item_dev/query using the original
-public application/key query, string JSON body and application/x-www-form-urlencoded
-header. Other POST, fetch POST, cookies and user credentials remain unsupported.
-Search acquisition never follows redirects, automatically retries, or rewrites the body. Its strict
-UTF-8 body is limited to 16,384 bytes, JSON depth four and 256 total array entries.
-Unsupported search options preserve partial content without sending the request;
-resource overflow and security failures remain hard refusals.
-Read-only history and HTTP(S) anchor components provide limited page
-compatibility. Each JS capture starts with `innerWidth` set to 1024 CSS pixels.
-The page can change it through `window` or the global; later captures start at
-1024 again. Inline style reads mark the capture partial; they do not compute
-external CSS or layout. Temporary `localStorage` starts empty, is discarded after
-capture and has no storage events. Any access marks the result partial. It accepts
-at most 200 keys and 65,536 aggregate UTF-8 bytes across keys and values; exceeding
-either quota causes hard refusal. Host requests remain destination-validated and
-bounded. Cross-origin API bodies require accepted CORS headers; there is no authenticated fetch, arbitrary
-request-header or browser cookie model. Documents are parsed before scripts;
-async/defer and event ordering are approximate. Layout, IntersectionObserver,
-iframe execution, workers, WebSockets, media and browser CSP enforcement are
-outside this subset. A child process and native limits bound execution; they do
-not establish an operating-system sandbox against native engine vulnerabilities.
+The finite subset supports DOM mutations, classic scripts, relative/dynamic module imports,
+Promise jobs, function timers, GET fetch and async GET XHR. Only async XHR admits the HN Algolia
+search POST: https://hn.algolia.com documents may query
+https://uj5wyc0l7x-dsn.algolia.net/1/indexes/Item_dev/query with original public application/key
+query, string JSON body and application/x-www-form-urlencoded header. Other POST/fetch POST,
+cookies and user credentials are unsupported. No redirects/retries/body rewriting. Search UTF-8
+body is limited to 16,384 bytes, JSON depth four and 256 total array entries. Unsupported options keep
+partial content without sending; security/resource overflow is a hard refusal.
 
-JS acquisition allows at most 100 host requests, an 8 MiB
-limit per response/snapshot and 32 MiB aggregate decoded response and outgoing
-search-body bytes. An admitted search body is charged once before sending. The
-native heap is limited to 64 MiB. Execution uses a checked, guarded OS thread with
-at most 1 MiB of stack, 250 ms per native invocation, 2,000 Promise jobs and 200
-fired timer callbacks. The child also has a 45 CPU-second limit. A larger timeout
-does not increase these limits.
+Read-only history and HTTP(S) anchor components provide limited compatibility. innerWidth starts
+at 1024 CSS pixels, is writable through window/global and resets next capture. Inline style reads
+mark partial without CSS/layout computation. Temporary localStorage starts empty, is discarded
+without storage events and marks partial on any access. Its 200-key/65,536 UTF-8-byte key/value
+quota is hard. Host requests validate destinations; cross-origin API bodies require accepted CORS.
+No authenticated fetch, arbitrary request headers or cookie model. Scripts follow parsing;
+async/defer/event order is approximate. Layout/IntersectionObserver/iframes/workers/WebSockets/
+media/browser CSP enforcement are outside the subset.
 
-Once complete validated HTML exists, timing-only expiry stops scripts and further
-network activity while preserving valid content. Cooperative recovery returns the
-current DOM as partial with `capture_timeout` and observed pending work. If only
-parent cancellation can stop an unresponsive worker and no hard failure is observed,
-recovery uses the already acquired original HTML with
-`initial_html_timeout_fallback`. It does not fetch the page again. This fallback
-reports JS completion and unobserved pending work as unknown. Incomplete main
-responses, security violations, heap exhaustion, native faults, tampering and actual
-resource quotas still refuse without output. Hard failures take precedence over
-timing recovery. Ordinary script/API errors can also produce a useful partial DOM.
+| JS budget | Maximum |
+|---|---:|
+| Host requests | 100 |
+| Per response/snapshot | 8 MiB |
+| Aggregate decoded responses/outgoing search bodies | 32 MiB |
+| Native heap; OS-thread stack | 64 MiB; 1 MiB |
+| Native invocation; Promise jobs; fired timers | 250 ms; 2,000; 200 |
+| Child CPU | 45 seconds |
 
-URL receipts use `brewdoc.receipt/2`: existing conversion fields plus `acquisition`
-with redacted requested/final/base URLs, response and snapshot identities, mode,
-capture status, effective `timeout_seconds` and explicit capture omissions.
-For JS requests, `acquisition.snapshot.kind` identifies `javascript_dom` or
-`initial_html_timeout_fallback`; the latter is original HTML, not recovered JS DOM.
-New JS receipts use `soft_window_seconds` equal to the configured timeout and
-`soft_window_origin: request`; historical capture-relative receipts retain their
-original meaning. Query values and nonempty URL fragments are redacted in
-receipt display URLs.
-Frozen snapshot names use `url-<first 16 URL SHA-256 hex>.html`; Markdown source
-identity describes those snapshot bytes. Local receipts remain `brewdoc.receipt/1`.
-An exit-0 partial capture means valid snapshot conversion, not complete JS or
-primary-content recovery. Live acquisition is mutable; frozen conversion remains
-deterministic. No 90% corpus acceptance or global JS compatibility is claimed.
+Charge search bodies once before sending. Increased timeout does not enlarge these budgets.
+Timing-only expiry stops scripts/network after complete validated HTML exists. Cooperative recovery
+returns current DOM partial with capture_timeout/pending work. Parent-cancelled unresponsive workers
+without hard failures use acquired original HTML as initial_html_timeout_fallback, without refetch;
+JS completion/unobserved work is unknown. Incomplete main responses, security/heap/native faults,
+tampering/actual quotas refuse without output and take precedence. Ordinary script/API errors can
+produce useful partial DOM.
 
-`--url` with a positional document or `--self-check`, and `--render-js` without
-`--url`, produce usage exit 2 before acquisition. Invalid timeout values and an
-explicit `--timeout` without `--url` also produce exit 2. `--sheet` and `--artifact` with
-a URL produce HTML refusal exit 1 before HTTP. Hard refusal preserves existing
-destinations. The existing HTML structure and Markdown output limits still apply.
+URL receipts use brewdoc.receipt/2 with acquisition: redacted requested/final/base URLs, response/
+snapshot identities, mode, capture status, effective timeout_seconds and explicit omissions.
+JS snapshot kind is javascript_dom or initial_html_timeout_fallback; the latter is original HTML.
+New soft_window_seconds equals configured timeout, soft_window_origin is request; historical
+capture-relative receipts retain their meaning. Query values/nonempty fragments are redacted.
+Snapshot names are url-<first 16 URL SHA-256 hex>.html; Markdown identity names those snapshot bytes.
+Local receipts remain brewdoc.receipt/1. Exit 0 partial means valid conversion, not complete JS or
+primary-content recovery. Frozen conversion is deterministic; live acquisition is mutable. No 90%
+coverage or general browser compatibility is claimed.
+
+--url with a document/self-check, --render-js without --url, invalid timeout or explicit timeout
+without --url produce exit 2 before acquisition. URL with --sheet/--artifact produces HTML refusal
+exit 1 before HTTP. Hard refusal preserves existing destinations. HTML structure/Markdown limits apply.
 
 ## Container documents
 
-DOCX accepts Transitional and Strict WordprocessingML. Main-story paragraphs and tables stay in
-document order. `Title` and `Heading1` through `Heading9` start chapters. Tabs become spaces and
-line breaks are retained. Nested table text is flattened into its parent cell, and invalid or
-non-positive table spans fall back to one column. Images, headers, footers, footnotes, comments,
-tracked-change reconstruction, list formatting, style inheritance and vertical merge reconstruction
-are omitted.
+DOCX accepts Transitional/Strict WordprocessingML. Main-story paragraphs/tables retain order;
+Title/Heading1-Heading9 start chapters. Tabs become spaces; line breaks remain. Nested tables flatten
+into parent cells; invalid/nonpositive spans use one column. Images/headers/footers/footnotes/comments,
+tracked-change reconstruction, list layout, style inheritance and vertical merge reconstruction are omitted.
 
-PPTX follows the presentation relationships and declared slide list instead of ZIP member names.
-It reads every declared slide, including hidden and empty slides. Title placeholders label units;
-slides without one use `Untitled`. Headings are `## Slide N: "<title>"`, with ordered keys such as
-`slide/000001`. The public `render_presentation` tally reports `slides`; there is no Slides metadata
-row. Shape and grouped-shape XML order controls reading order. Text keeps paragraph and run order,
-DrawingML tables keep row and cell order, and merge continuation cells stay empty. Body speaker
-notes follow slide content. Other notes placeholders are omitted.
-
-PPTX pictures use this exact metadata placeholder and never include pixels:
+PPTX follows relationships/declared slide order, including hidden/empty slides. Title placeholders
+label units, otherwise Untitled; headings are ## Slide N: "<title>" with slide/000001 keys.
+render_presentation tallies slides without a Slides metadata row. Grouped shape XML, paragraphs/runs
+and table rows/cells retain order; merge continuations remain empty. Body notes follow content;
+other notes placeholders are omitted. Pictures have no pixels and use this exact placeholder:
 
 ```text
 Image: name="<name>"; size=<cx>x<cy> EMU; alt="<descr|none>"; caption="<title|none>"; source=<embedded|external>; bytes=<n|unknown>
 ```
 
-Embedded picture byte counts come from the related package member. External pictures are never
-fetched. Charts, SmartArt, audio, video, embedded objects, animations, transitions,
-layout/master-only text, styling and visual positioning are omitted. Required package, presentation
-and slide relationships or XML must resolve inside the archive; malformed or missing required parts
-refuse the document. A slide may have no picture or notes relationship, but a referenced part must
-be valid. EPUB image records preserve XHTML declarations. DOCX images remain omitted.
+Embedded counts come from package members; external pictures are never fetched. Charts/SmartArt/
+audio/video/objects/animations/transitions, master-only text, styling/positioning are omitted.
+Required package/presentation/slide relationships and XML must resolve inside the archive; malformed,
+missing or invalid referenced picture/notes parts refuse. Optional absent relationships are accepted.
+EPUB image records preserve declarations; DOCX images remain omitted.
 
 ## Workbook artifacts
 
-| input | formulas | VBA project | limit |
+| Input | Formulas | VBA | Constraint |
 |---|---|---|---|
-| `.xlsx` | `brewdoc.formulas/1` JSON per selected formula-bearing sheet | unavailable | formulas are copied without evaluation, rewriting, or dependency inference |
-| `.xlsm` | same as `.xlsx` | one related `vbaProject.bin`, when present | exact opaque bytes only |
-| `.xlsb` | unavailable through the pinned Python binding | one related `vbaProject.bin`, when present | exact opaque bytes only |
-| `.xls` `.ods` | unavailable through the pinned Python binding | unavailable | cached values still render |
+| .xlsx | brewdoc.formulas/1 JSON per selected formula-bearing sheet | Unavailable | No evaluation, rewriting or inferred dependencies |
+| .xlsm | Same as .xlsx | Related vbaProject.bin when present | Exact opaque bytes |
+| .xlsb | Unavailable through pinned binding | Related vbaProject.bin when present | Exact opaque bytes |
+| .xls/.ods | Unavailable through pinned binding | Unavailable | Cached values still render |
 
-Readable VBA source modules are unavailable for every format. Module and script counts are unknown,
-and brewdoc never executes a project. Generic formula and VBA artifact output uses explicit stable
-keys; the typed Python formula API can also enumerate selected formula sheets. Artifact requests do
-not change Markdown bytes.
+Readable VBA modules and module/script counts are unavailable/unknown; projects never execute.
+Stable explicit keys select artifacts; typed formula APIs enumerate selected formula sheets.
+Artifact requests do not change Markdown bytes. Numbers stay as stored (for example 85.0);
+dates use ISO days. Formula Markdown contains cached values, not recalculated results.
 
 ## Planned
 
-Planned means not readable today: every suffix below is refused by name, and the receipt says so.
-No further parser dependency is planned. Each format requires its own acceptance task.
-Order = implementation order, by value for agents.
+Planned inputs are refused today and each requires its own acceptance task; no new parser dependency.
+Order follows value for agents:
 
-| # | in | mechanism | output |
-|---|---|---|---|
-| 1 | `.odt` `.odp` | `zipfile` + `content.xml` | paragraphs, tables; one chapter per slide for `.odp` |
-| 2 | `.md` `.txt` | pass-through | bytes unchanged, receipt still emitted |
-| 3 | `.eml` | `email` | headers, text body, attachment names |
+| Order | Input | Mechanism/output |
+|---|---|---|
+| 1 | .odt/.odp | stdlib ZIP/content.xml, paragraphs/tables; one chapter per ODP slide |
+| 2 | .md/.txt | Pass-through bytes with receipt |
+| 3 | .eml | stdlib email: headers, text body, attachment names |
 
-Image behavior for planned containers is not accepted yet. Never OCR.
-
-Five planned suffixes share three adapter modules: `.odt` with `.odp` and `.md` with `.txt`
-each pair into one module; `.eml` has its own. Each format is its own task and follows the ordered
-checklist in [`docs/architecture.md`](docs/architecture.md); a new source module needs explicit
-user approval.
+Image handling is not accepted yet; no OCR. Five suffixes map to three modules: ODT/ODP together,
+MD/TXT together, EML separate. Each new module requires its own acceptance task
+and explicit approval.
 
 ## Excluded
 
-CSV and TSV are intentionally unsupported and are not planned. LLMs can read their text tables
-directly, so brewdoc does not convert them to Markdown.
+CSV/TSV are intentionally unsupported/unplanned; agent systems can read their text tables directly.
 
 ## Deferred
 
-Not in any current plan.
-
-| in | reason |
-|---|---|
-| `.doc` `.ppt` (legacy binary) | OLE2 container, Word 97 piece table; needs `olefile` or an own CFB reader; text only, tables lossy |
-| `.rtf` | own parser required |
+Not currently planned: .doc/.ppt binary OLE2 (including Word 97 piece tables) needs olefile or a CFB reader (text only, lossy tables);
+.rtf needs a parser.
 
 ## Never
 
-OCR and ML layout models. Local conversion never uses the network; explicit URL
-acquisition is the exception. A page without a text layer is reported in the receipt, not guessed.
+OCR or ML layout models. Local conversion never uses networking; deliberate --url acquisition
+is the exception. Missing PDF text layers are named refusals, not guessed content.

@@ -1,64 +1,62 @@
 # Releasing
 
-A push of a `v*.*.*` tag runs `release.yml`: admit the successful CI artifacts
-from that exact `main` commit, then publish their unchanged accepted bytes.
-The tag workflow does not rebuild Python packages, native bundles or npm packages.
-PyPI receives only the wheel and sdist. The GitHub release contains their accepted
-bytes, the three native archives, manifests, checksums and a complete installation guide.
-Selected npm platform packages publish before the main brewdoc package.
-Manual dispatch contains the fixed 0.3.1 continuation and guarded original 0.2.0
-recovery paths described below.
+Release notes stay short: product advantage, concrete changes, exact install choices,
+actual asset links and channel availability. Use this product description:
 
-## One-time setup (manual)
+Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
 
-| # | step | where |
+Link version-specific INSTALL.md for practical lifecycle instructions; historical
+0.2.0/0.3.0/0.3.1 tags lack that file and link their own README instead. Never change
+release tags/package bytes merely to revise notes.
+Current installation examples select 0.3.2; each channel needs publication and consumer acceptance.
+
+## Channels and publisher setup
+
+| Channel | Targets | Required public proof |
 |---|---|---|
-| 1 | Create the PyPI project `brewdoc` or use the pending-publisher form | pypi.org |
-| 2 | Add a trusted publisher: owner `kochetkov-ma`, repository `brewdoc`, workflow `release.yml`, environment `pypi` | pypi.org -> project -> Publishing |
-| 3 | Create the GitHub environment `pypi` (optionally with required reviewers) | github.com/kochetkov-ma/brewdoc -> Settings -> Environments |
+| PyPI | Declared Python compatibility | Wheel/sdist bytes, fresh registry installs, API/CLI/self-check |
+| GitHub native | Linux x64/glibc, Windows x64, macOS ARM64 | Three exact public archives/checksums and native consumers |
+| npm | Linux x64/glibc, macOS ARM64 | Platform packages before main, exact bytes/integrity and npm/npx consumers on both hosts |
 
-Publication requires a configured trusted publisher. A missing PyPI project can have a pending
-publisher; its public 404 response does not establish setup status. The actual publish job
-reports a missing or mismatched publisher binding.
+Do not publish Windows npm. Windows uses GitHub native or Python. Homebrew remains
+separate and unavailable until its own formula/consumer acceptance.
 
-Homebrew remains a separate unpublished channel. Do not advertise a tap or install
-command until its formula and actual consumer checks are accepted.
+PyPI uses OIDC with trusted publisher owner kochetkov-ma, repository brewdoc,
+workflow release.yml and environment pypi. npm requires authorized creation/write
+rights for brewdoc, brewdoc-linux-x64-glibc and brewdoc-darwin-arm64. Retain existing
+owner-authorized bootstrap access or separately configured per-package trusted
+publishers; configuration alone does not prove publication. Recheck
+[npm token policy](https://docs.npmjs.com/about-access-tokens/) before using that route.
+Keep credential values out of source, packages, logs and evidence.
 
-The workflow uses no stored PyPI API token: `pypa/gh-action-pypi-publish` exchanges its OIDC token
-(`id-token: write`) for a short-lived PyPI token.
+## Delivery
 
-The first npm publication can bootstrap the four new package names with an
-owner-authorized granular token stored as the Brewdoc repository's `NPM_TOKEN`
-secret. Verify creation/write permission for the selected packages and current
-2FA policy. The token value must never appear in source, logs or artifacts.
-This initial token route does not establish npm trusted publishing.
+1. Accept scoped source, discover public/tag versions and select an unused version
+   before the new native matrix. Update project/API/lock/docs together on the task
+   branch. Plain uv lock must preserve third-party pins unless separately changed.
+2. Complete final local checks, reviewed PR smoke/native proof, squash merge and
+   exact merged-main CI. Review its complete successful producer artifacts and
+   publisher readiness before tagging. The tag equals v plus project.version.
+3. The tag workflow admits that exact main push producer, complete unexpired
+   artifacts, source/tool identities, transport digests and package/consumer scope.
+   Reuse its wheel/sdist/native/npm bytes without rebuilding. Missing, foreign,
+   stale or differing evidence refuses; dependency cache hits are not acceptance.
+4. Publish only admitted channels. Inspect public state first: existing matching
+   bytes may be reused, missing files completed, differing/unknown state refused.
+   Platform npm packages precede main. No blanket skip-existing or overwrite.
+5. Read back actual public bytes and notes, then execute fresh consumers on each
+   advertised target. Keep source, local checks, CI, publication and runtime proof
+   separate. Channels can become available at different times; pending npm must
+   be explicit in notes and overall acceptance stays open until its required proof.
 
-After the packages exist, their owner can configure a separate
-[trusted publisher](https://docs.npmjs.com/trusted-publishers/) for each package:
-GitHub user `kochetkov-ma`, repository `brewdoc`, workflow filename `release.yml`.
-Leave environment empty for the current npm job, and permit `npm publish` if
-using direct publication. This is a separate owner action; it is not a gate on
-the initial token publication or a claim that configuration is complete.
-Verify a successful OIDC publish before removing the bootstrap token route.
+Use built-in failed-job reruns only when their dependent jobs and public-state
+admission are safe. Recheck run/artifact identity; do not retry generic registry
+refusals blindly. No source/version changes are implied by an operational retry.
 
-The token bootstrap is time-limited by npm policy: direct publication with a
-granular access token is scheduled for removal in January 2027. Recheck
-[current token policy](https://docs.npmjs.com/about-access-tokens/) before future
-releases; do not treat token-based direct publishing as an indefinite workflow.
+## Validation
 
-## Per release
-
-| # | step |
-|---|---|
-| 1 | Accept the intended source changes on the working branch, discover tags/releases/PyPI/npm versions, then select an unused version before the first new three-OS native matrix. Update `project.version`, `brewdoc.__version__`, `uv.lock` and pinned examples on that same branch. Use `uv lock` without upgrade flags; third-party lock entries and dependency constraints must stay unchanged. Complete the final local checks below before finishing the consolidated PR. |
-| 2 | Accept the final-version PR smoke/native checks, squash merge into `main`, then review the successful push CI at that exact merged commit and its complete producer artifacts. Verify publisher readiness, the clean release checkout and version availability. Tag and push: `git tag vX.Y.Z && git push origin refs/tags/vX.Y.Z` (the tag must equal `v` + `project.version`; `release.yml` refuses a mismatch). |
-| 3 | Watch `release.yml`: admit the exact-main producer, artifact integrity and explicit smoke evidence; reuse its wheel/sdist, native and npm bytes without rebuilding; generate staged notes; publish PyPI and the platform npm packages before the main package; verify the draft's complete assets/body; then expose the GitHub release. No blanket skip-existing, unverified overwrite or partial-success claim. |
-| 4 | Download wheel and sdist from PyPI and GitHub and match their sizes/hashes to accepted artifacts. Verify separate fresh normal registry wheel and forced-sdist installations outside the checkout, including origin/version, API, self-check, receipt-first CLI and `--out`. Record failures without claiming publication or closing the task. |
-
-## Local and CI acceptance
-
-After the final source and version are set, run the full Python suite, including
-the corpus, and the full Node launcher suite locally before finishing the PR:
+After final source/version, run the full Python suite including corpus and full
+Node launcher suite locally before finishing the PR:
 
 ```sh
 uv sync --locked --group dev --extra render-js
@@ -66,182 +64,26 @@ uv run --locked --extra render-js pytest -q
 node --test npm/test/launcher.test.cjs
 ```
 
-Use Python 3.12 and the exact Node/npm versions in `.github/distribution.json`.
-Record source identity, interpreter/tool versions, commands, results and explicit
-platform skips. Verify the final wheel and sdist outside the source checkout and
-exercise the installed API, CLI and self-check. Source tests alone do not prove
-installability. Material fixes require fresh affected checks and final local
-acceptance; unchanged heavy checks need no speculative repeats.
+Use development Python 3.12 and exact maintained tool pins. Verify final wheel and
+sdist installations outside the source checkout; source tests do not prove installability.
+CI runs small API/CLI/install/native/npm smoke checks plus four actual Windows
+source DNS lifecycle cases. Full Python/corpus/Node suites remain local. Native
+proof covers three hosts; npm proof covers Linux/macOS. At most two heavy jobs run.
 
-CI runs a tiny API/CLI contract selection, independent wheel/sdist installation
-smoke, native launch/conversion smoke and npm/npx consumer smoke. Windows also
-runs exactly four source DNS lifecycle cases: isolated entry, hostile Python
-paths, timeout cleanup and owner-exit cleanup. The full Python suite, corpus and
-Node launcher suite stay local. Native build/runtime evidence remains required
-on Linux x64/glibc, Windows x64 and macOS ARM64. At most two heavy jobs run at once.
+The guide helper validates version, targets, asset hashes and availability before
+rendering concise notes. Keep public byte/consumer gates when shortening text.
+Full commands belong in [INSTALL.md](INSTALL.md); format contracts in [FORMATS.md](FORMATS.md).
 
-The release producer must be a completed successful `ci.yml` push run from this
-repository on `main` at the exact tagged commit. Admission checks tracked source
-and tool identities, the complete unexpired artifact set, transport digests,
-package/archive inventories and explicit smoke evidence for all three targets.
-Missing, stale, foreign or mismatched evidence stops publication; there is no
-rebuild fallback. Release publication preserves the admitted package/archive bytes.
+## Historical releases
 
-For a failed run, use GitHub's built-in **Re-run failed jobs** so successful
-producer jobs and their admitted artifacts remain available. Check the completed
-attempt and evidence again before reuse. Dependency caches save downloads; they
-do not prove success or authorize an arbitrary unchanged-binary cache. A new
-source, version or tool identity requires a matching successful producer.
-
-## Native, npm and guide gates
-
-The reviewed target facts are maintained in `.github/distribution.json`. Current
-version comes from `pyproject.toml`; API and every accepted artifact must match it.
-The initial native set is Linux x86_64/glibc, Windows x86_64 and macOS ARM64.
-Build each on its matching native host, using the exact embedded Python and locked
-dependencies. Verify outside the checkout with Python absent from consumer PATH.
-Keep package installation, native runtime proof and public downloads distinct.
-
-Native aggregate admission requires all three matching PASS records and exact
-archive bytes. `binaries.json` and `SHA256SUMS` bind archive names/hashes; shipped
-brewdoc/version.json binds version/source/Python/target. Keep the whole one-folder
-bundle, its native libraries, JS data and licenses intact. Signing descriptions
-must reflect the actual artifacts; checksums do not replace publisher signatures.
-
-The npm packages are brewdoc, brewdoc-linux-x64-glibc, brewdoc-win32-x64 and
-brewdoc-darwin-arm64, all at the exact same version. The platform tarballs contain
-the admitted complete native bundles. Verify packed inventories and SHA-512
-integrities, then fresh local installs and cancellation behavior on all three
-hosts before publication. No lifecycle install hook or runtime download is used.
-Authentication/publication requires specifically authorized npm access. Keep
-credentials out of source, packages, notes and evidence.
-
-Render the staged body from the accepted aggregate directories:
-
-```sh
-python .github/workflows/release_guide.py check --checkout .
-python .github/workflows/release_guide.py render --checkout . --phase staged --native-manifest release-assets/binaries.json --npm-manifest npm-assets/npm-manifest.json --output staged-body.md
-```
-
-The staged body marks its registry/install/download commands conditional. The
-release workflow's separate asset helper handles draft admission and publication;
-the guide helper only checks facts and writes deterministic text.
-
-After publication, download actual GitHub/PyPI/npm bytes and verify their admitted
-identities. Run downloaded native archives and fresh public npm/npx installs on
-each matching host. Required proof includes receipt-first stdout, --out, self-check,
-conversion, runtime prerequisites and cancellation cleanup. Missing native/npm
-consumer proof prevents claiming those channels accepted. Existing Python release
-availability remains independently true if another channel fails.
-
-The public admission helper aggregates matching byte and consumer records into
-public-acceptance.json. The guide helper refuses missing or changed version/source,
-archive/package identities, or any required native/npm/npx PASS record:
-
-```sh
-python .github/workflows/release_guide.py render --checkout . --phase public --native-manifest release-assets/binaries.json --npm-manifest release-assets/npm-manifest.json --availability public-acceptance.json --output public-body.md
-```
-
-The public finalizer regenerates and compares the exact body before updating it.
-README's dynamic version badges reflect published registries/releases. Its direct
-versioned links remain conditional before first publication; they become usable
-without another source commit when that exact release passes the public gates.
-Only advertise tested target/runtime/signing facts. Root llms.txt gives concise
-public entry links and does not promise client discovery.
-
-Historical 0.2.0/0.3.0 releases are public Python wheel/sdist releases. Preserve
-their tags and bytes. Amend guide text only from each release's original features
-and available channels; never add later EPUB, URL, native or npm features to 0.2.0,
-or native/npm assets to 0.3.0.
-
-## Fixed 0.3.1 continuation
-
-After the reviewed continuation workflow reaches `main`, use its fixed dispatch
-to complete partial publication. Do not rerun the original failed tag workflow:
-GitHub reruns dependent jobs too, including its faulty lookup of an existing draft.
-Keep the three original 0.2.0 recovery fields empty:
-
-```sh
-gh workflow run release.yml --repo kochetkov-ma/brewdoc --ref main -f operation=resume-v031 -f prepared_run_id= -f approved_wheel_sha256= -f approved_sdist_sha256=
-```
-
-This operation accepts only `main`. Release payloads remain bound to `v0.3.1`,
-source `7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7`, producer CI `38169296455`
-attempt 1 and release-manifest SHA-256
-`e2a24e3b9cd3fe72212cd2801a71636511e8d370da17ad8bbc5cfcb2994a8f38`.
-It reuses unchanged accepted artifacts without rebuilding, uploading to PyPI
-again or writing tags. The current controller commit/run and actual npm provenance
-are recorded separately from the original package source; neither identity is relabelled.
-
-Admission rechecks the fixed tag, manifest, public PyPI bytes and existing draft
-`409891511`. The separate main-only `continuation-admit` job uses `contents: write`
-for authenticated draft admission; normal `distribution-admit` keeps read access.
-npm reuses existing versions only after their metadata and actual tarballs match
-accepted bytes/integrity; missing platforms publish before main. Pending stages,
-unknown registry state or mismatches require investigation, not a blind retry.
-
-The workflow's `GITHUB_TOKEN` cannot update an old release target whose workflows
-differ because it lacks workflow-write permission. Fixed continuation therefore
-uses the following operator steps; normal tag-push publication remains automatic:
-
-1. After all four public npm packages match accepted bytes, the release maintainer
-   uses existing authorized `gh` access with repo and workflow scopes to publish the
-   exact admitted draft. Download this controller's sealed `release-assets` first:
-
-   ```sh
-   python .github/workflows/release_assets.py publish --input release-assets --tag v0.3.1 --source-sha 7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7
-   ```
-
-2. Continuation `github-release` only runs `verify-public`. If it failed while
-   waiting for the private draft, rerun that failed job and its dependents in the
-   new corrected controller dispatch after publication. Use its run ID, never the
-   original tag workflow or an earlier faulty controller.
-
-3. After public native/npm/npx consumers on all three hosts pass, continuation
-   `release-complete` admits their evidence, renders the final guide and uploads
-   notes/proof. It does not update the release body. Download that controller's
-   admitted evidence into `public-evidence` and its guide as `public-body.md`, then
-   the release maintainer finalizes with the same authorized access:
-
-   ```sh
-   python .github/workflows/release_assets.py finalize --input release-assets --tag v0.3.1 --source-sha 7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7 --evidence public-evidence --body public-body.md
-   ```
-
-Verify actual public body/asset readback before declaring completion. A dispatched
-or successful publisher job alone does not establish accepted recovery.
-
-### Available 0.3.1 channels
-
-If npm publication remains unavailable, PyPI and GitHub standalone delivery can
-proceed independently. This does not complete the npm channel or issues #39/#40.
-Keep the fixed version, tag, original source, sealed packages and assets unchanged.
-The release maintainer publishes the exact admitted draft with the existing
-release helper and authorized `gh` access, then applies reviewed partial notes
-and verifies readback.
-Partial notes replace only the sealed staged availability paragraph: Python and
-standalone downloads are public; npm publication is pending; use pip, uv, pipx or
-native commands; the npm/npx registry commands are unavailable. All installation
-flows remain present for later channel completion.
-
-After publication, run the reviewed main-only binary verification operation with
-the three original recovery fields empty:
-
-```sh
-gh workflow run release.yml --repo kochetkov-ma/brewdoc --ref main -f operation=verify-v031-binaries -f prepared_run_id= -f approved_wheel_sha256= -f approved_sdist_sha256=
-```
-
-It admits the same fixed source/artifacts and public PyPI/GitHub bytes, then checks
-downloaded native bundles on all three supported hosts. It skips npm publication,
-npm tooling installation and npm/npx consumer checks, and skips full
-`release-complete`. Admit all three hosts' records through `native_evidence`
-before claiming native acceptance. Record Python/GitHub/native evidence separately;
-npm publication and public npm/npx consumers remain pending. Do not retry generic
-registry refusals as part of binary verification.
-
-Normal tag-push and `resume-v031` retain their full npm gates. Future continuation
-may admit the exact reviewed partial body only on the published release; final
-all-channel notes still require matching public npm bytes and actual three-host
-npm/npx proof. Successful native verification does not complete the overall task.
+0.2.0/0.3.0 are Python wheel/sdist releases. Their notes describe their original
+features; do not retrofit later assets or EPUB/URL features into 0.2.0.
+0.3.1 retains source 7c923c99f38f5f8146a64cb4f2eb7784cab4b0d7, its fixed tag and
+13 original assets. Python/GitHub/native are available; npm/npx registry installation
+remains unavailable. Existing native evidence and reviewed notes may be retained;
+package/seal/provenance identities are not rewritten. The fixed resume-v031 and
+verify-v031-binaries controller operations are retired. Notes-only revisions require
+exact public readback, without a new version, package rebuild or PyPI republish.
 
 ## Original 0.2.0 recovery
 

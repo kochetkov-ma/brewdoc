@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -29,8 +30,7 @@ def release(tmp_path):
               "release_features": ["Accepted conversion"],
               "signing": {"linux": "Checksums", "windows": "Unsigned", "macos": "Ad hoc"},
               "npm": {"name": "brewdoc", "node": "24.21.0", "npm": "12.2.0", "packages": {
-                  "linux-x64": "brewdoc-linux-x64-glibc", "windows-x64": "brewdoc-win32-x64",
-                  "macos-arm64": "brewdoc-darwin-arm64"}}}
+                  "linux-x64": "brewdoc-linux-x64-glibc", "macos-arm64": "brewdoc-darwin-arm64"}}}
     (tmp_path / ".github/distribution.json").write_text(json.dumps(policy), encoding="utf-8")
     native = {"schema": 1, "version": "1.2.3", "source_sha": "a" * 40, "targets": {}}
     checksums = []
@@ -44,8 +44,7 @@ def release(tmp_path):
                                       "minimum_tested": facts["verification_floor"], "signing": policy["signing"]}
         checksums.append(f"{archive['sha256']}  {name}")
     (tmp_path / "SHA256SUMS").write_text("\n".join(sorted(checksums)) + "\n", encoding="ascii")
-    names = {"linux-x64": "brewdoc-linux-x64-glibc", "windows-x64": "brewdoc-win32-x64",
-             "macos-arm64": "brewdoc-darwin-arm64"}
+    names = policy["npm"]["packages"]
     packages = []
     for name in (*names.values(), "brewdoc"):
         filename = f"{name}-1.2.3.tgz"
@@ -56,7 +55,7 @@ def release(tmp_path):
                   "filename": filename, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest(),
                   "integrity": "sha512-" + base64.b64encode(hashlib.sha512(payload).digest()).decode("ascii")}
         packages.append(record)
-    for record, target in zip(packages[:-1], targets, strict=True):
+    for record, target in zip(packages[:-1], names, strict=True):
         record.update(target=target, native_archive=native["targets"][target]["archive"])
     packages[-1]["metadata"].update(optionalDependencies={name: "1.2.3" for name in names.values()},
                                    brewdocTargets={target: {"package": name} for target, name in names.items()})
@@ -67,7 +66,9 @@ def release(tmp_path):
                         key: row["archive"][key] for key in ("bytes", "sha256")} for row in native["targets"].values()}},
                     "npm": {"packages": {row["metadata"]["name"]: {
                         "version": "1.2.3", "integrity": row["integrity"]} for row in packages}},
-                    "consumers": {target: {"native": "PASS", "npm": "PASS", "npx": "PASS"} for target in targets}}
+                    "consumers": {"linux-x64": {"native": "PASS", "npm": "PASS", "npx": "PASS"},
+                                  "windows-x64": {"native": "PASS"},
+                                  "macos-arm64": {"native": "PASS", "npm": "PASS", "npx": "PASS"}}}
     return tmp_path, native, npm, availability
 
 
@@ -115,6 +116,19 @@ def test_unsupported_target_refuses_before_download_links(release):
         admit(release)
 
 
+def test_windows_npm_policy_refuses_before_registry_commands(release):
+    # GIVEN two admitted npm platforms and three native platforms
+    assert len(admit(release)["npm"]["packages"]) == 3, "the selected npm packages must pass"
+    path = release[0] / ".github/distribution.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["npm"]["packages"]["windows-x64"] = "brewdoc-win32-x64"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    # WHEN policy adds an unaccepted npm platform
+    # THEN native Windows support cannot become an npm claim
+    with pytest.raises(ValueError, match="npm target set"):
+        admit(release)
+
+
 @pytest.mark.parametrize("change", ["filename", "sha256", "bytes", "checksum", "payload"])
 def test_changed_native_archive_or_checksum_refuses(release, change):
     # GIVEN an accepted release with one altered artifact binding
@@ -136,7 +150,7 @@ def test_changed_native_archive_or_checksum_refuses(release, change):
 @pytest.mark.parametrize("key,value", [("version", "1.2.4"), ("source_sha", "b" * 40), ("target", "linux-arm64")])
 def test_npm_package_substitution_refuses(release, key, value):
     # GIVEN a matching packed package set with one substituted platform record
-    assert len(admit(release)["npm"]["packages"]) == 4, "baseline packages must pass"
+    assert len(admit(release)["npm"]["packages"]) == 3, "two platform packages and main must pass"
     release[2]["packages"][0][key] = value
     # WHEN npm identities are admitted
     # THEN version, source and platform substitutions cannot become npm commands
@@ -158,7 +172,8 @@ def test_public_claims_require_complete_matching_availability(release, section):
 @pytest.mark.parametrize("text", ["brewdoc --version", "pip install brewdoc==1.2.4",
                                  "https://github.com/kochetkov-ma/brewdoc/releases/download/v1.2.4/brewdoc-1.2.4-linux-x64.tar.gz",
                                  "https://github.com/kochetkov-ma/brewdoc/releases/download/v1.2.3/brewdoc-1.2.2-linux-x64.tar.gz",
-                                 "https://github.com/kochetkov-ma/brewdoc/releases/download/v1.2.3/brewdoc-1.2.3-linux-arm64.tar.gz"])
+                                 "https://github.com/kochetkov-ma/brewdoc/releases/download/v1.2.3/brewdoc-1.2.3-linux-arm64.tar.gz",
+                                 "https://github.com/kochetkov-ma/brewdoc/blob/v1.2.2/INSTALL.md"])
 def test_guide_command_and_version_drift_refuses(release, text):
     # GIVEN an invented flag or stale versioned install/download command
     policy = json.loads((release[0] / ".github/distribution.json").read_text(encoding="utf-8"))
@@ -185,29 +200,70 @@ def test_complete_release_checksum_inventory_admits_native_and_npm_assets(releas
     assert (facts["version"], facts["phase"]) == ("1.2.3", "public"), "complete release sums must remain usable"
 
 
-def test_renderer_preserves_install_commands_windows_paths_and_publication_condition(release):
-    # GIVEN the same accepted artifacts for staged and public instructions
+@pytest.mark.parametrize("target", ["linux-x64", "macos-arm64"])
+@pytest.mark.parametrize("consumer", ["npm", "npx"])
+def test_public_npm_commands_require_both_os_consumers(release, target, consumer):
+    # GIVEN admitted public bytes and consumers for both npm platforms
+    assert admit(release, "public")["phase"] == "public", "complete two-platform evidence must pass"
+    release[3]["consumers"][target].pop(consumer)
+    # WHEN one required npm or npx consumer is missing
+    # THEN public notes refuse before advertising the channel
+    with pytest.raises(ValueError, match="public"):
+        admit(release, "public")
+
+
+def test_renderer_advertises_npm_only_after_public_acceptance(release):
+    # GIVEN accepted artifacts with three native targets and two npm targets
     staged_facts, public_facts = admit(release), admit(release, "public")
-    commands = ('.venv/bin/python -m pip install "brewdoc==1.2.3"\n',
-                r'.\.venv\Scripts\python.exe -m pip install "brewdoc==1.2.3"' + "\n",
-                'uvx --python 3.12 --from "brewdoc==1.2.3" brewdoc --self-check\n',
+    assert tuple(public_facts["policy"]["npm"]["packages"]) == (
+        "linux-x64", "macos-arm64"), "Windows must remain a native-only target"
+    commands = ('python -m pip install "brewdoc==1.2.3"\n',
                 'uv tool install --python 3.12 "brewdoc==1.2.3"\n',
                 'pipx install --python 3.12 "brewdoc==1.2.3"\n',
-                '\nnpm install --global brewdoc@1.2.3\n',
-                'npx --yes --package brewdoc@1.2.3 brewdoc --self-check\n',
-                'tar -xzf brewdoc-1.2.3-linux-x64.tar.gz -C brewdoc-1.2.3-linux-x64\n',
-                'tar -xzf brewdoc-1.2.3-macos-arm64.tar.gz -C brewdoc-1.2.3-macos-arm64\n',
-                'Expand-Archive "brewdoc-1.2.3-windows-x64.zip" -DestinationPath "brewdoc-1.2.3-windows-x64"\n',
-                r'Get-Content .\brewdoc\version.json' + "\n",
-                r'.\brewdoc\brewdoc.exe "C:\path\file.pdf" --out file.md' + "\n")
-    condition = "This release is staged. The commands and download links below apply only after this exact version and channel are published and verified."
-    # WHEN complete installation bodies are rendered
+                'brewdoc --self-check\n', 'brewdoc file.pdf --out file.md\n')
+    npm_commands = ('npm install --global brewdoc@1.2.3\n',
+                    'npx --yes --package brewdoc@1.2.3 brewdoc --self-check\n')
+    condition = "Staged release. Install commands and downloads apply after publication and verification."
+    # WHEN staged and accepted public notes are rendered
     staged, public = guide.render(staged_facts), guide.render(public_facts)
-    # THEN copy/paste command lines retain exact versions and single Windows backslashes
-    assert (tuple(staged.count(command) for command in commands), tuple(public.count(command) for command in commands)) == (
-        (1,) * 12, (1,) * 12), "both bodies must contain every literal install/native command exactly once"
-    assert (staged.count(condition), public.count(condition), guide.render(public_facts)) == (
-        1, 0, public), "only staged output carries the publication condition and rendering is deterministic"
+    # THEN each install choice uses the admitted version and npm commands require public evidence
+    assert (tuple(staged.splitlines(keepends=True).count(command) for command in commands),
+            tuple(public.splitlines(keepends=True).count(command) for command in commands)) == (
+        (1,) * 5, (1,) * 5), "notes must retain versioned install choices and usable conversion commands"
+    assert (tuple(staged.count(command) for command in npm_commands), tuple(public.count(command) for command in npm_commands)) == (
+        (0, 0), (1, 1)), "staged notes cannot advertise unaccepted registry commands"
+    assert (staged.count(condition), public.count(condition)) == (
+        1, 0), "install/download availability must remain conditional until public acceptance"
+    assert guide.render(public_facts) == public, "identical accepted inputs must render deterministic notes"
+
+
+def test_renderer_links_all_admitted_native_archives_and_versioned_install_guide(release):
+    # GIVEN exact native archives including Windows with native-only public acceptance
+    facts = admit(release, "public")
+    assert tuple(facts["targets"]) == (
+        "linux-x64", "windows-x64", "macos-arm64"), "native target coverage must remain complete"
+    # WHEN compact notes select downloads and the full installation guide
+    body = guide.render(facts)
+    downloads = re.findall(r"/releases/download/v1\.2\.3/([^\s)]+)", body)
+    # THEN every admitted archive and its checksum inventory remain accessible
+    assert downloads == [record["archive"]["filename"] for record in facts["targets"].values()] + [
+        "SHA256SUMS"], "short notes must preserve all native downloads and checksums"
+    assert f"{guide.REPOSITORY}/blob/v1.2.3/INSTALL.md" in body, "full guide must use the same immutable version"
+
+
+def test_cli_checks_install_guide_version_drift(release, capsys):
+    # GIVEN current README and llms commands plus a stale full installation guide
+    checkout = release[0]
+    assert guide.project_version(checkout) == "1.2.3", "the package metadata and API versions must agree"
+    for name in ("README.md", "llms.txt"):
+        (checkout / name).write_text("python -m pip install brewdoc==1.2.3\n", encoding="utf-8")
+    (checkout / "INSTALL.md").write_text("python -m pip install brewdoc==1.2.2\n", encoding="utf-8")
+    # WHEN the maintained-document CLI validates all consumer entry points
+    with pytest.raises(SystemExit) as refusal:
+        guide.main(["check", "--checkout", str(checkout)])
+    # THEN stale full instructions fail even when the summaries remain current
+    assert (refusal.value.code, capsys.readouterr().err) == (
+        1, "Release guide refused: Maintained guide flag, version or asset differs\n"), "INSTALL.md must share the metadata version"
 
 
 def test_cli_refusal_preserves_an_existing_reviewed_body(release, capsys):

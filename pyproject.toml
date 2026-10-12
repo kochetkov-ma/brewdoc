@@ -1,7 +1,7 @@
 [project]
 name = "brewdoc"
-version = "0.3.1"
-description = "Brew any document into LLM-ready Markdown: PDF tables, spreadsheets, docx - no ML, deterministic, with a JSON receipt"
+version = "0.3.2"
+description = "Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -55,11 +55,13 @@ include = [
     "/.gitattributes",
     "/.github/dependabot.yml",
     "/.github/distribution.json",
+    "/.github/npm-diagnostic-public.pem",
     "/.github/standalone-licenses",
     "/.github/workflows",
     "/.gitignore",
     "/.python-version",
     "/FORMATS.md",
+    "/INSTALL.md",
     "/LICENSE",
     "/README.md",
     "/RELEASING.md",
