@@ -46,4 +46,12 @@ content on timing-only expiry; hard failures refuse. Ordinary requests use GET;
 only the narrow credential-free HN Algolia XHR POST exception is admitted.
 See the format limits for supported JS runtimes and prerequisite refusals.
 
+## Related projects
+
+- [BrewPage](https://brewpage.app): free hosting for HTML, Markdown, JSON and files; each upload returns a shareable HTTPS link.
+- [BrewPage MCP server](https://github.com/kochetkov-ma/brewpage-openapi/tree/main/mcp-server): npm package brewpage-mcp for publishing to BrewPage from MCP clients.
+- [claude-brewcode](https://github.com/kochetkov-ma/claude-brewcode): plugin suite for Claude Code. Its brewdoc plugin is a different tool from this brewdoc CLI.
+- [claude-brewcode documentation](https://doc-claude.brewcode.app): installation and skill reference for that suite.
+- [brewcode.app](https://brewcode.app): home site of the Brew projects.
+
 This is a readable entry point, without a promise of automatic client discovery.
