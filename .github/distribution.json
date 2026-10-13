@@ -51,8 +51,8 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Package metadata declares Development Status 5 - Production/Stable",
-    "README and llms.txt link the related Brew projects"
+    "Opt-in article extraction for local HTML, static URLs and JavaScript snapshots, with explicit ambiguity refusals and coverage omissions",
+    "Installed Python packages verified on CPython 3.13.15 Ubuntu x64 and CPython 3.14.7 macOS ARM64/Windows x64; optional JavaScript executes on Unix and refuses before requests on Windows"
   ],
   "releases": {
     "0.2.0": {
