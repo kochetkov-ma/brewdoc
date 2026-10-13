@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "document_id": "html-mdn-flexbox0",
+  "source_sha256": "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5",
+  "title": "Flexbox 0 — starting code",
+  "topics": ["static HTML source features", "full-body-order", "peer-articles", "headings", "filler-prose"],
+  "language": "en",
+  "annotation_scope": "full_body",
+  "review_status": "complete",
+  "evidence_method": "Original HTML was read in full. Manual source inspection counted literal body elements, headings and paragraphs. Download bytes and SHA256 matched the pinned upstream URL. No brewdoc renderer or browser was run for this annotation.",
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Recovered HTML body",
+      "source_part": "body",
+      "body_element_order": [
+        {"tag": "header", "attributes": {}},
+        {"tag": "section", "attributes": {}}
+      ],
+      "headings": [
+        {"level": 1, "text": "Sample flexbox example"},
+        {"level": 2, "text": "First article"},
+        {"level": 2, "text": "Second article"},
+        {"level": 2, "text": "Third article"}
+      ],
+      "paragraph_count": 4,
+      "list_count": 0,
+      "list_item_count": 0,
+      "link_count": 0,
+      "tables": [],
+      "forms": [],
+      "controls": [],
+      "code": [],
+      "navigation_and_content_regions": [
+        {"tag": "header", "attributes": {}, "heading_text": ["Sample flexbox example"], "link_count": 0},
+        {"tag": "article", "attributes": {}, "heading_text": ["First article"], "link_count": 0},
+        {"tag": "article", "attributes": {}, "heading_text": ["Second article"], "link_count": 0},
+        {"tag": "article", "attributes": {}, "heading_text": ["Third article"], "link_count": 0}
+      ],
+      "images": [],
+      "excluded_source_objects": {
+        "script_elements": 0,
+        "style_elements": 1,
+        "comment_nodes": 0,
+        "template_elements": 0,
+        "source_hidden_elements": 0,
+        "svg_geometry_elements": 0,
+        "browser_created_controls": 0
+      }
+    }
+  ],
+  "resource_measurements": {
+    "source_bytes": 2368,
+    "tables": 0,
+    "source_table_rows": 0,
+    "source_table_cells": 0,
+    "source_controls": 0,
+    "pre_blocks": 0,
+    "inline_code_elements": 0
+  },
+  "omissions": ["Head metadata and inline styles do not contribute visible body text."],
+  "limitations": [
+    "No browser rendering or computed layout was inspected.",
+    "Source counts describe the input, not converter output or semantic acceptance.",
+    "The three peer articles contain upstream teaching filler prose, not production editorial content."
+  ]
+}

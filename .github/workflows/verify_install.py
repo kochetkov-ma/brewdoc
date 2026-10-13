@@ -16,6 +16,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 import tarfile
 import tempfile
@@ -28,6 +29,53 @@ PRIVATE_PARTS = {".codex", ".agents", ".claude", ".venv", "docs", "AGENTS.md", "
 UNICODE_ROUTES = {"html", "epub"}
 EPUB_INPUTS = {"tests/fixtures/epub/epubcheck-minimal.epub",
                "tests/fixtures/epub/standardebooks-herland.epub"}
+VERIFIER_SOURCE = ".github/workflows/verify_install.py"
+TARGETS = {"linux-x64": ("Linux", {"x86_64", "amd64"}),
+           "macos-arm64": ("Darwin", {"arm64", "aarch64"}),
+           "windows-x64": ("Windows", {"x86_64", "amd64"})}
+
+
+def runtime_identity() -> dict:
+    """Record interpreter, native target and normal/free-threaded ABI observations."""
+    os_name = platform.system()
+    if sys.platform == "darwin":
+        os_version = platform.mac_ver()[0]
+    elif sys.platform == "win32":
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion") as key:
+            os_name = winreg.QueryValueEx(key, "ProductName")[0]
+        os_version = platform.win32_ver()[1]
+    elif sys.platform == "linux":
+        release = platform.freedesktop_os_release()
+        os_name, os_version = release.get("ID", ""), release.get("VERSION_ID", "")
+    else:
+        os_version = platform.release()
+    return {"implementation": platform.python_implementation(), "version": platform.python_version(),
+            "system": platform.system(), "system_release": platform.release(),
+            "os_version": os_version, "os_name": os_name,
+            "machine": platform.machine(), "libc": list(platform.libc_ver()),
+            "soabi": sysconfig.get_config_var("SOABI"), "abi_flags": getattr(sys, "abiflags", ""),
+            "gil_disabled": bool(sysconfig.get_config_var("Py_GIL_DISABLED")),
+            "pointer_bits": 64 if sys.maxsize > 2**32 else 32}
+
+
+def check_runtime(identity: dict, expected_python: str, target: str) -> None:
+    """Admit only the requested normal-GIL CPython patch and native target."""
+    system, machines = TARGETS[target]
+    minor = "".join(expected_python.split(".")[:2])
+    soabi = {"linux-x64": f"cpython-{minor}-x86_64-linux-gnu",
+             "macos-arm64": f"cpython-{minor}-darwin", "windows-x64": f"cp{minor}-win_amd64"}[target]
+    os_matches = {"linux-x64": identity.get("os_name") == "ubuntu" and identity.get("os_version") == "22.04",
+                  "macos-arm64": identity.get("os_version", "").split(".")[0] == "15",
+                  "windows-x64": "Windows Server 2025" in identity.get("os_name", "")}[target]
+    if (identity.get("implementation") != "CPython" or identity.get("version") != expected_python
+            or identity.get("system") != system or identity.get("machine", "").lower() not in machines
+            or not os_matches or identity.get("pointer_bits") != 64 or identity.get("gil_disabled") is not False
+            or identity.get("abi_flags") != "" or identity.get("soabi") != soabi
+            or (system == "Linux" and identity.get("libc", [""])[0] != "glibc")):
+        raise ValueError("Installed verification runtime differs from the selected cell")
 
 
 def digest(path: Path) -> str:
@@ -121,11 +169,46 @@ def prepare(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
                     ("pyproject.toml", "uv.lock", ".github/workflows/build_standalone.py",
                      ".github/workflows/verify_install.py", "tests/test_contract.py", "tests/test_epub.py",
                      "tests/test_spreadsheets.py") if smoke else (
-                    "pyproject.toml", "uv.lock", "benchmarks/corpus.json", "tests/fixtures/receipts.json"))},
+                    "pyproject.toml", "uv.lock", VERIFIER_SOURCE,
+                    "benchmarks/corpus.json", "tests/fixtures/receipts.json"))},
                 "files": {path.relative_to(bundle).as_posix(): {
                     "size": path.stat().st_size, "sha256": digest(path)}
                     for path in (wheel, sdist, runtime, optional, build)}}
     (metadata / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def prepare_runtime(checkout: Path, bundle: Path) -> None:
+    """Seal full compatibility inputs copied from the already-built smoke pair."""
+    manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
+    check_scope(manifest, True)
+    verify_manifest(bundle, manifest)
+    runtime = bundle / "ci-runtime"
+    (runtime / "dist").mkdir(parents=True, exist_ok=False)
+    original = distributions(bundle / "dist")
+    for source in original:
+        shutil.copyfile(source, runtime / "dist" / source.name)
+    prepare(checkout, runtime)
+    copied = distributions(runtime / "dist")
+    if [(path.name, digest(path)) for path in copied] != [(path.name, digest(path)) for path in original]:
+        raise ValueError("Compatibility distributions differ from the smoke pair")
+
+
+def check_runtime_pair(bundle: Path) -> None:
+    """Compare both manifests and actual archives before CI compatibility installation."""
+    parent = bundle.parent
+    root_manifest = json.loads((parent / "ci-package/manifest.json").read_text(encoding="utf-8"))
+    runtime_manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
+    check_scope(root_manifest, True)
+    verify_manifest(parent, root_manifest)
+    original = distributions(parent / "dist")
+    copied = distributions(bundle / "dist")
+    for source, copy in zip(original, copied, strict=True):
+        name = "dist/" + source.name
+        expected = {"size": source.stat().st_size, "sha256": digest(source)}
+        if (source.name != copy.name or digest(copy) != expected["sha256"]
+                or root_manifest["files"].get(name) != expected
+                or runtime_manifest["files"].get(name) != expected):
+            raise ValueError("Compatibility distributions differ from the smoke pair")
 
 
 def check_origin(module: Path, prefix: Path, checkout: Path, search_paths: list[str], direct_url: dict) -> None:
@@ -276,9 +359,20 @@ def installed_url_runtime(enabled: bool) -> dict:
             "shared_exclusion": "Existing Python and base conversion dependencies; entire brewdoc package included conservatively"}
 
 
+def check_js_refusal(receipt: dict) -> None:
+    """Require an unavailable runtime to stop before any acquisition request."""
+    acquisition = receipt.get("acquisition", {})
+    if (receipt.get("reason") != "URL acquisition refused during prerequisites"
+            or receipt.get("receipt_schema") != "brewdoc.receipt/2" or receipt.get("file_ok") is not False
+            or acquisition.get("refusal_stage") != "prerequisites"
+            or acquisition.get("counts", {}).get("requests") != 0):
+        raise ValueError("Unavailable JS prerequisite refusal changed")
+
+
 def probe_js(enabled: bool) -> dict:
     """Check installed optional capture or its explicit platform/dependency refusal."""
     import brewdoc
+    from brewdoc import BrewdocError
     from brewdoc.htmljs import _check_runtime
 
     supported = (sys.platform == "linux" and sys.maxsize > 2**32
@@ -293,22 +387,18 @@ def probe_js(enabled: bool) -> dict:
     if not enabled or not supported:
         try:
             _check_runtime()
-        except Exception as error:
-            if not str(error):
-                raise ValueError("Unsupported JS must provide an explicit refusal") from error
+        except BrewdocError as error:
+            expected = ("JS installed native prerequisites unsupported" if enabled else
+                        "JS runtime unavailable; install brewdoc[render-js]")
+            if str(error) != expected:
+                raise ValueError("Unavailable JS runtime refusal changed") from error
             scripts = Path(sys.prefix) / ("Scripts" if os.name == "nt" else "bin")
             console = scripts / ("brewdoc.exe" if os.name == "nt" else "brewdoc")
             refused = subprocess.run([str(console), "--url", "https://fixture.test/", "--render-js"],
                                      capture_output=True, timeout=15)
-            if refused.returncode != 1 or refused.stderr:
-                raise ValueError("Unavailable JS console must refuse with its receipt")
             receipt = json.loads(refused.stdout)
-            if receipt.get("receipt_schema") != "brewdoc.receipt/2" or receipt.get("file_ok") is not False:
-                raise ValueError("Unavailable JS console refusal receipt changed")
-            acquisition = receipt.get("acquisition", {})
-            if (acquisition.get("refusal_stage") != "prerequisites"
-                    or acquisition.get("counts", {}).get("requests") != 0):
-                raise ValueError("Unavailable JS must refuse before acquisition")
+            check_js_refusal(receipt)
+            check_cli(refused, (1, receipt, ""))
             return {**footprint, "enabled": enabled, "supported": supported, "refusal": str(error),
                     "cli_receipt": receipt}
         raise ValueError("Unsupported or missing optional runtime did not refuse")
@@ -350,10 +440,54 @@ def probe_smoke(checkout: Path, console: str) -> dict:
             "epub_refusal": probe_epub_refusal(console)}
 
 
-def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool = False) -> dict:
+def probe_article(console: str) -> dict:
+    """Check installed article API/CLI selection and refusal without licensed inputs."""
+    import brewdoc
+
+    source = Path.cwd() / "article.html"
+    source.write_text('<html><head><title>Document title</title></head><body>'
+                      '<nav>outside navigation</nav><article><h1>Selected heading</h1>'
+                      '<p>Retained café fact.</p></article><footer>outside footer</footer></body></html>',
+                      encoding="utf-8")
+    default = brewdoc.run(source)
+    actual = brewdoc.run(source, article=True)
+    code, receipt, markdown = actual
+    omission = "body content outside the selected article or main subtree; complete page coverage is not claimed"
+    if ((code, receipt["file_ok"], receipt["route"], receipt["not_carried"][-1]) != (0, True, "html", omission)
+            or not markdown.endswith('<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Document title"\n\n'
+                                     '### Selected heading\n\nRetained café fact\\.\n')
+            or "outside navigation" in markdown or "outside footer" in markdown
+            or omission not in markdown or "outside navigation" not in default[2]
+            or brewdoc.run(source, article=False) != default or brewdoc.render_html(source, article=True)[0] != markdown):
+        raise ValueError("Installed article selection or default preservation changed")
+    cli = [check_cli(subprocess.run([console, str(source), "--article"], capture_output=True, timeout=120), actual)]
+    out = Path.cwd() / "article.md"
+    expected = (code, {**receipt, "out": str(out)}, markdown)
+    cli.append(check_cli(subprocess.run([console, str(source), "--article", "--out", str(out)],
+                                        capture_output=True, timeout=120), expected, out))
+    source.write_text('<html><body><p>Unmarked page</p></body></html>', encoding="utf-8")
+    sentinel = b"existing output\n"
+    out.write_bytes(sentinel)
+    refused = brewdoc.run(source, out=out, article=True)
+    if ((refused[0], refused[1]["file_ok"], refused[1]["reason"], refused[2], out.read_bytes()) !=
+            (1, False, "HTML article extraction refused: no eligible article or suitable main", "", sentinel)):
+        raise ValueError("Installed article refusal changed existing output")
+    cli.append(check_cli(subprocess.run([console, str(source), "--article", "--out", str(out)],
+                                        capture_output=True, timeout=120), refused))
+    if out.read_bytes() != sentinel:
+        raise ValueError("Installed article console refusal changed existing output")
+    return {"receipt": receipt, "markdown_sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
+            "refusal": refused[1], "preserved_output_sha256": digest(out), "cli": cli}
+
+
+def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool = False,
+          expected_python: str | None = None, target: str | None = None) -> dict:
     """Check installed identity and console/output contracts for the requested scope."""
     manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
     check_scope(manifest, smoke)
+    identity = runtime_identity()
+    if expected_python is not None:
+        check_runtime(identity, expected_python, target)
     import brewdoc
     from brewdoc import epub
     installed = importlib.metadata.distribution("brewdoc")
@@ -371,7 +505,7 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool 
     if (checked.stdout, checked.stderr) != (("self-check: ok (38 checks)" + os.linesep).encode(), b""):
         raise ValueError("Installed console self-check verdict changed")
     if smoke:
-        return {"verification_scope": "smoke", "python": sys.version,
+        return {"verification_scope": "smoke", "python": sys.version, "runtime": identity,
                 "module": str(Path(brewdoc.__file__).resolve()), "prefix": sys.prefix,
                 "self_check": checked.stdout.decode(), **probe_smoke(checkout, console),
                 "javascript": probe_js(render_js),
@@ -434,19 +568,32 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool 
     cli.append(check_cli(subprocess.run([console, str(absent)], capture_output=True, timeout=120), brewdoc.run(absent)))
     unsupported = Path("unsupported.txt")
     cli.append(check_cli(subprocess.run([console, str(unsupported)], capture_output=True, timeout=120), brewdoc.run(unsupported)))
-    return {"verification_scope": "full", "python": sys.version, "module": str(Path(brewdoc.__file__).resolve()),
+    return {"verification_scope": "full", "python": sys.version, "runtime": identity,
+            "module": str(Path(brewdoc.__file__).resolve()),
             "prefix": sys.prefix, "self_check": checked.stdout.decode(), "routes": routes,
             "cli": cli, "artifacts": artifacts, "epub": epubs,
+            "article": probe_article(console),
             "epub_refusal": probe_epub_refusal(console), "javascript": probe_js(render_js),
             "packages": sorted((item.metadata["Name"], item.version)
                                for item in importlib.metadata.distributions())}
 
 
-def verify(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
+def verify(checkout: Path, bundle: Path, *, smoke: bool = False,
+           expected_python: str | None = None, target: str | None = None) -> None:
     """Install wheel and sdist separately outside checkout, then invoke isolated probes."""
+    started = time.monotonic()
+    identity = runtime_identity()
     manifest = json.loads((bundle / "ci-package/manifest.json").read_text(encoding="utf-8"))
     check_scope(manifest, smoke)
+    if expected_python is not None:
+        check_runtime(identity, expected_python, target)
+    if not smoke and VERIFIER_SOURCE not in manifest["source"]:
+        raise ValueError("Full installed verification requires the verifier source hash")
+    if not smoke and digest(Path(__file__)) != manifest["source"][VERIFIER_SOURCE]:
+        raise ValueError("Installed verifier source differs from the producer")
     verify_manifest(bundle, manifest)
+    if bundle.name == "ci-runtime":
+        check_runtime_pair(bundle)
     if {name: digest(checkout / name) for name in manifest["source"]} != manifest["source"]:
         raise ValueError("Consumer manifests differ from the producer checkout")
     if command(["uv", "--version"], checkout).stdout.decode().split()[1] != manifest["uv"]:
@@ -460,6 +607,7 @@ def verify(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
             raise ValueError("Installation directory must be outside checkout")
         for number, (distribution, render_js) in enumerate(
                 (item, enabled) for item in distributions(bundle / "dist") for enabled in ((False,) if smoke else (False, True))):
+            install_started = time.monotonic()
             prefix = root / f"env-{number}"
             command(["uv", "venv", "--python", sys.executable, str(prefix)], root)
             python = prefix / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -477,36 +625,55 @@ def verify(checkout: Path, bundle: Path, *, smoke: bool = False) -> None:
                 argv.append("--render-js")
             if smoke:
                 argv.append("--smoke")
+            if expected_python is not None:
+                argv.extend(["--expected-python", expected_python, "--target", target])
             checked = command(argv, work)
             observed = json.loads(checked.stdout)
+            if expected_python is not None:
+                check_runtime(observed.get("runtime", {}), expected_python, target)
+                if observed["runtime"] != identity:
+                    raise ValueError("Installed child ABI differs from the parent verifier")
             if smoke and (observed.get("verification_scope"), observed.get("oracle"),
                           [row["probe"] for row in observed.get("probes", [])]) != ("smoke", [], ["epub2", "formula"]):
                 raise ValueError("Installed smoke consumer evidence is incomplete")
             results.append({"distribution": distribution.name, "render_js": render_js,
                             "sha256": digest(distribution),
+                            "elapsed_seconds": time.monotonic() - install_started,
                             "probe": observed})
     report = {"checkout_sha": manifest["checkout_sha"], "uv": manifest["uv"],
               "verification_scope": "smoke" if smoke else "full",
+              "runtime": identity, "expected_python": expected_python, "target": target,
+              "verifier_sha256": digest(Path(__file__)), "elapsed_seconds": time.monotonic() - started,
               "action_cache_hit": os.environ.get("BREWDOC_CACHE_HIT"),
               "action_cache_key": os.environ.get("BREWDOC_CACHE_KEY"), "installations": results}
-    (bundle / "ci-package" / f"verification-{sys.platform}.json").write_text(
+    suffix = f"-{expected_python}" if expected_python is not None else ""
+    (bundle / "ci-package" / f"verification-{sys.platform}{suffix}.json").write_text(
         json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> None:
     """Prepare a producer manifest or verify its unchanged installation inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("prepare", "verify", "probe"))
+    parser.add_argument("mode", choices=("prepare", "prepare-runtime", "verify", "probe"))
     parser.add_argument("--checkout", type=Path, default=Path.cwd())
     parser.add_argument("--bundle", type=Path, default=Path.cwd())
     parser.add_argument("--render-js", action="store_true", help="Probe the isolated optional installation")
     parser.add_argument("--smoke", action="store_true", help="Use two synthetic probes and only base installations")
+    parser.add_argument("--expected-python", help="Require this exact normal-GIL CPython patch")
+    parser.add_argument("--target", choices=tuple(TARGETS), help="Require this native runtime target")
     args = parser.parse_args()
+    if (args.expected_python is None) != (args.target is None):
+        parser.error("--expected-python and --target must be supplied together")
     if args.mode == "probe":
-        result = probe(args.checkout.resolve(), args.bundle.resolve(), args.render_js, smoke=args.smoke)
+        result = probe(args.checkout.resolve(), args.bundle.resolve(), args.render_js, smoke=args.smoke,
+                       expected_python=args.expected_python, target=args.target)
+    elif args.mode == "verify":
+        result = verify(args.checkout.resolve(), args.bundle.resolve(), smoke=args.smoke,
+                        expected_python=args.expected_python, target=args.target)
+    elif args.mode == "prepare-runtime":
+        result = prepare_runtime(args.checkout.resolve(), args.bundle.resolve())
     else:
-        result = {"prepare": prepare, "verify": verify}[args.mode](
-            args.checkout.resolve(), args.bundle.resolve(), smoke=args.smoke)
+        result = prepare(args.checkout.resolve(), args.bundle.resolve(), smoke=args.smoke)
     if result is not None:
         print(json.dumps(result))
 

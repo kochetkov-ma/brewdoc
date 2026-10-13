@@ -28,6 +28,15 @@ _BLOCKS = frozenset({"body", "address", "article", "aside", "div", "footer", "he
 _CONTROL_BOUNDARIES = frozenset({"form", "fieldset", "label", "select", "optgroup", "datalist",
                                 "progress", "meter", "details"})
 _CONTROL_TAGS = _CONTROL_BOUNDARIES | frozenset({"button", "input", "textarea", "output", "option"})
+_ARTICLE_CONTEXTS = _CONTROL_TAGS | frozenset({"nav", "aside", "header", "footer"})
+ARTICLE_OMISSION = (
+    "body content outside the selected article or main subtree; complete page coverage is not claimed"
+)
+_ARTICLE_NO_ROOT = "HTML article extraction refused: no eligible article or suitable main"
+_ARTICLE_MAINS = "HTML article extraction refused: ambiguous mains"
+_ARTICLE_ARTICLES = "HTML article extraction refused: ambiguous articles"
+_ARTICLE_EMPTY = "HTML article extraction refused: empty selected content"
+ARTICLE_REFUSALS = (_ARTICLE_NO_ROOT, _ARTICLE_MAINS, _ARTICLE_ARTICLES, _ARTICLE_EMPTY)
 _EMPHASIS = {"em": "*", "i": "*", "strong": "**", "b": "**"}
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _SPACE = re.compile(r"[ \t\r\n\f]+")
@@ -290,6 +299,11 @@ def _ancestors(node):
         parent = parent.parent
 
 
+def _role_button(node) -> bool:
+    """Recognize the renderer's exact source-declared button role."""
+    return (node.attributes.get("role") or "").strip().lower() == "button"
+
+
 def _control(node, leaving: bool = False) -> tuple[list[str], bool]:
     """Return fixed source records and whether those records consume descendant text."""
     tag, attributes = node.tag, node.attributes
@@ -299,7 +313,7 @@ def _control(node, leaving: bool = False) -> tuple[list[str], bool]:
         return [], False
     if leaving:
         return [], False
-    role_button = (attributes.get("role") or "").strip().lower() == "button"
+    role_button = _role_button(node)
     if tag not in _CONTROL_TAGS and not role_button:
         return [], False
     kind = (attributes.get("type") or "").strip().lower()
@@ -515,8 +529,8 @@ def _cell_text(cell, tables: dict) -> str:
     return "".join(parts).strip()
 
 
-def _prepare_tables(body) -> dict:
-    """Validate total expansion first, then build nested records from the deepest table outward."""
+def _table_layouts(body) -> dict:
+    """Validate the complete body's table expansion before materializing any cells."""
     layouts, pending, expanded = {}, [body], 0
     while pending:
         node = pending.pop()
@@ -529,6 +543,11 @@ def _prepare_tables(body) -> dict:
                 raise BrewdocError("HTML table cells limit exceeded: %d" % _TABLE_CELL_LIMIT)
             layouts[node] = layout
         pending.extend(reversed(_children(node)))
+    return layouts
+
+
+def _prepare_tables(layouts: dict) -> dict:
+    """Materialize selected nested records from the deepest validated table outward."""
     tables = {}
     for table, (height, width, origins, caption_nodes) in reversed(layouts.items()):
         captions = [caption for node in caption_nodes if (caption := _cell_text(node, tables))]
@@ -584,11 +603,10 @@ def _scoped_items(body, tables: dict) -> set:
     return scoped
 
 
-def _html_blocks(body, tally: dict) -> list[tuple]:
+def _html_blocks(body, tally: dict, tables: dict) -> list[tuple]:
     """Walk the recovered body in DOM order without recursive Python calls."""
     blocks, fragments, lists, items, contexts, quotes = [], [], [], [], [], []
     heading, last_list = "", False
-    tables = _prepare_tables(body)
     scoped = _scoped_items(body, tables)
 
     def append_text(text: str) -> None:
@@ -778,7 +796,59 @@ def _html_blocks(body, tally: dict) -> list[tuple]:
     return blocks
 
 
-def _render_html(path: Path, _sheets=None) -> Rendered:
+def _suitable_main(main) -> bool:
+    """Require one visible nonempty h1, independent prose and no visible form."""
+    headings, prose, pending = 0, False, [(main, False)]
+    while pending:
+        node, excluded_prose = pending.pop()
+        tag = node.tag
+        if tag == "-text":
+            prose = prose or (not excluded_prose and bool(node.text().strip()))
+            continue
+        if tag == "-comment" or _hidden(node):
+            continue
+        if tag == "form":
+            return False
+        if tag == "h1" and _literal_text(node).strip():
+            headings += 1
+        excluded_prose = (excluded_prose or tag in _HEADINGS or tag in _CONTROL_TAGS
+                          or tag in ("nav", "table") or _role_button(node))
+        pending.extend((child, excluded_prose) for child in reversed(_children(node)))
+    return headings == 1 and prose
+
+
+def _article_root(body):
+    """Select one explicit visible article or a suitable main without page fallback."""
+    if any(_hidden(parent) for parent in _ancestors(body)):
+        raise BrewdocError(_ARTICLE_NO_ROOT)
+    mains, articles, pending = [], [], [(body, False)]
+    while pending:
+        node, inside_article = pending.pop()
+        tag = node.tag
+        if (tag in ("-text", "-comment") or _hidden(node) or tag in _ARTICLE_CONTEXTS
+                or _role_button(node)):
+            continue
+        if tag == "main" and not inside_article:
+            mains.append(node)
+        if tag == "article":
+            if not inside_article:
+                articles.append(node)
+            inside_article = True
+        pending.extend((child, inside_article) for child in reversed(_children(node)))
+    if len(mains) > 1:
+        raise BrewdocError(_ARTICLE_MAINS)
+    if mains:
+        articles = [node for node in articles if mains[0] in _ancestors(node)]
+    if len(articles) > 1:
+        raise BrewdocError(_ARTICLE_ARTICLES)
+    if articles:
+        return articles[0]
+    if mains and _suitable_main(mains[0]):
+        return mains[0]
+    raise BrewdocError(_ARTICLE_NO_ROOT)
+
+
+def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered:
     """Render one static chapter, or explicitly refuse an unavailable HTML prerequisite."""
     if not _SUPPORTED_RUNTIME:
         raise BrewdocError("HTML requires CPython 3.12-3.14")
@@ -792,11 +862,18 @@ def _render_html(path: Path, _sheets=None) -> Rendered:
             raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
         parser = LexborHTMLParser(_decode_html(raw))
         _validate_html(parser)
+        layouts = _table_layouts(parser.body)
+        root = _article_root(parser.body) if article else parser.body
+        if article:
+            layouts = {node: layout for node, layout in layouts.items() if root in _ancestors(node)}
+        tables = _prepare_tables(layouts)
         title = next((label for node in parser.head.css("title")
                       if (label := _SPACE.sub(" ", node.text()).strip())), "Untitled")
-        blocks = _html_blocks(parser.body, tally)
+        blocks = _html_blocks(root, tally, tables)
+        if article and not blocks:
+            raise BrewdocError(_ARTICLE_EMPTY)
     rendered = _assemble(path, ROUTE.name, ROUTE.unit_kind, 1, [(1, title, blocks)], tally,
-                         not_carried=ROUTE.not_carried)
+                         not_carried=ROUTE.not_carried + ((ARTICLE_OMISSION,) if article else ()))
     if len(rendered[0].encode("utf-8")) > _MARKDOWN_BYTE_LIMIT:
         raise BrewdocError("HTML Markdown byte limit exceeded: %d" % _MARKDOWN_BYTE_LIMIT)
     return rendered
@@ -811,6 +888,6 @@ ROUTE = Route("html", "chapter", (".html",), _render_html,
                "hidden inputs and supplied password or file values"))
 
 
-def render_html(path) -> tuple[str, dict]:
-    """Return Markdown and tally for one UTF-8 static HTML chapter."""
-    return _render_html(Path(path))[:2]
+def render_html(path, *, article: bool = False) -> tuple[str, dict]:
+    """Return Markdown and tally for static HTML, optionally selecting an article or suitable main."""
+    return _render_html(Path(path), article=article)[:2]

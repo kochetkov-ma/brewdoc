@@ -260,9 +260,12 @@ def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tm
         ("run", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                  ("out", inspect.Parameter.POSITIONAL_OR_KEYWORD, None),
                  ("sheets", inspect.Parameter.KEYWORD_ONLY, None),
-                 ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None))),
+                 ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None),
+                 ("article", inspect.Parameter.KEYWORD_ONLY, False))),
+        ("render_html", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+                         ("article", inspect.Parameter.KEYWORD_ONLY, False))),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
-          for name in ("render_pdf", "render_doc", "render_presentation", "render_html", "render_epub")),
+          for name in ("render_pdf", "render_doc", "render_presentation", "render_epub")),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                   ("sheets", inspect.Parameter.KEYWORD_ONLY, None)))
           for name in ("render_book", "list_book_artifacts", "read_formulas")),
@@ -566,7 +569,7 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
     usage = capsys.readouterr().out.partition("\n")[0]
     # THEN it exits 0 and usage lists exactly the documented options
     assert (raised.value.code, usage) == (
-        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
+        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
            "[--self-check] [document]",
     ), "the CLI surface must expose repeatable sheet and artifact requests"
 
@@ -580,7 +583,7 @@ def test_cli_without_a_document_returns_usage_two_on_stdout(monkeypatch, capsys)
     captured = capsys.readouterr()
     # THEN usage is the entire stdout, stderr is empty and the return value is two
     assert (code, captured.out, captured.err) == (
-        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
+        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
            "[--self-check] [document]\n", "",
     ), "an omitted document must keep the non-raising stdout usage contract"
 

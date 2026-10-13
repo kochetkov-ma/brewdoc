@@ -1,18 +1,18 @@
 # Corpus catalog
 
-The corpus contains **49 public Internet inputs and 0 generated inputs**:
+The corpus contains **50 public Internet inputs and 0 generated inputs**:
 9 PDFs, 6 DOCX documents, 2 EPUB publications, 4 PPTX presentations, 22 workbooks
-and 6 HTML pages, totaling 5,668,302 bytes. Original files remain in
+and 7 HTML pages, totaling 5,670,670 bytes. Original files remain in
 [tests/fixtures](../tests/fixtures). Each input below links to its source file,
 public download and detailed annotation. [corpus.json](corpus.json) holds the
 searchable metadata, license links and immutable local hashes.
 
 `core` contains 13 original government/research/reference/literary documents; `feature_probe`
 contains 20 public upstream Calamine examples and 10 public office-format
-examples, plus 5 MDN learning examples and 1 EPUBCheck example. Both groups
+examples, plus 6 MDN learning examples and 1 EPUBCheck example. Both groups
 already appear in tests.
 Public provenance is separate from the feature-probe selection label. The
-manifest records 47 matching downloads, one mismatch and one unavailable EPUB
+manifest records 48 matching downloads, one mismatch and one unavailable EPUB
 download that returned XHTML. Stored inputs remain unchanged. The patent endpoint
 regenerates CreationDate; its explicit mismatch is confined to metadata in a
 bounded comparison, with all page images unchanged.
@@ -104,12 +104,12 @@ The two Census workbooks belong to `core`; all Calamine workbooks belong to
 
 ## HTML pages
 
-Each page has one source body chapter. The six annotations record complete
+Each page has one source body chapter. The seven annotations record complete
 static-body structure: full tables and spans, declared controls, decoded literal
 code, navigation and footer content. They do not reconstruct browser layout,
 external stylesheets, scripts or interactive state. The MDN article and form
 are learning examples; the Apache module page is a technical reference.
-The five MDN pages use CC0-1.0; the Apache page uses Apache-2.0.
+The six MDN pages use CC0-1.0; the Apache page uses Apache-2.0.
 
 | Original file and title | Format / bytes | Chapters | Topic and contents | Public source / annotation |
 |---|---|---:|---|---|
@@ -119,6 +119,7 @@ The five MDN pages use CC0-1.0; the Apache page uses Apache-2.0.
 | [mdn-document-structure.html](../tests/fixtures/html/mdn-document-structure.html)<br>My page title | HTML / 3,525 | 1 | article structure; full-body reading order. Header, navigation, search/submit inputs, article sections, aside and footer with Unicode text. | [pinned public download](https://raw.githubusercontent.com/mdn/learning-area/dbed6bcb8284634c7549c4da596ec30b0cfc6e7e/html/introduction-to-html/document_and_website_structure/index.html) / [annotation](annotations/html-mdn-document-structure.json) |
 | [mdn-first-form-styled.html](../tests/fixtures/html/mdn-first-form-styled.html)<br>Your first HTML form, styled | HTML / 1,966 | 1 | labelled controls; declared form metadata. Two inputs, empty textarea, submit button, three explicit labels and relative action/POST method. | [pinned public download](https://raw.githubusercontent.com/mdn/learning-area/dbed6bcb8284634c7549c4da596ec30b0cfc6e7e/html/forms/your-first-HTML-form/first-form-styled.html) / [annotation](annotations/html-mdn-first-form-styled.json) |
 | [apache-httpd-allowmethods.html](../tests/fixtures/html/apache-httpd-allowmethods.html)<br>mod_allowmethods - Apache HTTP Server Version 2.4 | HTML / 7,887 | 1 | HTTP directive reference; literal configuration. Two whole tables with 22 source cells, two pre blocks, eight code elements, static language button, four relative images, navigation and license footer. | [pinned public download](https://raw.githubusercontent.com/apache/httpd/a8e4c4ad37a4ca6a1b3062ac349d97d8cf36d1d4/docs/manual/mod/mod_allowmethods.html.en) / [annotation](annotations/html-apache-httpd-allowmethods.json) |
+| [mdn-flexbox0.html](../tests/fixtures/html/mdn-flexbox0.html)<br>MDN flexbox starting code | HTML / 2,368 | 1 | Full-body order; header h1, three peer article h2 headings and four filler-prose paragraphs. Default conversion retains all articles; article selection refuses ambiguity. | [pinned public download](https://raw.githubusercontent.com/mdn/learning-area/180371ffc567f0f2ef359bf408b976667839e764/css/css-layout/flexbox/flexbox0.html) / [annotation](annotations/html-mdn-flexbox0.json) |
 
 ## EPUB publications
 

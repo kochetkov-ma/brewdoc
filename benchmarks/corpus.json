@@ -1912,6 +1912,35 @@
       "annotation_path": "benchmarks/annotations/html-apache-httpd-allowmethods.json"
     },
     {
+      "id": "html-mdn-flexbox0",
+      "title": "Flexbox 0 — starting code",
+      "topics": ["static HTML source features", "full-body-order", "peer-articles", "headings", "filler-prose"],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/html/mdn-flexbox0.html",
+      "source_url": "https://raw.githubusercontent.com/mdn/learning-area/180371ffc567f0f2ef359bf408b976667839e764/css/css-layout/flexbox/flexbox0.html",
+      "download_url": "https://raw.githubusercontent.com/mdn/learning-area/180371ffc567f0f2ef359bf408b976667839e764/css/css-layout/flexbox/flexbox0.html",
+      "source_verification": {
+        "checked_at_utc": "2026-10-13T16:18:51.299957+00:00",
+        "method": "GET",
+        "status": "match",
+        "http_status": 200,
+        "effective_url": "https://raw.githubusercontent.com/mdn/learning-area/180371ffc567f0f2ef359bf408b976667839e764/css/css-layout/flexbox/flexbox0.html",
+        "download_sha256": "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5",
+        "download_size_bytes": 2368
+      },
+      "license": "CC0-1.0",
+      "license_url": "https://github.com/mdn/learning-area/blob/180371ffc567f0f2ef359bf408b976667839e764/LICENSE",
+      "sha256": "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5",
+      "size_bytes": 2368,
+      "format": "html",
+      "variant": "Static UTF-8 HTML",
+      "group": "feature_probe",
+      "origin_kind": "upstream_learning_example",
+      "features": ["full-body-order", "peer-articles", "headings", "filler-prose"],
+      "annotation_path": "benchmarks/annotations/html-mdn-flexbox0.json"
+    },
+    {
       "id": "epub-epubcheck-minimal",
       "title": "Minimal EPUB 3.0",
       "topics": ["publication parser features", "declared-spine", "navigation-label"],
@@ -1982,7 +2011,7 @@
     "No corpus PPTX establishes external pictures, grouped shapes, merged table cells, animations or transitions.",
     "Features describe inputs, not correct extraction. OCR, formula calculation, VBA execution and chart extraction are outside brewdoc acceptance.",
     "All 105 PDF pages, 54 workbook sheets, 6 DOCX main stories and 15 PPTX slides have complete annotations within their declared inspection scope. XLSB formula expressions are not decompiled; token record types, locations and cached results are inventoried. Visual rendering, formula recalculation and full binary-format conformance audits were not performed.",
-    "The six HTML bodies have complete source annotations within the full-body static inspection scope. Browser layout, external stylesheets, script-created state and image pixels were not inspected.",
+    "The seven HTML bodies have complete source annotations within the full-body static inspection scope. Browser layout, external stylesheets, script-created state and image pixels were not inspected.",
     "The HTML article and form are upstream learning examples. Public HTML inputs do not cover every control, encoding refusal, malformed tree or resource boundary; synthetic unit cases cover those contracts separately.",
     "Both EPUB inputs are EPUB 3. EPUB 2 evidence is synthetic. Herland structure covers all 16 spine items; narrative source review samples chapters 1, 6 and 12. Neither licensed EPUB establishes body lists, tables, fallbacks, refusal or resource limits."
   ]

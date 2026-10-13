@@ -45,7 +45,7 @@ Overall Python support stays >=3.12. Other runtimes retain the HTML API/route bu
 html/chapter, zero units, empty Markdown and no writes; self-check verifies that and other routes.
 A missing/broken parser on supported CPython fails HTML and self-check. No alternate parser.
 
-Read the complete recovered body/fragment, including navigation/sidebars/footer. First nonempty
+By default, read the complete recovered body/fragment, including navigation/sidebars/footer. First nonempty
 head title labels chapter/000001, otherwise Untitled. Only .html and strict UTF-8 with optional
 BOM are accepted. Charset declarations in the first 1,024 bytes after BOM must be utf-8/utf8;
 malformed, unknown, conflicting/non-UTF-8 declarations or invalid bytes refuse. No HTML artifacts.
@@ -98,6 +98,67 @@ Inclusive limits, exceeded before output writes: raw input 8 MiB; depth 256 with
 32 MiB included decoded text before whitespace reduction; 100,000 expanded table positions
 including nested tables; final UTF-8 Markdown/envelope 64 MiB. Postparse admission is not a
 native-parser memory-safety guarantee.
+
+### Article selection (unreleased source)
+
+This opt-in mode is available in the source checkout, not the published 0.3.3 package or binaries.
+Use `run(path, article=True)`, `render_html(path, article=True)`, local `--article`, or combine
+`--article` with `--url` and optionally `--render-js`. Other document formats refuse with
+exit 1; combining it with self-check is a usage error with exit 2. Local APIs stay offline;
+URL selection uses the frozen snapshot.
+
+Only literal `main` and `article` elements select roots; `role=main`, `role=article` and class
+names do not. Existing `role=button` controls exclude candidates and fallback prose.
+Hidden/excluded ancestors remove candidates. Candidates inside `nav`, `aside`, `header`, `footer`
+or form-control contexts are ignored. One eligible main defines the scope, otherwise the body does;
+multiple eligible mains refuse. A main inside an article does not replace its outer article.
+In that scope, one outer article selects its complete subtree,
+including nested articles. Peer articles refuse, even when one is empty.
+
+Without an eligible article, one main can qualify only with exactly one nonempty h1, prose
+outside navigation, tables and controls, and no visible form. A body without an article cannot
+qualify. Selection with no rendered content refuses. An explicit article containing only a
+renderable table or image is valid. The existing head-title/Untitled rule remains; headings
+do not become a replacement title and no author, date or other metadata is inferred.
+
+Ambiguity and missing/empty candidates produce a named HTML refusal, empty Markdown and no writes.
+There is no score, generic readability extraction or fallback to the complete page. Selected
+content retains the static HTML rendering rules and limits above. Complete-tree and complete-body
+table budgets are checked before selection, including content outside the selected subtree.
+HTML article receipts include the following exact `not_carried` entry on success and refusal.
+Successful Markdown carries the identical entry in Known omissions:
+
+```text
+body content outside the selected article or main subtree; complete page coverage is not claimed
+```
+
+Single-article pages and semantically marked documentation are suitable. Multi-article feeds
+and pages relying on visual layout or unmarked containers are unsuitable. A visible form
+disqualifies main fallback; forms inside an eligible explicit article remain rendered content.
+The corpus includes MDN document structure for article/navigation separation, MDN form refusal,
+MDN flexbox for peer-article refusal, and unmarked Apache HTTPD documentation for refusal.
+These fixtures establish bounded behavior, not general website coverage.
+
+## Python package compatibility
+
+CPython 3.12.14 retains the local macOS full-suite baseline and existing CI smoke checks.
+Declared Python >=3.12 support and the CPython 3.12-3.14 HTML parser constraint are not proof
+of every OS/minor combination. The following source-package cells passed in
+[CI run 38431645006](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) for
+[PR #57](https://github.com/kochetkov-ma/brewdoc/pull/57):
+
+| Observed target | CPython | Passed package cases | Optional JS result |
+|---|---|---|---|
+| Ubuntu 22.04, x64, glibc 2.35 | 3.13.15 | Wheel and sdist, base and render-js extra | Module/DOM executed |
+| macOS 15.7.9, ARM64 | 3.14.7 | Wheel and sdist, base and render-js extra | Module/DOM executed |
+| Windows Server 2025 Datacenter, x64 | 3.14.7 | Wheel and sdist, base and render-js extra | Explicit refusal before requests |
+
+All three cells used the same verified wheel/sdist pair in four independent installations each.
+Each installation converted 11 original documents and passed self-check 38 and article API/CLI
+checks. These are selected tested patches, not a claim about newer Python versions. This matrix
+concerns source-built Python packages; the published 0.3.3 standalone binaries retain their
+separate bundled-runtime targets. The evidence does not publish these source changes.
+Other OS/minor combinations, free-threaded CPython and other architectures remain untested here.
 
 ## EPUB
 
@@ -156,7 +217,8 @@ strings/output rollback also consume memory. These are policy limits, not capaci
 
 --url explicitly acquires a static HTTP(S) page, then converts a frozen UTF-8 snapshot. Local HTML
 and APIs remain offline. Relative links/images resolve against final URL/valid base without fetching
-images/linked pages. The complete recovered body retains source order; no automatic article selection.
+images/linked pages. The default complete recovered body retains source order. Source-only
+`--article` selects a subtree under the [article contract](#article-selection-unreleased-source).
 Local files and static capture do not execute scripts.
 
 Only public destinations/default ports 80/443 pass. All DNS answers, peers and redirects are
