@@ -51,8 +51,8 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Dedicated installation guide and concise CLI/API documentation",
-    "npm/npx packaging for Linux x64/glibc and macOS ARM64; Windows via GitHub native or Python"
+    "Package metadata declares Development Status 5 - Production/Stable",
+    "README and llms.txt link the related Brew projects"
   ],
   "releases": {
     "0.2.0": {

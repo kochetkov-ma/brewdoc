@@ -1,6 +1,6 @@
 [project]
 name = "brewdoc"
-version = "0.3.2"
+version = "0.3.3"
 description = "Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services."
 readme = "README.md"
 license = "MIT"
@@ -9,7 +9,7 @@ authors = [{ name = "Maksim Kochetkov", email = "apmatypa88@gmail.com" }]
 requires-python = ">=3.12"
 keywords = ["pdf", "docx", "xlsx", "markdown", "llm", "table-extraction", "rag"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
