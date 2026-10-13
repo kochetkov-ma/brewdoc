@@ -9,11 +9,13 @@ Fast, deterministic document-to-Markdown conversion for agent systems. Easy to i
 
 Local conversion runs offline after installation, with no runtime component downloads.
 Supported documents become one Markdown file and a JSON receipt describing omissions.
-See [supported formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/FORMATS.md).
+See [source formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md).
 
 ## Install
 
 These examples select 0.3.3. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.3). Choose one method:
+
+Article mode below is unreleased and requires the source checkout. Installing 0.3.3 does not provide it.
 
 ```sh
 python -m pip install "brewdoc==0.3.3"
@@ -125,8 +127,42 @@ JS admits only the narrow credential-free HN Algolia XHR POST exception. Local H
 Optional JS needs installed/bundled prerequisites, refuses unsupported runtimes before HTTP and downloads no engine.
 Timing-only expiry can preserve valid partial content; hard failures refuse output. [Full URL/JS limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/FORMATS.md#url-acquisition).
 
-[Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/results/README.md)
-[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/LICENSE)
+## Article mode (unreleased source)
+
+Use the source checkout for these examples:
+
+```sh
+uv run --locked brewdoc page.html --article --out article.md
+uv run --locked brewdoc --url https://example.com/article --article --out article.md
+uv run --locked --extra render-js brewdoc --url https://example.com/article --render-js --article --out article.md
+```
+
+```python
+code, receipt, markdown = brewdoc.run("page.html", article=True)
+markdown, tally = brewdoc.render_html("page.html", article=True)
+```
+
+Article mode selects one explicit article or a qualified main subtree. It suits single articles
+and documentation pages with those literal HTML elements. Feeds with peer articles, ambiguous
+main regions and pages without a qualified subtree refuse. A visible form disqualifies main
+fallback; an explicit article can retain forms. There is no full-page fallback or text scoring.
+Selection uses the recovered static HTML or frozen JS snapshot,
+without layout or inferred author/date metadata. The source title is unchanged.
+
+The receipt's `not_carried` and successful Markdown's Known omissions declare:
+`body content outside the selected article or main subtree; complete page coverage is not claimed`.
+The [source contract](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#article-selection-unreleased-source)
+defines selection, refusals and limits.
+
+Package validation targets await CI evidence: Ubuntu 22.04 x64/glibc with CPython 3.13.15,
+and macOS 15 ARM64/Windows Server 2025 x64 with CPython 3.14.7. Each checks wheel/sdist and
+base/optional installs; optional JS must execute on Unix and refuse before requests on Windows.
+CPython 3.12 remains the baseline. These checks are separate from the 0.3.3 standalone binaries;
+other OS/minor combinations, free-threaded CPython and other architectures remain untested.
+See [source package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#python-package-compatibility).
+
+[Source format contracts](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/results/README.md)
+[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/RELEASING.md) | [Source agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/main/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/LICENSE)
 
 ## Related projects
 

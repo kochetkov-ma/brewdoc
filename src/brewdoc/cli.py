@@ -9,7 +9,8 @@ from pathlib import Path
 
 from brewdoc.common import BrewdocError, _markdown_encoding
 from brewdoc.selfcheck import self_check
-from brewdoc.service import EXIT_FAIL, EXIT_OK, EXIT_USAGE, SUFFIXES, _line, _route, run
+from brewdoc.service import (EXIT_FAIL, EXIT_OK, EXIT_USAGE, SUFFIXES, _html_receipt_route,
+                             _line, _route, run)
 
 RENDERED_BY = "brewdoc"
 
@@ -61,6 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "within supported clock range, default 30")
     parser.add_argument("--render-js", action="store_true",
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
+    parser.add_argument("--article", action="store_true",
+                        help="select one explicit HTML article or suitable main; refuse ambiguous pages")
     parser.add_argument("--out", help="write Markdown here (HTML/EPUB UTF-8, other formats ASCII); default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
@@ -81,6 +84,8 @@ def main(argv=None) -> int:
         parser.error("--render-js requires --url")
     if args.timeout is not None and args.url is None:
         parser.error("--timeout requires --url")
+    if args.article and args.self_check:
+        parser.error("--article cannot be combined with --self-check")
     if args.self_check:
         return self_check()
     if args.url is not None:
@@ -89,7 +94,7 @@ def main(argv=None) -> int:
         rc, line, markdown = _run_url(
             args.url, args.out, render_js=args.render_js,
             timeout=_DEFAULT_TIMEOUT if args.timeout is None else args.timeout,
-            sheets=args.sheet, artifact_outputs=args.artifact)
+            sheets=args.sheet, artifact_outputs=args.artifact, article=args.article)
     elif not args.document:
         parser.print_usage()
         return EXIT_USAGE
@@ -97,11 +102,14 @@ def main(argv=None) -> int:
         try:
             artifact_outputs = _artifact_assignments(args.artifact)
         except BrewdocError as exc:
-            rc, line, markdown = EXIT_FAIL, _line(
-                _route(Path(args.document)), False, str(exc), args.document), ""
+            route = _route(Path(args.document))
+            if args.article and route.name == "html":
+                route = _html_receipt_route(args.article)
+            rc, line, markdown = EXIT_FAIL, _line(route, False, str(exc), args.document), ""
         else:
             rc, line, markdown = run(
-                args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs)
+                args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs,
+                article=args.article)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
         encoding = _markdown_encoding(line["route"])

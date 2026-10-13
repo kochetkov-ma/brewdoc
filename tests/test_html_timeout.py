@@ -46,7 +46,7 @@ def test_url_cli_forwards_each_requests_effective_timeout_once(render_js, argume
     # THEN both acquisition modes receive exactly one effective per-call value.
     assert (code, calls, capsys.readouterr().out) == (
         0, [(URL, None, {"render_js": render_js, "timeout": expected_timeout,
-                        "sheets": None, "artifact_outputs": None})],
+                        "sheets": None, "artifact_outputs": None, "article": False})],
         json.dumps(RECEIPT, sort_keys=True) + "\n" + MARKDOWN,
     ), "the CLI must pass the request's effective timeout and preserve output"
 
@@ -108,7 +108,7 @@ def test_local_cli_without_timeout_keeps_its_original_route_and_receipt(monkeypa
     code = cli.main(["article.html"])
     # THEN no timeout keyword or acquisition envelope changes the local contract.
     assert (code, calls, capsys.readouterr().out) == (
-        0, [("article.html", None, {"sheets": None, "artifact_outputs": None})],
+        0, [("article.html", None, {"sheets": None, "artifact_outputs": None, "article": False})],
         json.dumps(receipt, sort_keys=True) + "\n" + MARKDOWN,
     ), "local conversion must retain its original arguments and receipt"
 

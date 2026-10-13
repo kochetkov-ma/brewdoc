@@ -22,7 +22,7 @@ from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
 from brewdoc.common import BrewdocError
 from brewdoc._standalone import child_command
 from brewdoc import htmltext
-from brewdoc.service import EXIT_FAIL, _line, run
+from brewdoc.service import EXIT_FAIL, _html_receipt_route, _line, run
 
 _BODY_LIMIT = 8 * 1048576
 _AGGREGATE_LIMIT = 32 * 1048576
@@ -579,7 +579,8 @@ def _challenge(html: str) -> bool:
 
 
 def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
-             artifact_outputs=None, timeout: int | float = _DEFAULT_TIMEOUT) -> tuple[int, dict, str]:
+             artifact_outputs=None, timeout: int | float = _DEFAULT_TIMEOUT,
+             article: bool = False) -> tuple[int, dict, str]:
     """Acquire a frozen URL snapshot, then reuse local conversion and output transactions."""
     acquisition = _acquisition(render_js)
     requested = url
@@ -682,10 +683,11 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             path = Path(folder) / name
             path.write_bytes(snapshot)
             del snapshot
-            code, receipt, markdown = run(path, out)
+            code, receipt, markdown = run(path, out, article=article)
         if code != 0:
             stage = "output" if receipt["reason"].startswith("output write failed:") else "conversion"
-            receipt["reason"] = "URL snapshot conversion or output refused"
+            if not article or receipt["reason"] not in htmltext.ARTICLE_REFUSALS:
+                receipt["reason"] = "URL snapshot conversion or output refused"
             acquisition["capture_status"] = "refused"
             acquisition["refusal_stage"] = stage
         receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
@@ -703,7 +705,7 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
                   else "URL acquisition refused during %s" % stage)
         if stage == "timeout" and acquisition["timeout_seconds"] is None and str(exc) == _TIMEOUT_RANGE_REASON:
             reason = _TIMEOUT_RANGE_REASON
-        receipt = _line(htmltext.ROUTE, False, reason, name)
+        receipt = _line(_html_receipt_route(article), False, reason, name)
         receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
                         "acquisition": acquisition})
         return EXIT_FAIL, receipt, ""

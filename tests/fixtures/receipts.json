@@ -288,6 +288,21 @@
   "unit_kind": "chapter",
   "units": 1
  },
+ "html/mdn-flexbox0.html": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "html",
+  "tables": 0,
+  "text_regions": 8,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
  "html/mdn-items-sold-headers.html": {
   "artifacts": [],
   "file_ok": true,

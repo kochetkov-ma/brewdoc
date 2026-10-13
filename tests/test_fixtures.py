@@ -32,8 +32,8 @@ SNAPSHOT_KEYS = {
     True: RECEIPT_KEYS + ("markdown_schema", "unit_keys", "artifacts"),
 }
 SCAN = "pdf/us-patent-223898-scan.pdf"
-CORPUS_FILES = 67
-CORPUS_BYTES = 5_976_093
+CORPUS_FILES = 68
+CORPUS_BYTES = 5_978_461
 PROVENANCE = ("SOURCES.md", "receipts.json")
 ROW = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<url>\S+) \| \[(?P<license>[^\]]+)\]\((?P<link>[^)]+)\)"
                  r" \| `(?P<sha256>[0-9a-f]{64})` \| (?P<size>\d+) \| (?P<shape>.+) \|$")
@@ -114,6 +114,70 @@ def test_html_fixture_is_explicitly_refused_on_an_unsupported_runtime(rel, tmp_p
          "unit_kind": "chapter", "units": 0, "tables": 0, "text_regions": 0},
         "HTML requires CPython 3.12-3.14", "", b"existing output\n",
     ), "unsupported runtimes must explicitly refuse every HTML fixture with an unchanged output"
+
+
+@pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+@pytest.mark.parametrize("rel,sha256,reason", [
+    pytest.param("html/mdn-first-form-styled.html",
+                 "cd7c192dc6e230737064e053f92947a5159e82e72cd8740d2529c4f1a8abad06",
+                 "HTML article extraction refused: no eligible article or suitable main", id="form"),
+    pytest.param("html/apache-httpd-allowmethods.html",
+                 "3f12805108439e0008b6e1918416da2da7381ae04ec9c68f19a56e4b55ebcb56",
+                 "HTML article extraction refused: no eligible article or suitable main", id="unmarked-reference"),
+    pytest.param("html/mdn-flexbox0.html",
+                 "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5",
+                 "HTML article extraction refused: ambiguous articles", id="three-peer-articles"),
+])
+def test_original_html_article_refusals_preserve_the_complete_receipt_and_destination(
+        tmp_path, rel, sha256, reason):
+    from test_html_article import refused_receipt
+
+    # GIVEN unchanged licensed original HTML and a preserved output destination
+    path, out = FIXTURES / rel, tmp_path / "preserved.md"
+    out.write_bytes(b"preserved")
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == sha256, "article corpus input must match provenance"
+    # WHEN article mode encounters an unsuitable original document
+    result = service.run(path, out, article=True)
+    # THEN fixed refusal semantics and transaction safety match the complete expected object
+    assert (result, out.read_bytes()) == ((1, refused_receipt(path, reason), ""), b"preserved"), (
+        "original forms, unmarked references and peer articles must refuse without fallback")
+
+
+@pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+def test_original_mdn_structure_article_keeps_sections_and_excludes_page_chrome(tmp_path):
+    from test_html_article import article_document, article_receipt
+
+    # GIVEN the original licensed structure example with article, navigation, aside and footer
+    path, out = FIXTURES / "html/mdn-document-structure.html", tmp_path / "article.md"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "8623d0ff8d0696128844a2315d8c23840cf839d52fab09fcd06eabb3e5e966ec"
+    ), "positive article corpus input must remain byte-identical to the licensed source"
+    content = (
+        "#### Article heading\n\nLorem ipsum dolor sit amet, consectetur adipisicing elit\\. "
+        "Donec a diam lectus\\. Set sit amet ipsum mauris\\. Maecenas congue ligula as quam "
+        "viverra nec consectetur ant hendrerit\\. Donec et mollis dolor\\. Praesent et diam eget "
+        "libero egestas mattis sit amet vitae augue\\. Nam tincidunt congue enim, ut porta "
+        "lorem lacinia consectetur\\.\n\n##### Subsection\n\nDonec ut librero sed accu vehicula "
+        "ultricies a non tortor\\. Lorem ipsum dolor sit amet, consectetur adipisicing elit\\. "
+        "Aenean ut gravida lorem\\. Ut turpis felis, pulvinar a semper sed, adipiscing id dolor\\.\n\n"
+        "Pelientesque auctor nisi id magna consequat sagittis\\. Curabitur dapibus, enim sit amet "
+        "elit pharetra tincidunt feugiat nist imperdiet\\. Ut convallis libero in urna ultrices "
+        "accumsan\\. Donec sed odio eros\\.\n\n##### Another subsection\n\nDonec viverra mi quis "
+        "quam pulvinar at malesuada arcu rhoncus\\. Cum soclis natoque penatibus et manis dis "
+        "parturient montes, nascetur ridiculus mus\\. In rutrum accumsan ultricies\\. Mauris vitae "
+        "nisi at sem facilisis semper ac in est\\.\n\nVivamus fermentum semper porta\\. Nunc diam "
+        "velit, adipscing ut tristique vitae sagittis vel odio\\. Maecenas convallis ullamcorper "
+        "ultricied\\. Curabitur ornare, ligula semper consectetur sagittis, nisi diam iaculis "
+        "velit, is fringille sem nunc vet mi\\.\n"
+    )
+    expected = article_document(path, content, 8, title="My page title").replace(
+        "sample\\.html", "mdn\\-document\\-structure\\.html")
+    # WHEN article mode selects the original article subtree
+    result = service.run(path, out, article=True)
+    # THEN exact source prose and headings survive with no navigation, search, aside or footer
+    assert (result, out.read_bytes()) == (
+        (0, article_receipt(path, out, 8), expected), expected.encode("utf-8")
+    ), "licensed positive article evidence must preserve every selected paragraph in source order"
 
 
 @pytest.mark.parametrize("rel", EPUB_FIXTURES)

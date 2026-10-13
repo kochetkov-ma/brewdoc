@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from brewdoc.common import (MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route,
                             _markdown_encoding, new_tally)
 from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.epub import ROUTE as EPUB_ROUTE
-from brewdoc.htmltext import ROUTE as HTML_ROUTE
+from brewdoc.htmltext import ARTICLE_OMISSION, ROUTE as HTML_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
 from brewdoc.pdf import ROUTE as PDF_ROUTE
 from brewdoc.pptx import ROUTE as PRESENTATION_ROUTE
@@ -39,6 +40,13 @@ NO_ROUTE = Route("none", "none", (), None, ())
 
 def _route(path: Path) -> Route:
     return ROUTES.get(path.suffix.lower(), NO_ROUTE)
+
+
+def _html_receipt_route(article: bool) -> Route:
+    """Keep article disclosure on an unregistered copy of the HTML receipt route."""
+    if not article:
+        return HTML_ROUTE
+    return replace(HTML_ROUTE, not_carried=HTML_ROUTE.not_carried + (ARTICLE_OMISSION,))
 
 
 def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = None,
@@ -78,22 +86,27 @@ def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...
     return tuple(pairs)
 
 
-def run(path, out=None, *, sheets=None, artifact_outputs=None) -> tuple[int, dict, str]:
+def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = False) -> tuple[int, dict, str]:
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
     path = Path(path)
     route = _route(path)
+    if route.name == "html" and article:
+        route = _html_receipt_route(article)
     if route.render is None:
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
                                 % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
+        if article and route.name != "html":
+            raise BrewdocError("--article is an HTML-only option")
         sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
         if route.name != "sheet" and (sheets is not None or pairs):
             raise BrewdocError("--sheet and --artifact are workbook-only options")
         targets = _output_targets(path, out, pairs)
-        markdown, tally, unit_keys, references = route.render(path, sheets)
+        markdown, tally, unit_keys, references = (
+            route.render(path, sheets, article=True) if article else route.render(path, sheets))
         keys = tuple(key for key, _target, _shown in pairs)
         listed = {item.key for item in references}
         unknown = [key for key in keys if key not in listed]
