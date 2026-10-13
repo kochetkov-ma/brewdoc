@@ -312,6 +312,51 @@ Required package/presentation/slide relationships and XML must resolve inside th
 missing or invalid referenced picture/notes parts refuse. Optional absent relationships are accepted.
 EPUB image records preserve declarations; DOCX images remain omitted.
 
+### ZIP/XML reader limits
+
+Since 0.4.1, these inclusive limits apply to Brewdoc-owned DOCX/PPTX reads and
+workbook relationship, formula and VBA reads. PPTX embedded picture reads are
+included. Native python-calamine value parsing is outside this envelope.
+
+| Budget | Maximum |
+|---|---:|
+| ZIP members per archive, including directories, duplicates and ignored members | 4,096 |
+| Declared/observed bytes per consumed member | 32 MiB |
+| Actual decompressed bytes returned across one public operation | 256 MiB |
+| XML elements per member parse; across the operation | 2,097,152; 4,194,304 |
+| XML depth, root at 1 | 16,384 |
+| Expanded text and attribute-value characters per member parse; across the operation | 33,554,432; 67,108,864 |
+
+Characters are Unicode code points in expanded character data, including tails,
+and parser-reported attribute values. Attribute names, namespace declarations and
+empty-valued attribute counts have no separate character budget.
+Every physical reread and logical XML parse counts
+again, including archive reopenings and workbook inventory/artifact retrieval
+within one `run` or artifact API call. Preflight and tree construction count as
+one logical parse. Separate public calls start fresh budgets.
+
+Consumed members must use ZIP_STORED or ZIP_DEFLATED. Previously readable selected
+BZIP2/LZMA members and documents exceeding any budget now refuse; ignored members
+do not receive the compression or member-byte check. The existing 16 MiB VBA
+project limit remains stricter. No source-file, Markdown or formula-JSON size cap
+is added by this envelope. EPUB retains its separate limits above.
+
+Returned bytes are checked before Brewdoc retains an oversized chunk. XML depth,
+elements and expanded characters are checked before ElementTree construction.
+Bounded inert doctypes/internal entities retain OOXML behavior; EPUB's stricter
+entity and encoding rules do not apply here. No external entities are fetched.
+Limit/compression failures name the member and budget where applicable. `run`
+returns exit 1, zero units, empty Markdown and no writes; raising reader APIs
+raise `BrewdocError`. Complete successful output is preserved, with no truncation.
+
+These are selected-reader policy limits, not a process memory cap or universal
+security guarantee. ZipFile allocates its central directory before member
+admission. Codec buffers, Expat token/entity expansion and callback dictionaries
+or names allocated before counters, native calamine buffers/cell grids, raw source
+hashing, formula serialization, Markdown assembly and output staging/rollback
+are outside the guarantee. Source identity and concurrent file mutation handling
+are unchanged. A file below these limits can still require substantial memory/time.
+
 ## Workbook artifacts
 
 | Input | Formulas | VBA | Constraint |

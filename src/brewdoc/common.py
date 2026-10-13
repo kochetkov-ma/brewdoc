@@ -11,12 +11,24 @@ import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from xml.parsers import expat
 
 MARKDOWN_SCHEMA = "brewdoc.markdown/2"
 # Receipt versions on its own: its key set moves when a format lands, the Markdown schema does not.
 RECEIPT_SCHEMA = "brewdoc.receipt/1"
+
+ZIP_XML_LIMITS = {
+    "members": 4_096,
+    "member_bytes": 33_554_432,
+    "consumed_bytes": 268_435_456,
+    "document_elements": 2_097_152,
+    "total_elements": 4_194_304,
+    "depth": 16_384,
+    "document_characters": 33_554_432,
+    "total_characters": 67_108_864,
+}
 
 CID_RE = re.compile(r"\(cid:\d+\)")
 FOLD = {
@@ -49,6 +61,28 @@ class BrewdocError(Exception):
     """A refusal naming what was not found or not parsed, and where."""
 
 
+@dataclass(slots=True)
+class _ZipBudget:
+    """Count selected OOXML reads against limits fixed for one operation."""
+
+    limits: dict[str, int] = field(default_factory=lambda: ZIP_XML_LIMITS.copy())
+    consumed_bytes: int = 0
+    total_elements: int = 0
+    total_characters: int = 0
+
+    def check(self, key: str, value: int, part: str) -> None:
+        """Refuse an overrun without exposing counters in successful output."""
+        if value > self.limits[key]:
+            raise BrewdocError("OOXML %s limit exceeded: %s: %d"
+                               % (key, part, self.limits[key]))
+
+    def charge(self, key: str, amount: int, part: str) -> None:
+        """Charge physical rereads and repeated XML parses to the operation."""
+        value = getattr(self, key) + amount
+        self.check(key, value, part)
+        setattr(self, key, value)
+
+
 @contextlib.contextmanager
 def reading(path: Path, noun: str) -> Iterator[None]:
     """Every parser error becomes one `<noun> unreadable` refusal; a BrewdocError passes through."""
@@ -64,13 +98,103 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _xml_part(package: zipfile.ZipFile, part: str) -> ET.Element:
-    """Read one required OOXML part and name missing or malformed XML."""
+def _check_zip_members(package: zipfile.ZipFile, budget: _ZipBudget) -> None:
+    """Bound archive entries before Brewdoc performs member searches."""
+    if len(package.infolist()) > budget.limits["members"]:
+        raise BrewdocError("OOXML members limit exceeded: %d" % budget.limits["members"])
+
+
+def _zip_member_chunks(package: zipfile.ZipFile, part: str | zipfile.ZipInfo,
+                       budget: _ZipBudget, *, max_bytes: int | None = None,
+                       limit_error: str | None = None) -> Iterator[bytes]:
+    """Yield bounded accepted chunks, charging every read and exhausting CRC checks."""
+    _check_zip_members(package, budget)
     try:
-        data = package.read(part)
+        info = package.getinfo(part) if isinstance(part, str) else part
     except KeyError as exc:
         raise BrewdocError("OOXML part is missing: %s" % part) from exc
+    name = info.filename
+    if max_bytes is not None and info.file_size > max_bytes:
+        raise BrewdocError(limit_error)
+    budget.check("member_bytes", info.file_size, name)
+    if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+        raise BrewdocError("OOXML ZIP compression is unsupported: %s: %d"
+                           % (name, info.compress_type))
+    size = 0
+    member_limit = budget.limits["member_bytes"]
+    if max_bytes is not None:
+        member_limit = min(member_limit, max_bytes)
+    with package.open(info) as stream:
+        while True:
+            chunk = stream.read(min(65_536, member_limit - size + 1,
+                                    budget.limits["consumed_bytes"] - budget.consumed_bytes + 1))
+            if not chunk:
+                break
+            size += len(chunk)
+            if max_bytes is not None and size > max_bytes:
+                raise BrewdocError(limit_error)
+            budget.check("member_bytes", size, name)
+            budget.charge("consumed_bytes", len(chunk), name)
+            yield chunk
+
+
+def _zip_member_bytes(package: zipfile.ZipFile, part: str | zipfile.ZipInfo,
+                      budget: _ZipBudget, *, max_bytes: int | None = None,
+                      limit_error: str | None = None) -> bytes:
+    """Retain only a member admitted by its actual-byte and operation limits."""
+    return b"".join(_zip_member_chunks(package, part, budget,
+                                     max_bytes=max_bytes, limit_error=limit_error))
+
+
+def _zip_member_size(package: zipfile.ZipFile, part: str | zipfile.ZipInfo,
+                     budget: _ZipBudget) -> int:
+    """Count a member's returned bytes without retaining its payload."""
+    return sum(len(chunk) for chunk in _zip_member_chunks(package, part, budget))
+
+
+def _xml_preflight(data: bytes, part: str, budget: _ZipBudget) -> None:
+    """Bound expanded XML content before allocating its ElementTree."""
+    parser = expat.ParserCreate(namespace_separator="}")
+    depth, elements, characters = 0, 0, 0
+
+    def text(value):
+        nonlocal characters
+        characters += len(value)
+        budget.check("document_characters", characters, part)
+        budget.charge("total_characters", len(value), part)
+
+    def start(_tag, attributes):
+        nonlocal depth, elements
+        depth += 1
+        elements += 1
+        budget.check("depth", depth, part)
+        budget.check("document_elements", elements, part)
+        budget.charge("total_elements", 1, part)
+        for value in attributes.values():
+            text(value)
+
+    def end(_tag):
+        nonlocal depth
+        depth -= 1
+
+    parser.StartElementHandler, parser.EndElementHandler = start, end
+    parser.CharacterDataHandler = text
     try:
+        parser.Parse(data, True)
+    except expat.ExpatError as exc:
+        error = ET.ParseError(exc)
+        error.code, error.position = exc.code, (exc.lineno, exc.offset)
+        raise error from exc
+
+
+def _xml_part(package: zipfile.ZipFile, part: str,
+              budget: _ZipBudget | None = None) -> ET.Element:
+    """Read one bounded OOXML part and preserve missing or malformed diagnostics."""
+    if budget is None:
+        budget = _ZipBudget()
+    data = _zip_member_bytes(package, part, budget)
+    try:
+        _xml_preflight(data, part, budget)
         return ET.fromstring(data)
     except ET.ParseError as exc:
         raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
@@ -88,15 +212,18 @@ def _resolve_ooxml_part(base: str, target: str) -> str:
     return resolved
 
 
-def _relationship_elements(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
+def _relationship_elements(package: zipfile.ZipFile, part: str,
+                           budget: _ZipBudget | None = None) -> tuple[ET.Element, ...]:
     """Return every relationship element in document order, duplicate ids and types included."""
-    root = _xml_part(package, part)
+    root = _xml_part(package, part, budget)
     return tuple(element for element in root.iter()
                  if _local_name(element.tag) == "Relationship")
 
 
-def _relationships(package: zipfile.ZipFile, part: str) -> dict[str, ET.Element]:
-    return {element.attrib["Id"]: element for element in _relationship_elements(package, part)
+def _relationships(package: zipfile.ZipFile, part: str,
+                   budget: _ZipBudget | None = None) -> dict[str, ET.Element]:
+    """Index relationships by id, retaining the existing last-id-wins lookup."""
+    return {element.attrib["Id"]: element for element in _relationship_elements(package, part, budget)
             if "Id" in element.attrib}
 
 
@@ -106,9 +233,9 @@ def _relationship_part(part: str) -> str:
     return posixpath.join(directory, "_rels", name + ".rels")
 
 
-def _opc_main_part(package: zipfile.ZipFile) -> str:
+def _opc_main_part(package: zipfile.ZipFile, budget: _ZipBudget | None = None) -> str:
     """Find a package's main part through its package-level office relationship."""
-    for relationship in _relationships(package, "_rels/.rels").values():
+    for relationship in _relationships(package, "_rels/.rels", budget).values():
         if (relationship.attrib.get("Type", "").endswith("/officeDocument")
                 and relationship.attrib.get("TargetMode") != "External"):
             return _resolve_ooxml_part("", relationship.attrib.get("Target", ""))

@@ -3,37 +3,40 @@
 [![PyPI](https://img.shields.io/pypi/v/brewdoc)](https://pypi.org/project/brewdoc/)
 [![CI](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/releases/latest)
-[![MIT](https://img.shields.io/github/license/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/LICENSE)
+[![MIT](https://img.shields.io/github/license/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/LICENSE)
 
 Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
 
 Local conversion runs offline after installation, with no runtime component downloads.
 Supported documents become one Markdown file and a JSON receipt describing omissions.
-See [formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md).
+See [formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md).
+Version 0.4.1 adds [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#zipxml-reader-limits)
+for DOCX/PPTX and workbook metadata/artifacts. Excessive work refuses before output
+writes; native workbook values and total process memory remain outside those bounds.
 
 ## Install
 
-These examples select 0.4.0. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.0). Choose one method:
+These examples select 0.4.1. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.1). Choose one method:
 
 Article mode is introduced in 0.4.0. Channel availability is listed in the release.
 
 ```sh
-python -m pip install "brewdoc==0.4.0"
-uv tool install --python 3.12 "brewdoc==0.4.0"
-pipx install --python 3.12 "brewdoc==0.4.0"
+python -m pip install "brewdoc==0.4.1"
+uv tool install --python 3.12 "brewdoc==0.4.1"
+pipx install --python 3.12 "brewdoc==0.4.1"
 ```
 
 Use a virtual environment for pip. Python 3.12+ is required; HTML/URL need CPython 3.12-3.14.
-[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/INSTALL.md) covers prerequisites, Windows, uvx, PATH, update and removal.
+[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/INSTALL.md) covers prerequisites, Windows, uvx, PATH, update and removal.
 [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest) lists actual assets and channel availability.
 
 ### Standalone downloads
 
-Use downloads listed as available in the release. Python and dependencies are bundled. Verify [SHA256SUMS](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.0/SHA256SUMS) and keep the entire extracted directory.
+Use downloads listed as available in the release. Python and dependencies are bundled. Verify [SHA256SUMS](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.1/SHA256SUMS) and keep the entire extracted directory.
 
-[![Linux x64 download](https://img.shields.io/badge/Linux_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.0/brewdoc-0.4.0-linux-x64.tar.gz)
-[![Windows x64 download](https://img.shields.io/badge/Windows_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.0/brewdoc-0.4.0-windows-x64.zip)
-[![macOS ARM64 download](https://img.shields.io/badge/macOS_ARM64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.0/brewdoc-0.4.0-macos-arm64.tar.gz)
+[![Linux x64 download](https://img.shields.io/badge/Linux_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.1/brewdoc-0.4.1-linux-x64.tar.gz)
+[![Windows x64 download](https://img.shields.io/badge/Windows_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.1/brewdoc-0.4.1-windows-x64.zip)
+[![macOS ARM64 download](https://img.shields.io/badge/macOS_ARM64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.4.1/brewdoc-0.4.1-macos-arm64.tar.gz)
 
 | Native target | Verification environment | JavaScript |
 |---|---|---|
@@ -43,15 +46,15 @@ Use downloads listed as available in the release. Python and dependencies are bu
 
 Older OSes, Linux musl/ARM64 and macOS Intel are outside this binary set.
 Windows is unsigned; macOS has an ad hoc signature without Developer ID/notarization.
-Linux archives have checksums, without a detached publisher signature. [Download and launch](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/INSTALL.md#standalone).
+Linux archives have checksums, without a detached publisher signature. [Download and launch](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/INSTALL.md#standalone).
 
 ### npm
 
 [![npm](https://img.shields.io/npm/v/brewdoc)](https://www.npmjs.com/package/brewdoc)
 
 npm targets Linux x64/glibc and macOS ARM64. Windows uses the GitHub native download or Python package.
-Use npm/npx only when listed as available in [the release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.0).
-[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/INSTALL.md#npm-and-npx) contains exact-version installation, update and removal instructions.
+Use npm/npx only when listed as available in [the release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.1).
+[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/INSTALL.md#npm-and-npx) contains exact-version installation, update and removal instructions.
 
 ## Usage
 
@@ -125,12 +128,12 @@ brewdoc --url https://example.com/article --render-js --timeout 30 --out article
 Public destinations, DNS, redirects, TLS, requests and bytes are validated. Ordinary requests use GET;
 JS admits only the narrow credential-free HN Algolia XHR POST exception. Local HTML never fetches or runs scripts.
 Optional JS needs installed/bundled prerequisites, refuses unsupported runtimes before HTTP and downloads no engine.
-Timing-only expiry can preserve valid partial content; hard failures refuse output. [Full URL/JS limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md#url-acquisition).
+Timing-only expiry can preserve valid partial content; hard failures refuse output. [Full URL/JS limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#url-acquisition).
 
 ## Article mode
 
 Introduced in 0.4.0; use a channel listed as available in the release. For Python JS capture, install
-`brewdoc[render-js]==0.4.0`; supported standalone bundles include its prerequisites.
+`brewdoc[render-js]==0.4.1`; supported standalone bundles include its prerequisites.
 
 ```sh
 brewdoc page.html --article --out article.md
@@ -152,7 +155,7 @@ without layout or inferred author/date metadata. The source title is unchanged.
 
 The receipt's `not_carried` and successful Markdown's Known omissions declare:
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
-The [article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md#article-selection)
+The [article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#article-selection)
 defines selection, refusals and limits.
 
 [Source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
@@ -163,10 +166,10 @@ tested patches, not a claim about newer versions. CPython 3.12.14 retains the lo
 full-suite baseline and existing CI smoke checks. Package evidence is separate from the
 standalone binaries; other OS/minor combinations, free-threaded CPython and other
 architectures remain untested here.
-See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md#python-package-compatibility).
+See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#python-package-compatibility).
 
-[Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/benchmarks/results/README.md)
-[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/LICENSE)
+[Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/benchmarks/results/README.md)
+[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/LICENSE)
 
 ## Related projects
 

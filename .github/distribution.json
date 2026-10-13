@@ -51,8 +51,8 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Opt-in article extraction for local HTML, static URLs and JavaScript snapshots, with explicit ambiguity refusals and coverage omissions",
-    "Installed Python packages verified on CPython 3.13.15 Ubuntu x64 and CPython 3.14.7 macOS ARM64/Windows x64; optional JavaScript executes on Unix and refuses before requests on Windows"
+    "Bounded ZIP member reads and XML preflight for DOCX/PPTX and workbook metadata/artifacts, with operation-wide accounting for repeated reads",
+    "Oversized selected work and unsupported selected ZIP compression refuse before output writes; successful output remains complete, while native workbook values and total process memory stay outside these bounds"
   ],
   "releases": {
     "0.2.0": {
