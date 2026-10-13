@@ -47,8 +47,10 @@ jobs:
         include:
           - target: linux-x64
             os: ubuntu-22.04
+            compatibility-python: "3.13.15"
           - target: macos-arm64
             os: macos-15
+            compatibility-python: "3.14.7"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -111,6 +113,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Verify installed packages on CPython ${{ matrix.compatibility-python }}
+        timeout-minutes: 10
+        run: uv run --no-project --python "${{ matrix.compatibility-python }}" python .github/workflows/verify_install.py verify --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist/ci-runtime" --expected-python "${{ matrix.compatibility-python }}" --target "${{ matrix.target }}"
+      - name: Preserve installed compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-python-compat-${{ matrix.target }}-${{ matrix.compatibility-python }}
+          path: ${{ runner.temp }}/ci-dist/ci-runtime/ci-package/verification-*.json
+          if-no-files-found: warn
+          retention-days: 7
+
   standalone-windows:
     name: standalone (windows-x64, Python 3.12.14)
     needs: [scope, standalone]
@@ -167,6 +182,19 @@ jobs:
           compression-level: 0
           path: ${{ runner.temp }}/ci-native-assets/
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify installed packages on CPython 3.14.7
+        timeout-minutes: 10
+        run: uv run --no-project --python 3.14.7 python .github/workflows/verify_install.py verify --checkout "${{ github.workspace }}" --bundle "${{ runner.temp }}/ci-dist/ci-runtime" --expected-python 3.14.7 --target windows-x64
+      - name: Preserve installed compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          overwrite: true
+          name: ci-python-compat-windows-x64-3.14.7
+          path: ${{ runner.temp }}/ci-dist/ci-runtime/ci-package/verification-*.json
+          if-no-files-found: warn
           retention-days: 7
 
   standalone-assets:
@@ -311,6 +339,8 @@ jobs:
         run: uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py record-inputs --checkout "${{ github.workspace }}" --output ci-package/producer-inputs.json
       - name: Verify wheel and sdist smoke outside the source checkout
         run: uv run --no-project --python 3.12.14 python .github/workflows/verify_install.py verify --smoke
+      - name: Seal the same distribution pair for full runtime compatibility
+        run: uv run --no-project --python 3.12.14 python .github/workflows/verify_install.py prepare-runtime
       - uses: actions/upload-artifact@v7.0.2
         with:
           overwrite: true
@@ -319,6 +349,7 @@ jobs:
           path: |
             dist/
             ci-package/
+            ci-runtime/
           if-no-files-found: error
           retention-days: 7
 
