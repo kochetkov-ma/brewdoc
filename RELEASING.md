@@ -8,7 +8,7 @@ Fast, deterministic document-to-Markdown conversion for agent systems. Easy to i
 Link version-specific INSTALL.md for practical lifecycle instructions; historical
 0.2.0/0.3.0/0.3.1 tags lack that file and link their own README instead. Never change
 release tags/package bytes merely to revise notes.
-Current installation examples select 0.3.3; each channel needs publication and consumer acceptance.
+Current installation examples select 0.4.0; each channel needs publication and consumer acceptance.
 
 ## Channels and publisher setup
 

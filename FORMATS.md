@@ -99,9 +99,10 @@ Inclusive limits, exceeded before output writes: raw input 8 MiB; depth 256 with
 including nested tables; final UTF-8 Markdown/envelope 64 MiB. Postparse admission is not a
 native-parser memory-safety guarantee.
 
-### Article selection (unreleased source)
+### Article selection
 
-This opt-in mode is available in the source checkout, not the published 0.3.3 package or binaries.
+Introduced in 0.4.0. Use a channel listed as available in
+[that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.0).
 Use `run(path, article=True)`, `render_html(path, article=True)`, local `--article`, or combine
 `--article` with `--url` and optionally `--render-js`. Other document formats refuse with
 exit 1; combining it with self-check is a usage error with exit 2. Local APIs stay offline;
@@ -156,8 +157,8 @@ of every OS/minor combination. The following source-package cells passed in
 All three cells used the same verified wheel/sdist pair in four independent installations each.
 Each installation converted 11 original documents and passed self-check 38 and article API/CLI
 checks. These are selected tested patches, not a claim about newer Python versions. This matrix
-concerns source-built Python packages; the published 0.3.3 standalone binaries retain their
-separate bundled-runtime targets. The evidence does not publish these source changes.
+concerns source-built Python packages; standalone binaries have separate bundled-runtime
+targets. CI evidence alone does not establish channel publication.
 Other OS/minor combinations, free-threaded CPython and other architectures remain untested here.
 
 ## EPUB
@@ -217,8 +218,8 @@ strings/output rollback also consume memory. These are policy limits, not capaci
 
 --url explicitly acquires a static HTTP(S) page, then converts a frozen UTF-8 snapshot. Local HTML
 and APIs remain offline. Relative links/images resolve against final URL/valid base without fetching
-images/linked pages. The default complete recovered body retains source order. Source-only
-`--article` selects a subtree under the [article contract](#article-selection-unreleased-source).
+images/linked pages. The default complete recovered body retains source order.
+`--article` selects a subtree under the [article contract](#article-selection).
 Local files and static capture do not execute scripts.
 
 Only public destinations/default ports 80/443 pass. All DNS answers, peers and redirects are
