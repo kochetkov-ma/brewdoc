@@ -64,6 +64,49 @@ def tls_receipt(result: subprocess.CompletedProcess) -> dict:
     return receipt
 
 
+def zip_xml_refusal_case(work: Path) -> tuple[Path, Path, dict]:
+    """Create a valid DOCX one member beyond the approved archive-entry bound."""
+    source, output = work / 'zip-member-limit.docx', work / 'zip-member-output.md'
+    members = (
+        ('_rels/.rels', '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+         'officeDocument" Target="word/document.xml"/></Relationships>'),
+        ('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+         '<w:body><w:p><w:r><w:t>Member bound probe.</w:t></w:r></w:p></w:body></w:document>'),
+    )
+    with zipfile.ZipFile(source, 'w') as package:
+        for name, payload in members:
+            package.writestr(zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0)), payload)
+        for ordinal in range(4095):
+            package.writestr(zipfile.ZipInfo(f'ignored/{ordinal:04d}', date_time=(1980, 1, 1, 0, 0, 0)), b'')
+    output.write_bytes(b'preserve existing output\n')
+    receipt = {
+        'file_ok': False, 'route': 'doc', 'reason': 'OOXML members limit exceeded: 4096',
+        'source': source.name, 'out': None, 'receipt_schema': 'brewdoc.receipt/1',
+        'unit_kind': 'chapter', 'units': 0, 'tables': 0, 'text_regions': 0,
+        'columns_split': 0, 'broken_ligature_words': 0,
+        'dropped': {'control_chars': 0, 'soft_hyphens': 0, 'nbsp': 0, 'pua_glyphs': 0,
+                    'cid_survivors': 0, 'ligatures': 0, 'running_heads': 0, 'page_numbers': 0,
+                    'non_ascii_replaced': 0},
+        'not_carried': ['images, charts and the text drawn inside them',
+                        'tracked changes, comments, footnotes, headers and footers',
+                        "a table's own formatting - only its cells, row by row"],
+    }
+    return source, output, receipt
+
+
+def zip_xml_refusal_probe(arguments: list[str], work: Path, environment: dict) -> dict:
+    """Require the real CLI to refuse excess ZIP members without changing output."""
+    source, output, expected = zip_xml_refusal_case(work)
+    result = subprocess.run([*arguments, str(source), '--out', str(output)], cwd=work,
+                            env=environment, capture_output=True, timeout=10)
+    stdout = (json.dumps(expected, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
+    if (result.returncode, result.stdout, result.stderr, output.read_bytes()) != (
+            1, stdout, b'', b'preserve existing output\n'):
+        raise ValueError('ZIP/XML member refusal changed its receipt or existing output')
+    return expected
+
+
 def verifier():
     """Reuse the existing pure package checks without importing the conversion engine."""
     spec = importlib.util.spec_from_file_location('install_verifier', Path(__file__).with_name('verify_install.py'))
@@ -885,6 +928,7 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
         if (refused.returncode, receipt['file_ok'], receipt['units'], sentinel.read_bytes(), refused.stderr) != (
                 1, False, 0, b'preserve existing output\n', b''):
             raise ValueError('Frozen refusal changed the existing output')
+        zip_xml_refusal_probe([str(binary)], work, environment)
         children = child_checks(binary, work, environment, data['targets'][target]['render_js'])
         public = command([str(binary), '--url', 'https://example.org/', '--timeout', '30'],
                          cwd=work, env=environment, timeout=35)

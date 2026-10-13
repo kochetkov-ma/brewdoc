@@ -4,12 +4,15 @@
 
 Local conversion after installation is offline and downloads no runtime components.
 Supported formats and readable-file constraints are defined in FORMATS.md.
+Version 0.4.1 adds [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#zipxml-reader-limits)
+for DOCX/PPTX and workbook metadata/artifacts, with refusal before output writes.
+Native workbook values and total process memory are outside those bounds.
 
-- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
-- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
-- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
+- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
+- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
 - [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest): concise features, actual assets and channel availability.
-- Installation examples select 0.4.0; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.0). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
+- Installation examples select 0.4.1; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.1). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
 
 ## CLI and API
 
@@ -49,7 +52,7 @@ See the format limits for supported JS runtimes and prerequisite refusals.
 ## Article mode
 
 Introduced in 0.4.0; use a channel listed as available in the release. Python JS capture
-needs `brewdoc[render-js]==0.4.0`; supported standalone bundles include its prerequisites.
+needs `brewdoc[render-js]==0.4.1`; supported standalone bundles include its prerequisites.
 
 ```sh
 brewdoc page.html --article --out article.md
@@ -68,7 +71,7 @@ Use single articles or marked documentation. Peer-article feeds refuse. Visible 
 disqualify main fallback; forms inside an eligible explicit article remain rendered content.
 Receipt `not_carried` and successful Markdown Known omissions include
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
-See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md#article-selection).
+See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#article-selection).
 
 [Source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
 Ubuntu 22.04 x64/glibc with CPython 3.13.15, macOS 15 ARM64 and Windows Server 2025 x64
@@ -77,7 +80,7 @@ optional JS executed on Unix and refused before requests on Windows. These are s
 tested patches. CPython 3.12.14 retains local macOS full-suite and existing CI smoke evidence.
 Source-package checks are separate from standalone binaries; other OS/minor combinations,
 free-threaded CPython and other architectures remain untested here.
-See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.0/FORMATS.md#python-package-compatibility).
+See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#python-package-compatibility).
 
 ## Related projects
 

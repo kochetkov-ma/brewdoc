@@ -14,10 +14,11 @@ from pathlib import Path
 from python_calamine import CalamineWorkbook
 
 from brewdoc.common import (CAPABILITY_FIELDS, ArtifactRef, BrewdocError, Rendered, Route,
-                            _assemble, _local_name, _opc_main_part, _relationship_elements,
-                            _relationship_part, _relationships, _resolve_ooxml_part,
-                            _unit_anchor, _unit_key, _xml_part, cell_text, new_tally, reading,
-                            sanitise)
+                            _ZipBudget, _assemble, _check_zip_members, _local_name, _opc_main_part,
+                            _relationship_elements, _relationship_part, _relationships,
+                            _resolve_ooxml_part,
+                            _unit_anchor, _unit_key, _xml_part, _zip_member_bytes, cell_text,
+                            new_tally, reading, sanitise)
 
 FORMULA_SCHEMA = "brewdoc.formulas/1"
 FORMULA_SUFFIXES = (".xlsm", ".xlsx")
@@ -104,8 +105,9 @@ def _workbook(path: Path):
         yield book
 
 
-def _render_book(path: Path, sheets) -> Rendered:
+def _render_book(path: Path, sheets, *, _zip_budget: _ZipBudget | None = None) -> Rendered:
     """Render selected cached values; the same frozen selection scopes the artifact inventory."""
+    budget = _ZipBudget() if _zip_budget is None else _zip_budget
     tally = new_tally()
     with _workbook(path) as book:
         selected = _select_sheets(book.sheet_names, sheets)
@@ -117,7 +119,7 @@ def _render_book(path: Path, sheets) -> Rendered:
             if rows:
                 tally["tables"] += 1
             units.append((ordinal, name, [("table", rows)] if rows else []))
-    artifacts = _book_artifacts(path, sheets)
+    artifacts = _book_artifacts(path, sheets, budget)
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, source_units, units, tally,
                      not_carried=ROUTE.not_carried, artifacts=artifacts,
                      capabilities=_book_capabilities(path.suffix.lower(), artifacts))
@@ -171,17 +173,20 @@ def _formula_cells(root: ET.Element, sheet: str) -> tuple[CellFormula, ...]:
                  for address, formula in _formula_elements(root, sheet))
 
 
-def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
+def _read_formula_artifacts(path: Path, sheets, references=False,
+                            _zip_budget: _ZipBudget | None = None) -> tuple:
     """Read full artifacts or count-only `ArtifactRef`s with stable source ordinals."""
     suffix = path.suffix.lower()
     if suffix not in FORMULA_SUFFIXES:
         raise BrewdocError("formula artifacts unavailable for '%s'; supported suffixes: %s"
                            % (suffix, " ".join(FORMULA_SUFFIXES)))
+    budget = _ZipBudget() if _zip_budget is None else _zip_budget
     try:
         digest = None if references else hashlib.sha256(path.read_bytes()).hexdigest()
         with zipfile.ZipFile(path) as package:
-            workbook_part = _opc_main_part(package)
-            workbook = _xml_part(package, workbook_part)
+            _check_zip_members(package, budget)
+            workbook_part = _opc_main_part(package, budget)
+            workbook = _xml_part(package, workbook_part, budget)
             entries = []
             for ordinal, element in enumerate(
                     (node for node in workbook.iter() if _local_name(node.tag) == "sheet"), 1):
@@ -191,7 +196,7 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
                 entries.append((ordinal, name, _sheet_relation_id(element, name)))
             selected = _select_sheets((name for _ordinal, name, _relation in entries), sheets)
             by_name = {name: (ordinal, relation) for ordinal, name, relation in entries}
-            relationships = _relationships(package, _relationship_part(workbook_part))
+            relationships = _relationships(package, _relationship_part(workbook_part), budget)
             artifacts = []
             for _selected_ordinal, name in selected:
                 ordinal, relation_id = by_name[name]
@@ -205,7 +210,7 @@ def _read_formula_artifacts(path: Path, sheets, references=False) -> tuple:
                     raise BrewdocError("worksheet relationship is external for sheet %s" % name)
                 target = _resolve_ooxml_part(
                     workbook_part, relationship.attrib.get("Target", ""))
-                root = _xml_part(package, target)
+                root = _xml_part(package, target, budget)
                 key = "formula/sheet/%06d" % ordinal
                 if references:
                     count = sum(1 for _address, _formula in _formula_elements(root, name))
@@ -230,11 +235,12 @@ def read_formulas(path, *, sheets=None) -> tuple[FormulaArtifact, ...]:
     return _read_formula_artifacts(Path(path), _sheet_selection(sheets))
 
 
-def _vba_relationship(package: zipfile.ZipFile, workbook_part: str) -> str | None:
+def _vba_relationship(package: zipfile.ZipFile, workbook_part: str,
+                      _zip_budget: _ZipBudget) -> str | None:
     """Return the package part of the single internal VBA relationship, or None."""
     relationships = tuple(
         relationship for relationship in _relationship_elements(
-            package, _relationship_part(workbook_part))
+            package, _relationship_part(workbook_part), _zip_budget)
         if relationship.attrib.get("Type") == VBA_RELATIONSHIP_TYPE
     )
     if len(relationships) > 1:
@@ -247,8 +253,11 @@ def _vba_relationship(package: zipfile.ZipFile, workbook_part: str) -> str | Non
     return _resolve_ooxml_part(workbook_part, relationship.attrib.get("Target", ""))
 
 
-def _vba_member(package: zipfile.ZipFile, package_part: str) -> bytes:
-    """Read one bounded project member; zipfile never yields more than its declared size."""
+def _vba_member(package: zipfile.ZipFile, package_part: str,
+                 _zip_budget: _ZipBudget | None = None) -> bytes:
+    """Read exact project bytes within the VBA and operation bounds."""
+    budget = _ZipBudget() if _zip_budget is None else _zip_budget
+    _check_zip_members(package, budget)
     matches = tuple(info for info in package.infolist() if info.filename == package_part)
     if not matches:
         raise BrewdocError("OOXML part is missing: %s" % package_part)
@@ -257,18 +266,19 @@ def _vba_member(package: zipfile.ZipFile, package_part: str) -> bytes:
     info = matches[0]
     if info.flag_bits & 1:
         raise BrewdocError("VBA project part is encrypted: %s" % package_part)
-    if info.file_size > MAX_VBA_PROJECT_BYTES:
-        raise BrewdocError("VBA project part exceeds %d bytes: %s"
-                           % (MAX_VBA_PROJECT_BYTES, package_part))
-    return package.read(info)
+    return _zip_member_bytes(
+        package, info, budget, max_bytes=MAX_VBA_PROJECT_BYTES,
+        limit_error="VBA project part exceeds %d bytes: %s" % (MAX_VBA_PROJECT_BYTES, package_part))
 
 
-def _vba_project(path: Path) -> bytes | None:
+def _vba_project(path: Path, _zip_budget: _ZipBudget | None = None) -> bytes | None:
     """Read the related opaque VBA project as exact bytes without parsing its streams."""
+    budget = _ZipBudget() if _zip_budget is None else _zip_budget
     try:
         with zipfile.ZipFile(path) as package:
-            package_part = _vba_relationship(package, _opc_main_part(package))
-            return None if package_part is None else _vba_member(package, package_part)
+            _check_zip_members(package, budget)
+            package_part = _vba_relationship(package, _opc_main_part(package, budget), budget)
+            return None if package_part is None else _vba_member(package, package_part, budget)
     except BrewdocError:
         raise
     except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
@@ -283,12 +293,12 @@ def _workbook_suffix(path: Path) -> str:
     return suffix
 
 
-def _book_artifacts(path: Path, sheets) -> tuple[ArtifactRef, ...]:
+def _book_artifacts(path: Path, sheets, _zip_budget: _ZipBudget) -> tuple[ArtifactRef, ...]:
     """Inventory selected formula sheets and the workbook-level VBA project; None selects all."""
     suffix = _workbook_suffix(path)
-    artifacts = (_read_formula_artifacts(path, sheets, references=True)
+    artifacts = (_read_formula_artifacts(path, sheets, references=True, _zip_budget=_zip_budget)
                  if suffix in FORMULA_SUFFIXES else ())
-    project = _vba_project(path) if suffix in VBA_SUFFIXES else None
+    project = _vba_project(path, _zip_budget) if suffix in VBA_SUFFIXES else None
     if project is None:
         return artifacts
     return artifacts + (ArtifactRef(
@@ -296,14 +306,18 @@ def _book_artifacts(path: Path, sheets) -> tuple[ArtifactRef, ...]:
         "application/vnd.ms-office.vbaProject", len(project), hashlib.sha256(project).hexdigest()),)
 
 
-def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
-    """List selected formula sheets and the workbook-level opaque VBA project."""
-    path = Path(path)
+def _list_book_artifacts(path: Path, sheets, _zip_budget: _ZipBudget) -> tuple[ArtifactRef, ...]:
+    """Validate native sheet selection and inventory within the caller's budget."""
     _workbook_suffix(path)
     sheets = _sheet_selection(sheets)
     with _workbook(path) as book:
         _select_sheets(book.sheet_names, sheets)      # the value reader validates every format
-    return _book_artifacts(path, sheets)
+    return _book_artifacts(path, sheets, _zip_budget)
+
+
+def list_book_artifacts(path, *, sheets=None) -> tuple[ArtifactRef, ...]:
+    """List selected formula sheets and the workbook-level opaque VBA project."""
+    return _list_book_artifacts(Path(path), sheets, _ZipBudget())
 
 
 def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
@@ -320,15 +334,16 @@ def _formula_json(path: Path, artifact: FormulaArtifact) -> bytes:
 
 
 def _artifact_payloads(path: Path, sheets, references: tuple[ArtifactRef, ...],
-                       keys: tuple[str, ...]) -> tuple[bytes, ...]:
+                       keys: tuple[str, ...], _zip_budget: _ZipBudget | None = None) -> tuple[bytes, ...]:
     """Serialize listed artifacts by key: formula JSON or exact VBA project bytes."""
+    budget = _ZipBudget() if _zip_budget is None else _zip_budget
     kinds = [next((item.kind for item in references if item.key == key), None) for key in keys]
-    formulas = ({item.key: item for item in _read_formula_artifacts(path, sheets)}
+    formulas = ({item.key: item for item in _read_formula_artifacts(path, sheets, _zip_budget=budget)}
                 if "formula" in kinds else {})
     payloads = []
     for key, kind in zip(keys, kinds):
         payload = (_formula_json(path, formulas[key]) if kind == "formula" and key in formulas
-                   else _vba_project(path) if kind == "vba-project" else None)
+                   else _vba_project(path, budget) if kind == "vba-project" else None)
         if payload is None:
             raise BrewdocError("workbook artifact not found: %s" % key)
         payloads.append(payload)
@@ -339,4 +354,5 @@ def read_book_artifact(path, key: str, *, sheets=None) -> bytes:
     """Return deterministic formula JSON or exact opaque VBA project bytes by key."""
     path = Path(path)
     sheets = _sheet_selection(sheets)
-    return _artifact_payloads(path, sheets, list_book_artifacts(path, sheets=sheets), (key,))[0]
+    budget = _ZipBudget()
+    return _artifact_payloads(path, sheets, _list_book_artifacts(path, sheets, budget), (key,), budget)[0]

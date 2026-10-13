@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from brewdoc.common import (MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route,
-                            _markdown_encoding, new_tally)
+                            _ZipBudget, _markdown_encoding, new_tally)
 from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.epub import ROUTE as EPUB_ROUTE
 from brewdoc.htmltext import ARTICLE_OMISSION, ROUTE as HTML_ROUTE
@@ -105,8 +105,12 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
         if route.name != "sheet" and (sheets is not None or pairs):
             raise BrewdocError("--sheet and --artifact are workbook-only options")
         targets = _output_targets(path, out, pairs)
-        markdown, tally, unit_keys, references = (
-            route.render(path, sheets, article=True) if article else route.render(path, sheets))
+        zip_budget = _ZipBudget() if route.name == "sheet" else None
+        if route.name == "sheet":
+            rendered = route.render(path, sheets, _zip_budget=zip_budget)
+        else:
+            rendered = route.render(path, sheets, article=True) if article else route.render(path, sheets)
+        markdown, tally, unit_keys, references = rendered
         keys = tuple(key for key, _target, _shown in pairs)
         listed = {item.key for item in references}
         unknown = [key for key in keys if key not in listed]
@@ -114,7 +118,7 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
             raise BrewdocError("unknown artifact key: %s" % ", ".join(unknown))
         payloads = ((markdown.encode(_markdown_encoding(route.name)),)
                     if out is not None else ()) + _artifact_payloads(
-            path, sheets, references, keys)
+            path, sheets, references, keys, zip_budget)
     except BrewdocError as exc:
         return EXIT_FAIL, _line(route, False, str(exc), path), ""
     except Exception as exc:                      # a third-party parser raises its own types

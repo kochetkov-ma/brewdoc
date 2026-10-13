@@ -13,6 +13,7 @@ import socket
 import threading
 import queue
 import struct
+import zipfile
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +24,46 @@ BUILDER_SPEC = importlib.util.spec_from_file_location(
     'standalone_builder', Path(__file__).resolve().parents[1] / '.github/workflows/build_standalone.py')
 BUILDER = importlib.util.module_from_spec(BUILDER_SPEC)
 BUILDER_SPEC.loader.exec_module(BUILDER)
+
+
+def test_native_zip_member_probe_requires_the_real_cli_refusal_and_preserves_output(tmp_path):
+    # GIVEN a valid DOCX with one entry beyond the approved shipping limit
+    source, output, expected = BUILDER.zip_xml_refusal_case(tmp_path)
+    with zipfile.ZipFile(source) as package:
+        assert len(package.infolist()) == 4097, 'the probe crosses the actual shipping member limit by one'
+    assert output.read_bytes() == b'preserve existing output\n', 'the existing destination starts with the sentinel'
+    environment = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'src')}
+    # WHEN the same probe used for producer and public archives invokes the source CLI
+    actual = BUILDER.zip_xml_refusal_probe([sys.executable, '-m', 'brewdoc.cli'], tmp_path, environment)
+    # THEN the exact full refusal survives and no Markdown replaces the prior output
+    assert (actual, output.read_bytes()) == (expected, b'preserve existing output\n'), 'CLI refusal preserves the complete receipt and destination'
+
+
+@pytest.mark.parametrize('code,receipt_change,suffix,stderr,output_bytes', [
+    (0, {}, b'', b'', b'preserve existing output\n'),
+    (1, {'reason': 'different refusal'}, b'', b'', b'preserve existing output\n'),
+    (1, {}, b'additional stdout\n', b'', b'preserve existing output\n'),
+    (1, {}, b'', b'parser traceback', b'preserve existing output\n'),
+    (1, {}, b'', b'', b'replaced output\n'),
+], ids=['accepted-input', 'wrong-receipt', 'extra-stdout', 'stderr', 'changed-output'])
+def test_native_zip_member_probe_rejects_incomplete_consumer_evidence(
+        tmp_path, monkeypatch, code, receipt_change, suffix, stderr, output_bytes):
+    # GIVEN a consumer response that changes one required refusal observation
+    source, output, expected = BUILDER.zip_xml_refusal_case(tmp_path)
+    assert source.is_file() is True, 'the probe fixture exists before the consumer runs'
+    stdout = (json.dumps({**expected, **receipt_change}, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii') + suffix
+
+    def run(arguments, **kwargs):
+        """Return the selected consumer observation with its actual output side effect."""
+        output.write_bytes(output_bytes)
+        return subprocess.CompletedProcess(arguments, code, stdout, stderr)
+
+    monkeypatch.setattr(BUILDER.subprocess, 'run', run)
+    # WHEN the verifier compares the complete CLI observation to literal expectations
+    with pytest.raises(ValueError, match='^ZIP/XML member refusal changed its receipt or existing output$'):
+        BUILDER.zip_xml_refusal_probe(['brewdoc'], tmp_path, {})
+    # THEN failed admission retains the observation instead of rewriting output to pass
+    assert output.read_bytes() == output_bytes, 'the verifier does not repair a failed consumer observation'
 
 
 def test_native_verify_logs_tls_probe_stage_before_preserving_refusal(tmp_path, monkeypatch, caplog):
@@ -44,6 +85,7 @@ def test_native_verify_logs_tls_probe_stage_before_preserving_refusal(tmp_path, 
     monkeypatch.setattr(BUILDER, 'extract_archive', lambda *args: root)
     monkeypatch.setattr(BUILDER, 'consumer_environment', lambda work: {})
     monkeypatch.setattr(BUILDER, 'child_checks', lambda *args: {})
+    monkeypatch.setattr(BUILDER, 'zip_xml_refusal_probe', lambda *args: {})
     commands = {('--self-check',): f'self-check: ok (38 checks){os.linesep}'.encode(),
                 ('--url', 'https://example.org/', '--timeout', '30'): json.dumps({
                     'file_ok': True, 'acquisition': {'capture_status': 'static'}}).encode()}

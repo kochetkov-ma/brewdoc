@@ -6,8 +6,9 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from brewdoc.common import (BrewdocError, Rendered, Route, _assemble, _local_name,
-                            _relationship_part, _resolve_ooxml_part, _xml_part, new_tally,
+from brewdoc.common import (BrewdocError, Rendered, Route, _ZipBudget, _assemble,
+                            _check_zip_members, _local_name, _relationship_part,
+                            _resolve_ooxml_part, _xml_part, _zip_member_size, new_tally,
                             reading, sanitise)
 
 TRANSITIONAL_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -28,39 +29,44 @@ def _child(node: ET.Element, name: str) -> ET.Element | None:
     return next((child for child in node if _local_name(child.tag) == name), None)
 
 
-def _required_xml(package: zipfile.ZipFile, part: str) -> ET.Element:
+def _required_xml(package: zipfile.ZipFile, part: str, budget: _ZipBudget) -> ET.Element:
     """Read one required XML part and reject ambiguous duplicate archive members."""
+    _check_zip_members(package, budget)
     matches = [item for item in package.infolist() if item.filename == part]
     if not matches:
         raise BrewdocError("OOXML part is missing: %s" % part)
     if len(matches) > 1:
         raise BrewdocError("OOXML part occurs more than once: %s" % part)
-    return _xml_part(package, part)
+    return _xml_part(package, part, budget)
 
 
-def _required_bytes(package: zipfile.ZipFile, part: str) -> bytes:
-    """Read one required binary part and reject ambiguous duplicate archive members."""
+def _required_size(package: zipfile.ZipFile, part: str, budget: _ZipBudget) -> int:
+    """Count required binary bytes after rejecting ambiguous duplicate archive members."""
+    _check_zip_members(package, budget)
     matches = [item for item in package.infolist() if item.filename == part]
     if not matches:
         raise BrewdocError("OOXML part is missing: %s" % part)
     if len(matches) > 1:
         raise BrewdocError("OOXML part occurs more than once: %s" % part)
-    return package.read(matches[0])
+    return _zip_member_size(package, matches[0], budget)
 
 
-def _required_relationships(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
+def _required_relationships(package: zipfile.ZipFile, part: str,
+                            budget: _ZipBudget) -> tuple[ET.Element, ...]:
     """Read a required relationship part without collapsing duplicate relationship ids."""
-    root = _required_xml(package, part)
+    root = _required_xml(package, part, budget)
     if _local_name(root.tag) != "Relationships":
         raise BrewdocError("OOXML relationship part has unexpected root: %s" % part)
     return tuple(element for element in root if _local_name(element.tag) == "Relationship")
 
 
-def _optional_relationships(package: zipfile.ZipFile, part: str) -> tuple[ET.Element, ...]:
+def _optional_relationships(package: zipfile.ZipFile, part: str,
+                            budget: _ZipBudget) -> tuple[ET.Element, ...]:
     """Read a relationship part when present; malformed or duplicate parts still refuse."""
+    _check_zip_members(package, budget)
     if not any(item.filename == part for item in package.infolist()):
         return ()
-    return _required_relationships(package, part)
+    return _required_relationships(package, part, budget)
 
 
 def _relationship_attribute(element: ET.Element, name: str) -> str | None:
@@ -74,9 +80,9 @@ def _relationship_attribute(element: ET.Element, name: str) -> str | None:
     return None
 
 
-def _presentation_part(package: zipfile.ZipFile) -> str:
+def _presentation_part(package: zipfile.ZipFile, budget: _ZipBudget) -> str:
     """Resolve the single internal presentation through the package office relationship."""
-    relationships = _required_relationships(package, "_rels/.rels")
+    relationships = _required_relationships(package, "_rels/.rels", budget)
     candidates = [item for item in relationships
                   if item.attrib.get("Type") in OFFICE_DOCUMENT_TYPES]
     if not candidates:
@@ -221,7 +227,8 @@ def _clean_attribute(value: str | None, tally: dict, default: str) -> str:
 
 
 def _picture_line(picture: ET.Element, package: zipfile.ZipFile,
-                  slide_part: str, relationships: tuple[ET.Element, ...], tally: dict) -> str:
+                  slide_part: str, relationships: tuple[ET.Element, ...], tally: dict,
+                  budget: _ZipBudget) -> str:
     """Describe one picture from OOXML metadata without decoding or fetching pixels."""
     properties = next((item for item in picture.iter() if _local_name(item.tag) == "cNvPr"), None)
     blip = next((item for item in picture.iter() if _local_name(item.tag) == "blip"), None)
@@ -236,7 +243,7 @@ def _picture_line(picture: ET.Element, package: zipfile.ZipFile,
     if relationship.attrib.get("TargetMode") == "External":
         source, byte_count = "external", "unknown"
     else:
-        source, byte_count = "embedded", str(len(_required_bytes(package, target)))
+        source, byte_count = "embedded", str(_required_size(package, target, budget))
 
     shape_properties = _child(picture, "spPr")
     transform = _child(shape_properties, "xfrm") if shape_properties is not None else None
@@ -256,7 +263,8 @@ def _picture_line(picture: ET.Element, package: zipfile.ZipFile,
 
 
 def _notes_block(package: zipfile.ZipFile, slide_part: str,
-                 relationships: tuple[ET.Element, ...], tally: dict) -> tuple | None:
+                 relationships: tuple[ET.Element, ...], tally: dict,
+                 budget: _ZipBudget) -> tuple | None:
     """Read one optional notes part and retain only body-placeholder text."""
     notes = [item for item in relationships if item.attrib.get("Type") in NOTES_TYPES]
     if not notes:
@@ -268,7 +276,7 @@ def _notes_block(package: zipfile.ZipFile, slide_part: str,
         raise BrewdocError("notes relationship id is missing in %s" % slide_part)
     notes_part, _relationship = _related_part(
         relationships, relation_id, NOTES_TYPES, slide_part, "notes relationship")
-    root = _required_xml(package, notes_part)
+    root = _required_xml(package, notes_part, budget)
     if _local_name(root.tag) != "notes":
         raise BrewdocError("OOXML notes part has unexpected root: %s" % notes_part)
     tree = _shape_tree(root, "notes", notes_part)
@@ -284,7 +292,8 @@ def _notes_block(package: zipfile.ZipFile, slide_part: str,
 
 def _slide_blocks(tree: ET.Element, title_shape: ET.Element | None,
                   package: zipfile.ZipFile, slide_part: str,
-                  relationships: tuple[ET.Element, ...], tally: dict) -> list[tuple]:
+                  relationships: tuple[ET.Element, ...], tally: dict,
+                  budget: _ZipBudget) -> list[tuple]:
     """Render supported shape-tree children in XML order, then append speaker notes."""
     blocks = []
     for shape in _shape_nodes(tree):
@@ -299,13 +308,13 @@ def _slide_blocks(tree: ET.Element, title_shape: ET.Element | None,
         elif name == "pic":
             tally["text_regions"] += 1
             blocks.append(("text", [_picture_line(
-                shape, package, slide_part, relationships, tally)]))
+                shape, package, slide_part, relationships, tally, budget)]))
         elif name == "graphicFrame":
             table = next((item for item in shape.iter() if _local_name(item.tag) == "tbl"), None)
             if table is not None:
                 tally["tables"] += 1
                 blocks.append(("table", _table_rows(table, tally)))
-    notes = _notes_block(package, slide_part, relationships, tally)
+    notes = _notes_block(package, slide_part, relationships, tally, budget)
     if notes is not None:
         blocks.append(notes)
     return blocks
@@ -314,14 +323,17 @@ def _slide_blocks(tree: ET.Element, title_shape: ET.Element | None,
 def _render_presentation(path: Path, _sheets=None) -> Rendered:
     """Render every declared slide after validating each required OPC boundary."""
     tally = new_tally()
+    budget = _ZipBudget()
     units = []
     with reading(path, "presentation"), zipfile.ZipFile(path) as package:
-        presentation_part = _presentation_part(package)
-        presentation = _required_xml(package, presentation_part)
+        _check_zip_members(package, budget)
+        presentation_part = _presentation_part(package, budget)
+        presentation = _required_xml(package, presentation_part, budget)
         if _local_name(presentation.tag) != "presentation":
             raise BrewdocError("OOXML presentation part has unexpected root: %s"
                                % presentation_part)
-        relationships = _required_relationships(package, _relationship_part(presentation_part))
+        relationships = _required_relationships(
+            package, _relationship_part(presentation_part), budget)
         slide_list = _child(presentation, "sldIdLst")
         declarations = [] if slide_list is None else [
             item for item in slide_list if _local_name(item.tag) == "sldId"]
@@ -337,15 +349,15 @@ def _render_presentation(path: Path, _sheets=None) -> Rendered:
             slide_part, _relationship = _related_part(
                 relationships, relation_id, SLIDE_TYPES, presentation_part,
                 "slide relationship")
-            slide = _required_xml(package, slide_part)
+            slide = _required_xml(package, slide_part, budget)
             if _local_name(slide.tag) != "sld":
                 raise BrewdocError("OOXML slide part has unexpected root: %s" % slide_part)
             slide_relationships = _optional_relationships(
-                package, _relationship_part(slide_part))
+                package, _relationship_part(slide_part), budget)
             tree = _shape_tree(slide, "slide", slide_part)
             title_shape, title = _title_shape(tree, tally)
             blocks = _slide_blocks(tree, title_shape, package, slide_part,
-                                   slide_relationships, tally)
+                                   slide_relationships, tally, budget)
             units.append((ordinal, title, blocks))
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, len(declarations), units, tally,
                      not_carried=ROUTE.not_carried)

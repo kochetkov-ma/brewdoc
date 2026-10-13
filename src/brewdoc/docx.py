@@ -6,8 +6,9 @@ import re
 import zipfile
 from pathlib import Path
 
-from brewdoc.common import (BrewdocError, Rendered, Route, _assemble, _opc_main_part, _xml_part,
-                            new_tally, reading, sanitise)
+from brewdoc.common import (BrewdocError, Rendered, Route, _ZipBudget, _assemble,
+                            _check_zip_members, _opc_main_part, _xml_part, new_tally,
+                            reading, sanitise)
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_STRICT = "{http://purl.oclc.org/ooxml/wordprocessingml/main}"
@@ -93,9 +94,11 @@ def _doc_rows(table, tally: dict) -> list[list[str]]:
 def _render_doc(path: Path, _sheets=None) -> Rendered:
     """Render body paragraphs and tables as ordered heading chapters; close the ZIP before assembly."""
     tally = new_tally()
+    budget = _ZipBudget()
     with reading(path, "document"), zipfile.ZipFile(path) as package:
-        part = _opc_main_part(package)
-        body = _word_child(_xml_part(package, part), "body")
+        _check_zip_members(package, budget)
+        part = _opc_main_part(package, budget)
+        body = _word_child(_xml_part(package, part, budget), "body")
     if body is None:
         raise BrewdocError("no document body: %s carries no <w:body> in %s" % (path, part))
     chapters, heading, blocks = [], DOC_BODY, []
