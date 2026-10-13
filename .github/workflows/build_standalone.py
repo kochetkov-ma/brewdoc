@@ -943,7 +943,7 @@ def aggregate(source: Path, output: Path) -> None:
     write_json(output / 'binaries.json', {'schema': 1, 'source_sha': next(iter(identities))[0],
                                         'version': next(iter(identities))[1],
                                         'verification_scope': next(iter(identities))[5], 'targets': records})
-    (output / 'SHA256SUMS').write_text('\n'.join(sorted(checksums)) + '\n', encoding='ascii')
+    (output / 'SHA256SUMS').write_text('\n'.join(sorted(checksums)) + '\n', encoding='ascii', newline='\n')
 
 
 def main(argv: list[str] | None = None) -> int:
