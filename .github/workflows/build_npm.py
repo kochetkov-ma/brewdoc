@@ -29,6 +29,9 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = "https://registry.npmjs.org"
+# Issue #53 measured registry lag up to 16m24s; 20 minutes adds 3m36s of margin.
+REGISTRY_VISIBILITY_TIMEOUT = 20 * 60
+REGISTRY_POLL_INTERVAL = 15
 NODE_VERSION = "24.21.0"
 NPM_VERSION = "12.2.0"
 PACKAGES = {"linux-x64": "brewdoc-linux-x64-glibc", "macos-arm64": "brewdoc-darwin-arm64"}
@@ -530,12 +533,15 @@ def verify_release(input_dir: Path) -> dict:
     return manifest
 
 
-def public_record(record: dict) -> bool:
+def public_record(record: dict, *, deadline: float | None = None) -> bool:
     """Accept an existing version only after registry metadata and actual bytes agree."""
     metadata = record["metadata"]
     url = f"{REGISTRY}/{metadata['name']}/{metadata['version']}"
+    timeout = 30 if deadline is None else min(30, deadline - time.monotonic())
+    if timeout <= 0:
+        return False
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             public = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 404:
@@ -548,12 +554,31 @@ def public_record(record: dict) -> bool:
     location = urllib.parse.urlparse(public["dist"]["tarball"])
     if location.scheme != "https" or location.hostname != "registry.npmjs.org" or location.username or location.password:
         raise ValueError("Existing npm tarball URL is outside the public registry")
-    with urllib.request.urlopen(location.geturl(), timeout=60) as response:
+    if public["dist"]["integrity"] != record["integrity"]:
+        raise ValueError("Existing npm version integrity differs")
+    timeout = 60 if deadline is None else min(60, deadline - time.monotonic())
+    if timeout <= 0:
+        return False
+    with urllib.request.urlopen(location.geturl(), timeout=timeout) as response:
         payload = response.read(record["bytes"] + 1)
     if (len(payload), digest(payload), integrity(payload), public["dist"]["integrity"]) != (
             record["bytes"], record["sha256"], record["integrity"], record["integrity"]):
         raise ValueError("Existing npm version integrity differs")
     return True
+
+
+def wait_public_record(record: dict) -> bool:
+    """Poll missing metadata until the deadline; refuse conflicting records immediately."""
+    deadline = time.monotonic() + REGISTRY_VISIBILITY_TIMEOUT
+    while time.monotonic() < deadline:
+        admitted = public_record(record, deadline=deadline)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        if admitted:
+            return True
+        time.sleep(min(REGISTRY_POLL_INTERVAL, remaining))
+    return False
 
 
 def publish(input_dir: Path) -> None:
@@ -566,7 +591,7 @@ def publish(input_dir: Path) -> None:
         if not admitted:
             run_npm(["publish", str((input_dir / record["filename"]).resolve()), "--ignore-scripts", "--access", "public", "--provenance", "--json"],
                     input_dir, os.environ.copy(), publication=record)
-        if not public_record(record):
+        if not wait_public_record(record):
             raise ValueError("Published npm version is absent from the registry")
 
 
@@ -574,7 +599,7 @@ def check_public(input_dir: Path, output: Path | None = None) -> None:
     """Require every public version and tarball to match the admitted release."""
     manifest = verify_release(input_dir)
     for record in manifest["packages"]:
-        if not public_record(record):
+        if not wait_public_record(record):
             raise ValueError(f"Public npm version is missing: {record['metadata']['name']}")
     if output is not None:
         write_json(output, {"schema": 1, "verdict": "PASS", "version": manifest["version"],

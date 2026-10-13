@@ -74,6 +74,29 @@ The guide helper validates version, targets, asset hashes and availability befor
 rendering concise notes. Keep public byte/consumer gates when shortening text.
 Full commands belong in [INSTALL.md](INSTALL.md); format contracts in [FORMATS.md](FORMATS.md).
 
+Native verification retains three external HTTPS probes. Static acquisition and
+JavaScript capture use `https://example.org/`; invalid-certificate refusal uses
+`https://self-signed.badssl.com/`. A local HTTPS fixture cannot exercise these frozen
+CLI paths: URL acquisition refuses loopback/private DNS destinations and connected
+peers, and admits only standard HTTP(S) ports. Keep that policy intact.
+
+The two `example.org` probes remain because they verify valid HTTPS and JavaScript
+capture on supported native targets. Unsupported targets require a prerequisites
+refusal before HTTP. DNS, connection, proxy,
+deadline or external-service failures can fail these probes. The invalid-certificate
+probe still requires exit 1 and refusal at `tls`; its failure logs only the observed
+exit code and a known refusal stage. A failure at `dns`, `connect` or `timeout`
+does not establish a certificate-validation defect. Existing acquisition budgets
+remain 30 seconds for static/TLS and 5 seconds for JavaScript, with process ceilings
+of 35 and 10 seconds. Issue #53 measured no stable external-host lag to justify a retry.
+
+Draft staging retains the release ID returned by GitHub creation. The `stage-publish`
+controller carries it through final staging, publication and public-byte verification,
+so an absent draft in the release list requires no wait. Tag/source, list ambiguity,
+list completeness, release identity, asset sizes and downloaded bytes still have
+their existing refusal checks. Issue #53 gives no measured draft-list delay from
+which to choose a polling bound.
+
 ## Historical releases
 
 0.2.0/0.3.0 are Python wheel/sdist releases. Their notes describe their original

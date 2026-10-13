@@ -520,6 +520,7 @@ def fake_api(monkeypatch, folder, manifest, *, draft=True, changes=None):
     release.update(changes or {})
     responses = {f"git/ref/tags/{manifest['tag']}": {"ref": f"refs/tags/{manifest['tag']}",
                  "object": {"type": "commit", "sha": SOURCE}}, f"releases/tags/{manifest['tag']}": release,
+                 "releases/42": release,
                  "releases/42/assets?per_page=100": assets}
     calls = []
 
@@ -559,6 +560,131 @@ def hidden_draft_api(monkeypatch, folder, manifest):
 
     monkeypatch.setattr(RELEASE.subprocess, "run", run)
     return responses, calls
+
+
+def created_draft_api(monkeypatch, folder, manifest, *, response=None, listing=None):
+    """Keep a new draft absent from tag and list lookups throughout publication."""
+    responses, calls = fake_api(monkeypatch, folder, manifest)
+    release = responses['releases/42']
+    assets = responses['releases/42/assets?per_page=100']
+    assets.clear()
+    created = []
+    original_run = RELEASE.subprocess.run
+
+    def run(arguments, **kwargs):
+        """Return absent discovery while retaining direct-ID reads and real byte checks."""
+        endpoint = arguments[2].removeprefix(f'repos/{RELEASE.REPOSITORY}/')
+        if endpoint == f"releases/tags/{manifest['tag']}":
+            calls.append(arguments)
+            return subprocess.CompletedProcess(arguments, 1, b'{"status":"404"}', b'')
+        if endpoint == 'releases?per_page=100':
+            calls.append(arguments)
+            rows = [] if not created or listing is None else listing
+            return subprocess.CompletedProcess(arguments, 0, json.dumps(rows).encode(), b'')
+        if endpoint == 'releases':
+            calls.append(arguments)
+            created.append(True)
+            return subprocess.CompletedProcess(arguments, 0, json.dumps(release if response is None else response).encode(), b'')
+        return original_run(arguments, **kwargs)
+
+    monkeypatch.setattr(RELEASE.subprocess, 'run', run)
+    return responses, calls
+
+
+def test_created_draft_id_survives_absent_list_through_stage_and_publish(tmp_path, monkeypatch):
+    # GIVEN a newly created draft that remains absent from both discovery endpoints
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = created_draft_api(monkeypatch, folder, manifest)
+    draft_io(monkeypatch, folder, responses['releases/42/assets?per_page=100'])
+    public_io(monkeypatch, folder)
+    assert responses['releases/42/assets?per_page=100'] == [], 'the draft begins with no uploaded assets'
+    # WHEN the controller completes staging and publishing with its admitted create response
+    code = RELEASE.main(['stage-publish', '--input', str(folder), '--tag', manifest['tag'], '--source-sha', SOURCE])
+    # THEN all exact bytes pass readback without waiting for the list to expose the draft
+    assert (code, responses['releases/42']['draft'], len(responses['releases/42/assets?per_page=100'])) == (
+        0, False, 12), 'the created identity reaches complete public state through the workflow entrypoint'
+    assert sum(call[2].endswith('/releases') for call in calls) == 1, 'one absent-list creation is followed only by exact-ID reads'
+
+
+def test_stage_publish_readmits_local_bytes_after_staging_before_publication(tmp_path, monkeypatch):
+    # GIVEN a staged release whose local wheel changes after the first admission
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    wheel = folder / f'brewdoc-{VERSION}-py3-none-any.whl'
+    publications = []
+
+    def stage(input_folder, admitted):
+        """Change local bytes at the old boundary between the two CLI invocations."""
+        wheel.write_bytes(b'changed after staging')
+        return 42
+
+    monkeypatch.setattr(RELEASE, 'stage', stage)
+    monkeypatch.setattr(RELEASE, 'publish', lambda *args, **kwargs: publications.append((args, kwargs)))
+    assert RELEASE.identity(wheel) == manifest['assets'][wheel.name], 'the first CLI admission starts with exact accepted bytes'
+    # WHEN the combined controller crosses from staging to publication
+    with pytest.raises(ValueError, match='^Release asset bytes changed$'):
+        RELEASE.main(['stage-publish', '--input', str(folder), '--tag', manifest['tag'], '--source-sha', SOURCE])
+    # THEN the second original admission refuses before any publication call
+    assert publications == [], 'in-memory release identity cannot bypass the local byte admission'
+
+
+@pytest.mark.parametrize('response', [{}, {'id': True}, {'id': 0}, []])
+def test_created_draft_refuses_invalid_create_response_before_upload(tmp_path, monkeypatch, response):
+    # GIVEN a create response that cannot identify a release unambiguously
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    _responses, calls = created_draft_api(monkeypatch, folder, manifest, response=response)
+    assert calls == [], 'creation starts after the existing list and identity admission'
+    # WHEN staging receives the malformed creation identity
+    with pytest.raises(ValueError, match='^Existing release identifier is invalid$'):
+        RELEASE.stage(folder, manifest)
+    # THEN malformed IDs cannot authorize uploads or release edits
+    assert [call for call in calls if call[1] == 'release'] == [], 'creation-response refusal precedes any asset mutation'
+
+
+@pytest.mark.parametrize('listing,reason', [
+    ([{'tag_name': 'v0.3.0', 'id': 42}, {'tag_name': 'v0.3.0', 'id': 43}], 'Release tag is ambiguous'),
+    ({'releases': []}, 'Release list is malformed'),
+    ([{}] * 100, 'Release list is truncated'),
+    ([{'tag_name': 'v0.3.0', 'id': 43}], 'Existing release identity changed during lookup'),
+])
+def test_created_draft_direct_lookup_preserves_list_refusals(tmp_path, monkeypatch, listing, reason):
+    # GIVEN a list conflict that appears after the controller creates a draft
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    _responses, calls = created_draft_api(monkeypatch, folder, manifest, listing=listing)
+    assert calls == [], 'preflight has not performed a remote mutation yet'
+    # WHEN the created ID is re-read alongside the original list guards
+    with pytest.raises(ValueError, match='^' + reason + '$'):
+        RELEASE.stage(folder, manifest)
+    # THEN every original list refusal remains immediate before upload
+    assert [call for call in calls if call[1] == 'release'] == [], 'a known create ID cannot override ambiguous or malformed discovery'
+
+
+@pytest.mark.parametrize('change', [{'target_commitish': 'b' * 40}, {'tag_name': 'v0.2.0'}, {'prerelease': True}])
+def test_created_draft_direct_lookup_refuses_foreign_identity_before_upload(tmp_path, monkeypatch, change):
+    # GIVEN a created release whose direct metadata differs from the immutable manifest
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = created_draft_api(monkeypatch, folder, manifest)
+    responses['releases/42'].update(change)
+    assert responses['releases/42']['id'] == 42, 'the returned numeric ID alone does not establish release ownership'
+    # WHEN staging re-reads the exact created release
+    with pytest.raises(ValueError, match='^Existing release identity differs$'):
+        RELEASE.stage(folder, manifest)
+    # THEN all foreign identity conflicts retain their message and refuse before upload
+    assert [call for call in calls if call[1] == 'release'] == [], 'foreign created metadata cannot authorize writes'
+
+
+@pytest.mark.parametrize('change', [{'target_commitish': 'b' * 40}, {'tag_name': 'v0.2.0'}, {'prerelease': True}])
+def test_known_id_cannot_replace_foreign_tag_metadata_with_valid_direct_metadata(tmp_path, monkeypatch, change):
+    # GIVEN a foreign tag response sharing a valid direct release's numeric ID
+    folder, manifest = sealed_release(tmp_path, monkeypatch)
+    responses, calls = fake_api(monkeypatch, folder, manifest)
+    responses[f"releases/tags/{manifest['tag']}"] = {**responses['releases/42'], **change}
+    assert responses['releases/42']['target_commitish'] == SOURCE, 'the direct response alone would pass identity admission'
+    # WHEN a known numeric ID is supplied alongside the conflicting tag read
+    with pytest.raises(ValueError, match='^Existing release identity differs$'):
+        RELEASE.release_state(folder, manifest, release_id=42)
+    # THEN the first foreign identity remains an immediate refusal with the old message
+    assert [call[2] for call in calls] == [f"repos/{RELEASE.REPOSITORY}/git/ref/tags/{manifest['tag']}",
+        f"repos/{RELEASE.REPOSITORY}/releases/tags/{manifest['tag']}"], 'foreign tag identity refuses before any direct or asset read'
 
 
 def draft_io(monkeypatch, folder, assets, substitutions=None):
@@ -804,7 +930,7 @@ def test_stage_reuses_complete_hidden_draft_without_creation_or_upload(tmp_path,
     # WHEN staging resumes through the authenticated draft fallback
     actual = RELEASE.stage(folder, manifest)
     # THEN complete byte readback succeeds without duplicate creation or replacement
-    assert actual is None, "idempotent staging completes normally"
+    assert actual == 42, "idempotent staging retains the admitted identity for publication"
     assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "existing exact assets require no public mutation"
 
 
@@ -818,7 +944,7 @@ def test_stage_accepts_complete_public_release_with_exact_staged_body_without_mu
     # WHEN staging resumes after the previous publication transition
     actual = RELEASE.stage(folder, manifest)
     # THEN exact byte verification completes without any release or asset mutation
-    assert actual is None, "the verified public release is an idempotent staging result"
+    assert actual == 42, "the verified public release retains its admitted identity"
     assert sorted(url.rsplit("/", 1)[1] for url in downloads) == sorted(RELEASE.upload_identities(folder, manifest)), "every existing public asset is read back"
     assert [call for call in calls if "--method" in call or call[1] == "release"] == [], "a complete public release requires no publication mutation"
 

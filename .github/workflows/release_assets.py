@@ -405,7 +405,8 @@ def tag_preflight(manifest: dict) -> None:
         raise ValueError("Release tag moved or source differs")
 
 
-def release_state(folder: Path, manifest: dict, *, missing: bool = False) -> tuple[dict | None, dict]:
+def release_state(folder: Path, manifest: dict, *, missing: bool = False,
+                  release_id: int | None = None) -> tuple[dict | None, dict]:
     """Reject foreign releases and unexpected, duplicate or differently sized assets."""
     if manifest.get("npm") is not True:
         raise ValueError("The new release requires all three npm packages")
@@ -420,16 +421,23 @@ def release_state(folder: Path, manifest: dict, *, missing: bool = False) -> tup
         candidates = [row for row in rows if row.get("tag_name") == manifest["tag"]]
         if len(candidates) > 1:
             raise ValueError("Release tag is ambiguous")
-        if not candidates:
+        if not candidates and release_id is None:
             if missing:
                 return None, {}
             raise ValueError("Existing release is unavailable")
-        identifier = candidates[0].get("id")
+        identifier = candidates[0].get("id") if candidates else release_id
         if type(identifier) is not int or identifier <= 0:
             raise ValueError("Existing release identifier is invalid")
-        release = api(f"releases/{identifier}")
-        if not isinstance(release, dict) or release.get("id") != identifier:
+        if release_id is not None and identifier != release_id:
             raise ValueError("Existing release identity changed during lookup")
+        release_id = identifier
+    if release_id is not None:
+        if release is not None and release.get("id") != release_id:
+            raise ValueError("Existing release identity changed during lookup")
+        if release is None:
+            release = api(f"releases/{release_id}")
+            if not isinstance(release, dict) or release.get("id") != release_id:
+                raise ValueError("Existing release identity changed during lookup")
     if (type(release["id"]) is not int or release["id"] <= 0 or type(release["draft"]) is not bool
             or (release["tag_name"], release["target_commitish"], release["prerelease"]) != (
                 manifest["tag"], manifest["source_sha"], False)):
@@ -498,7 +506,7 @@ def authenticated_download(endpoint: str, path: Path, size: int, *, accept: str)
             process.wait(timeout=5)
 
 
-def stage(folder: Path, manifest: dict) -> None:
+def stage(folder: Path, manifest: dict) -> int:
     """Resume exact draft bytes or admit an already complete public staged release."""
     release, assets = release_state(folder, manifest, missing=True)
     body = (folder / "staged-body.md").read_text(encoding="utf-8")
@@ -507,18 +515,22 @@ def stage(folder: Path, manifest: dict) -> None:
             raise ValueError("Existing release staged body differs")
         if not release["draft"]:
             require_complete(folder, manifest, release, assets)
-            return
+            return release["id"]
         verify_downloads(folder, manifest, release, assets)
     else:
-        api("releases", payload={"tag_name": manifest["tag"], "target_commitish": manifest["source_sha"],
-                                 "name": manifest["tag"], "body": body, "draft": True, "prerelease": False})
-        release, assets = release_state(folder, manifest)
+        created = api("releases", payload={"tag_name": manifest["tag"], "target_commitish": manifest["source_sha"],
+                                           "name": manifest["tag"], "body": body, "draft": True, "prerelease": False})
+        if not isinstance(created, dict) or type(created.get("id")) is not int or created["id"] <= 0:
+            raise ValueError("Existing release identifier is invalid")
+        # Issue #53 measured no draft-list lag; its create ID removes that timing dependency.
+        release, assets = release_state(folder, manifest, release_id=created["id"])
     for name in sorted(set(upload_identities(folder, manifest)) - set(assets)):
         command(["gh", "release", "upload", manifest["tag"], str(folder / name), "--repo", REPOSITORY])
-    release, assets = release_state(folder, manifest)
+    release, assets = release_state(folder, manifest, release_id=release["id"])
     if not release["draft"] or release["body"] != body:
         raise ValueError("Draft release state changed during staging")
     require_complete(folder, manifest, release, assets)
+    return release["id"]
 
 
 def require_complete(folder: Path, manifest: dict, release: dict, assets: dict) -> None:
@@ -528,16 +540,16 @@ def require_complete(folder: Path, manifest: dict, release: dict, assets: dict) 
     verify_downloads(folder, manifest, release, assets)
 
 
-def publish(folder: Path, manifest: dict) -> None:
+def publish(folder: Path, manifest: dict, *, release_id: int | None = None) -> None:
     """Publish only the byte-verified complete draft with its admitted staged body."""
-    release, assets = release_state(folder, manifest)
+    release, assets = release_state(folder, manifest, release_id=release_id)
     require_complete(folder, manifest, release, assets)
     if release["body"] != (folder / "staged-body.md").read_text(encoding="utf-8"):
         raise ValueError("Release body differs from admitted staged body")
     if release["draft"]:
         tag_preflight(manifest)
         command(["gh", "release", "edit", manifest["tag"], "--draft=false", "--repo", REPOSITORY])
-    verify_public(folder, manifest)
+    verify_public(folder, manifest, release_id=release_id)
 
 
 def public_url(tag: str, name: str) -> str:
@@ -584,9 +596,9 @@ def download(url: str, path: Path, expected: dict) -> None:
         raise ValueError("Public asset bytes differ")
 
 
-def verify_public(folder: Path, manifest: dict) -> tuple[dict, dict]:
+def verify_public(folder: Path, manifest: dict, *, release_id: int | None = None) -> tuple[dict, dict]:
     """Prove the complete public asset set separately from upload success."""
-    release, assets = release_state(folder, manifest)
+    release, assets = release_state(folder, manifest, release_id=release_id)
     if release["draft"]:
         raise ValueError("Release is still a draft")
     if set(assets) != set(upload_identities(folder, manifest)):
@@ -815,7 +827,7 @@ def main(argv: list[str] | None = None) -> int:
     scope.add_argument("--base", required=True)
     scope.add_argument("--head", required=True)
     scope.add_argument("--github-output", type=Path, required=True)
-    for operation in ("stage", "publish", "verify-public", "download-target", "admit-public", "finalize"):
+    for operation in ("stage", "publish", "stage-publish", "verify-public", "download-target", "admit-public", "finalize"):
         subparser = commands.add_parser(operation, allow_abbrev=False)
         subparser.add_argument("--input", type=Path, required=True)
         subparser.add_argument("--tag", required=True)
@@ -852,6 +864,10 @@ def main(argv: list[str] | None = None) -> int:
     manifest = admit(arguments.input, arguments.tag, arguments.source_sha)
     if arguments.operation == "stage":
         stage(arguments.input, manifest)
+    elif arguments.operation == "stage-publish":
+        release_id = stage(arguments.input, manifest)
+        manifest = admit(arguments.input, arguments.tag, arguments.source_sha)
+        publish(arguments.input, manifest, release_id=release_id)
     elif arguments.operation == "publish":
         publish(arguments.input, manifest)
     elif arguments.operation == "verify-public":
