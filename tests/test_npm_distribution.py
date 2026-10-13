@@ -25,6 +25,197 @@ def npm_builder():
     return module
 
 
+@pytest.fixture
+def npm_visibility(monkeypatch, npm_builder):
+    """Inject registry responses and a clock advanced only by the fake sleeper."""
+    elapsed, sleeps, requests, publications = [0.0], [], [], []
+    payload = b"admitted tarball"
+    record = {"filename": "brewdoc.tgz", "metadata": {"name": "brewdoc", "version": "0.3.3"},
+              "bytes": len(payload), "sha256": npm_builder.digest(payload), "integrity": npm_builder.integrity(payload)}
+    public = {**record["metadata"], "dist": {"tarball": "https://registry.npmjs.org/brewdoc/-/brewdoc-0.3.3.tgz",
+                                             "integrity": record["integrity"]}}
+
+    def sleep(seconds):
+        """Advance synthetic time without waiting."""
+        sleeps.append(seconds)
+        elapsed[0] += seconds
+
+    monkeypatch.setattr(npm_builder, "time", SimpleNamespace(monotonic=lambda: elapsed[0], sleep=sleep))
+    monkeypatch.setattr(npm_builder, "verify_release", lambda unused: {"packages": [record]})
+    monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
+    monkeypatch.setattr(npm_builder, "run_npm", lambda *args, **kwargs: publications.append(args[0]))
+    return SimpleNamespace(record=record, public=public, payload=payload, elapsed=elapsed,
+                           sleeps=sleeps, requests=requests, publications=publications)
+
+
+@pytest.mark.parametrize("operation,absent_reads", [("publish", 3), ("check_public", 2)])
+def test_registry_visibility_wait_accepts_delayed_exact_version_without_republishing(
+        tmp_path, monkeypatch, npm_builder, npm_visibility, operation, absent_reads):
+    # GIVEN an exact registry version absent twice after publication or before public admission.
+    fixture = npm_visibility
+    answers = iter([False] * absent_reads + [True])
+
+    def request(url, **options):
+        """Return controlled registry absence followed by matching metadata and bytes."""
+        fixture.requests.append((url, options["timeout"]))
+        if url.endswith(".tgz"):
+            return io.BytesIO(fixture.payload)
+        if not next(answers):
+            raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        return io.BytesIO(json.dumps(fixture.public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.sleeps == [], "the fake clock starts before the first registry read"
+    # WHEN the real publish or central public gate waits for exact public bytes.
+    getattr(npm_builder, operation)(tmp_path)
+    # THEN only missing registry reads wait, and publication itself occurs at most once.
+    assert fixture.sleeps == [15, 15], "two transient missing reads must poll without real sleeps"
+    assert len(fixture.requests) == absent_reads + 2, "metadata retries must end with one exact tarball admission"
+    assert [command[0] for command in fixture.publications] == {"publish": ["publish"], "check_public": []}[operation], "polling must never repeat npm publish"
+
+
+@pytest.mark.parametrize("operation,message,initial_reads", [
+    ("publish", "Published npm version is absent from the registry", 1),
+    ("check_public", "Public npm version is missing: brewdoc", 0),
+])
+def test_registry_visibility_wait_expires_with_original_missing_version_message(
+        tmp_path, monkeypatch, npm_builder, npm_visibility, operation, message, initial_reads):
+    # GIVEN the registry keeps answering 404 for the full visibility budget.
+    fixture = npm_visibility
+
+    def request(url, **options):
+        """Keep every metadata response absent without using the network."""
+        fixture.requests.append((url, options["timeout"]))
+        raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.elapsed == [0.0], "expiry starts at the zero fake-clock instant"
+    # WHEN absence survives the complete twenty-minute polling deadline.
+    arguments = {"publish": (tmp_path,), "check_public": (tmp_path, tmp_path / "public.json")}[operation]
+    with pytest.raises(ValueError) as failure:
+        getattr(npm_builder, operation)(*arguments)
+    # THEN the current error survives, with no request starting at or after the deadline.
+    assert str(failure.value) == message, "expiry must preserve each caller's exact refusal"
+    assert (fixture.elapsed, fixture.sleeps, len(fixture.requests)) == ([1200.0], [15] * 80, 80 + initial_reads), "visibility polling must stop after twenty synthetic minutes"
+    assert [command[0] for command in fixture.publications] == {"publish": ["publish"], "check_public": []}[operation], "expiry cannot retry publication"
+    assert (tmp_path / "public.json").exists() is False, "expiry cannot write public PASS evidence"
+
+
+@pytest.mark.parametrize("operation", ["publish", "check_public"])
+@pytest.mark.parametrize("mismatch,message", [("metadata", "Existing npm version metadata differs"),
+                                             ("integrity", "Existing npm version integrity differs"),
+                                             ("tarball-url", "Existing npm tarball URL is outside the public registry")])
+def test_registry_visibility_wait_refuses_actual_metadata_or_integrity_difference_immediately(
+        tmp_path, monkeypatch, npm_builder, npm_visibility, operation, mismatch, message):
+    # GIVEN one missing read followed by a public record with an actual identity or byte difference.
+    fixture = npm_visibility
+    public = {**fixture.public, "version": {"metadata": "0.3.4", "integrity": "0.3.3", "tarball-url": "0.3.3"}[mismatch],
+              "dist": {**fixture.public["dist"], "tarball": {"metadata": fixture.public["dist"]["tarball"],
+                       "integrity": fixture.public["dist"]["tarball"], "tarball-url": "https://foreign.invalid/package.tgz"}[mismatch]}}
+    payload = {"metadata": fixture.payload, "integrity": b"substituted bytes", "tarball-url": fixture.payload}[mismatch]
+    answers = iter([False] * {"publish": 2, "check_public": 1}[operation] + [True])
+
+    def request(url, **options):
+        """Expose the mismatch through the original public_record implementation."""
+        fixture.requests.append((url, options["timeout"]))
+        if url.endswith(".tgz"):
+            return io.BytesIO(payload)
+        if not next(answers):
+            raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        return io.BytesIO(json.dumps(public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.sleeps == [], "the mismatch has not yet been observed"
+    # WHEN the poll encounters conflicting metadata or actual downloaded bytes.
+    with pytest.raises(ValueError) as failure:
+        getattr(npm_builder, operation)(tmp_path)
+    # THEN it fails at the first conflict with the existing message and no second sleep.
+    assert (str(failure.value), fixture.sleeps) == (message, [15]), "mismatches cannot consume the visibility wait budget"
+
+
+def test_registry_visibility_deadline_caps_requests_and_rejects_late_success(monkeypatch, npm_builder, npm_visibility):
+    # GIVEN a first absent read leaves five seconds for matching metadata and tarball transport.
+    fixture = npm_visibility
+    answers = iter([False, True])
+
+    def request(url, **options):
+        """Model transport consuming the final request budget before returning exact bytes."""
+        fixture.requests.append((url, options["timeout"]))
+        if url.endswith(".tgz"):
+            fixture.elapsed[0] += 4
+            return io.BytesIO(fixture.payload)
+        if not next(answers):
+            fixture.elapsed[0] = 1180
+            raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        fixture.elapsed[0] += 1
+        return io.BytesIO(json.dumps(fixture.public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.elapsed == [0.0], "the visibility deadline starts before either transport"
+    # WHEN matching public bytes finish exactly at the deadline.
+    admitted = npm_builder.wait_public_record(fixture.record)
+    # THEN both request timeouts shrink to the remaining budget and late success is refused.
+    assert (admitted, fixture.elapsed, fixture.sleeps) == (False, [1200], [15]), "deadline expiry cannot admit matching bytes late"
+    assert [timeout for url, timeout in fixture.requests] == [30, 5, 4], "metadata and tarball requests must share the remaining deadline"
+
+
+def test_registry_visibility_wait_refuses_registry_integrity_difference_after_deadline(monkeypatch, npm_builder, npm_visibility):
+    # GIVEN metadata with changed registry integrity arrives at the visibility deadline.
+    fixture = npm_visibility
+    public = {**fixture.public, "dist": {**fixture.public["dist"], "integrity": "sha512-substituted"}}
+
+    def request(url, **options):
+        """Return conflicting metadata after consuming the complete read budget."""
+        fixture.requests.append((url, options["timeout"]))
+        fixture.elapsed[0] = 1200
+        return io.BytesIO(json.dumps(public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.elapsed == [0.0], "the conflicting metadata has not been read"
+    # WHEN the actual admission sees the mismatch with no tarball budget remaining.
+    with pytest.raises(ValueError) as failure:
+        npm_builder.wait_public_record(fixture.record)
+    # THEN the current integrity refusal wins over missing-version expiry without another read.
+    assert (str(failure.value), fixture.sleeps, len(fixture.requests)) == ("Existing npm version integrity differs", [], 1), "expiry cannot hide integrity evidence already present in metadata"
+
+
+@pytest.mark.parametrize("read_seconds,sleeps", [(1195, [5]), (1200, [])])
+def test_registry_visibility_wait_accounts_for_missing_read_time(monkeypatch, npm_builder, npm_visibility, read_seconds, sleeps):
+    # GIVEN one absent metadata read consumes nearly all or all of the visibility deadline.
+    fixture = npm_visibility
+
+    def request(url, **options):
+        """Consume synthetic read time and return the only retryable HTTP status."""
+        fixture.requests.append((url, options["timeout"]))
+        fixture.elapsed[0] += read_seconds
+        raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.elapsed == [0.0], "read accounting starts before the request"
+    # WHEN the missing read finishes at the edge of the remaining budget.
+    admitted = npm_builder.wait_public_record(fixture.record)
+    # THEN the last sleep is capped and no further read begins after expiry.
+    assert (admitted, fixture.elapsed, fixture.sleeps, len(fixture.requests)) == (False, [1200], sleeps, 1), "transport time must count toward the polling deadline"
+
+
+def test_registry_visibility_wait_never_retries_non_missing_http_error(monkeypatch, npm_builder, npm_visibility):
+    # GIVEN the metadata request refuses for a reason other than missing version.
+    fixture = npm_visibility
+    refusal = npm_builder.urllib.error.HTTPError("https://registry.npmjs.org/brewdoc/0.3.3", 503, "Unavailable", None, None)
+
+    def request(*args, **kwargs):
+        """Propagate the authored HTTP refusal without a network request."""
+        raise refusal
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.sleeps == [], "the registry error starts before any poll delay"
+    # WHEN polling encounters this existing HTTP refusal.
+    with pytest.raises(npm_builder.urllib.error.HTTPError) as failure:
+        npm_builder.wait_public_record(fixture.record)
+    # THEN the same error propagates immediately without waiting.
+    assert (failure.value is refusal, fixture.sleeps) == (True, []), "only HTTP 404 authorizes registry polling"
+
+
 @pytest.mark.parametrize("suffix,expected", [(["--self-check"],
     'C:\\Windows\\System32\\cmd.exe /d /s /c ""C:\\brewdoc npm consumer Unicode-é\\global\\brewdoc.cmd" --self-check"'),
     (["C:\\Unicode café\\sample.epub"],
@@ -220,7 +411,7 @@ def test_publish_requests_json_only_for_missing_packages_and_preserves_platform_
     monkeypatch.setattr(npm_builder, "verify_release", lambda unused: manifest)
     monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
     monkeypatch.setattr(npm_builder, "os", SimpleNamespace(environ={"NODE_AUTH_TOKEN": "CANARY_ENV_SECRET"}))
-    monkeypatch.setattr(npm_builder, "public_record", lambda record: reads.append(record["filename"]) or next(answers))
+    monkeypatch.setattr(npm_builder, "public_record", lambda record, **unused: reads.append(record["filename"]) or next(answers))
     monkeypatch.setattr(npm_builder, "run_npm", lambda arguments, cwd, environment, **options: calls.append((arguments, cwd, environment, options)))
     assert calls == [], "existing public byte admission precedes every publication attempt"
     # WHEN publication skips exact existing bytes and continues the missing packages
@@ -733,7 +924,7 @@ def test_central_public_check_binds_all_three_tarball_integrities(tmp_path, monk
     manifest = {"verification_scope": "smoke", "version": "0.3.1", "source_sha": "a" * 40, "packages": records}
     monkeypatch.setattr(npm_builder, "verify_release", lambda unused: manifest)
     checked = []
-    def public(record):
+    def public(record, **unused):
         """Record central registry admissions without network access."""
         checked.append(record["metadata"]["name"])
         return True

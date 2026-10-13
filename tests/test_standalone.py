@@ -1,6 +1,7 @@
 """Fixed standalone child operations preserve isolated launch and refusal behavior."""
 
 import importlib
+import importlib.util
 import contextlib
 import json
 import os
@@ -17,6 +18,95 @@ from types import SimpleNamespace
 import pytest
 
 from brewdoc import htmlurl
+
+BUILDER_SPEC = importlib.util.spec_from_file_location(
+    'standalone_builder', Path(__file__).resolve().parents[1] / '.github/workflows/build_standalone.py')
+BUILDER = importlib.util.module_from_spec(BUILDER_SPEC)
+BUILDER_SPEC.loader.exec_module(BUILDER)
+
+
+def test_native_verify_logs_tls_probe_stage_before_preserving_refusal(tmp_path, monkeypatch, caplog):
+    # GIVEN admitted synthetic packaging edges and a frozen executable refusing at DNS
+    output, bundle, root = (tmp_path / name for name in ('output', 'bundle', 'frozen/brewdoc'))
+    for directory in (output, bundle / 'ci-package', root):
+        directory.mkdir(parents=True)
+    archive = output / 'archive.tar.gz'
+    archive.write_bytes(b'x')
+    identity = {'version': '0.3.3', 'source_sha': 'a' * 40, 'python': '3.12.14', 'target': 'macos-arm64'}
+    manifest = {'schema': 1, **identity, 'oracle': [], 'probes': [], 'inventory': {}, 'executable': 'brewdoc/brewdoc',
+                'archive': {'filename': archive.name, 'bytes': 1, 'sha256': BUILDER.digest(archive)}}
+    BUILDER.write_json(output / 'manifest.json', manifest)
+    BUILDER.write_json(bundle / 'ci-package/manifest.json', {'checkout_sha': identity['source_sha'], 'version': identity['version']})
+    BUILDER.write_json(root / 'version.json', identity)
+    monkeypatch.setattr(BUILDER, 'facts', lambda *args: {'python': identity['python'], 'targets': {'macos-arm64': {'render_js': True}}})
+    monkeypatch.setattr(BUILDER, 'validate_manifest', lambda value: None)
+    monkeypatch.setattr(BUILDER, 'verification_scope', lambda value: 'smoke')
+    monkeypatch.setattr(BUILDER, 'extract_archive', lambda *args: root)
+    monkeypatch.setattr(BUILDER, 'consumer_environment', lambda work: {})
+    monkeypatch.setattr(BUILDER, 'child_checks', lambda *args: {})
+    commands = {('--self-check',): f'self-check: ok (38 checks){os.linesep}'.encode(),
+                ('--url', 'https://example.org/', '--timeout', '30'): json.dumps({
+                    'file_ok': True, 'acquisition': {'capture_status': 'static'}}).encode()}
+    monkeypatch.setattr(BUILDER, 'command', lambda arguments, **kwargs:
+                        subprocess.CompletedProcess(arguments, 0, commands[tuple(arguments[1:])], b''))
+    receipts = iter([{'file_ok': False, 'units': 0}, {
+        'acquisition': {'refusal_stage': 'dns'}, 'reason': 'private remote diagnostic'}])
+    calls = []
+
+    def run(arguments, **kwargs):
+        """Return the malformed-file refusal followed by the external DNS refusal."""
+        calls.append(arguments[1:])
+        return subprocess.CompletedProcess(arguments, 1, json.dumps(next(receipts)).encode(), b'')
+
+    monkeypatch.setattr(BUILDER.subprocess, 'run', run)
+    assert calls == [], 'the native probe starts without subprocess or network activity'
+    # WHEN the real native verifier reaches an external refusal before the TLS handshake
+    with pytest.raises(ValueError, match='^Frozen invalid TLS certificate was not refused at TLS$'):
+        BUILDER.verify(tmp_path, bundle, output, 'macos-arm64', smoke=True)
+    # THEN the existing error remains and the real call path reports only the safe stage
+    assert (calls[-1], caplog.messages) == (
+        ['--url', 'https://self-signed.badssl.com/', '--timeout', '30'],
+        ['Frozen TLS probe failed: exit=1 refusal_stage=dns']), 'native verification exposes the refusal stage without remote diagnostics'
+
+
+def test_tls_probe_reports_observed_stage_without_remote_diagnostics(caplog):
+    # GIVEN a frozen probe refused by DNS before reaching its TLS handshake
+    result = subprocess.CompletedProcess(['brewdoc'], 1, json.dumps({
+        'acquisition': {'refusal_stage': 'dns'}, 'reason': 'private remote diagnostic',
+    }).encode(), b'private process diagnostic')
+    assert result.returncode == 1, 'the probe already refused the external request'
+    # WHEN the verifier requires refusal at the TLS boundary
+    with pytest.raises(ValueError, match='^Frozen invalid TLS certificate was not refused at TLS$'):
+        BUILDER.tls_receipt(result)
+    # THEN the actual stage is visible without forwarding uncontrolled response fields
+    assert caplog.messages == ['Frozen TLS probe failed: exit=1 refusal_stage=dns'], 'only the observed exit and trusted stage are logged'
+
+
+@pytest.mark.parametrize('stage,code,observed', [
+    ('dns', 1, 'dns'), ('connect', 1, 'connect'), ('timeout', 1, 'timeout'),
+    ('tls', 0, 'tls'), (None, 1, 'invalid'), ('token-value\nInjected diagnostic', 1, 'invalid'),
+])
+def test_tls_probe_preserves_exact_refusal_and_redacts_unknown_stage(stage, code, observed, caplog):
+    # GIVEN a probe receipt whose stage or exit differs from the exact TLS refusal
+    receipt = {'acquisition': {'refusal_stage': stage}}
+    result = subprocess.CompletedProcess(['brewdoc'], code, json.dumps(receipt).encode(), b'private stderr')
+    assert receipt['acquisition']['refusal_stage'] == stage, 'the synthetic receipt carries the observed stage'
+    # WHEN the verifier applies its existing exact exit and stage requirement
+    with pytest.raises(ValueError, match='^Frozen invalid TLS certificate was not refused at TLS$'):
+        BUILDER.tls_receipt(result)
+    # THEN only trusted stage data reaches the diagnostic and the refusal remains exact
+    assert caplog.messages == [f'Frozen TLS probe failed: exit={code} refusal_stage={observed}'], 'unknown stage data is replaced before logging'
+
+
+def test_tls_probe_returns_exact_accepted_receipt_without_logging(caplog):
+    # GIVEN the existing admitted exit and TLS refusal stage
+    receipt = {'file_ok': False, 'acquisition': {'refusal_stage': 'tls'}}
+    result = subprocess.CompletedProcess(['brewdoc'], 1, json.dumps(receipt).encode(), b'')
+    assert result.returncode == 1, 'the successful TLS test still requires the refusal exit'
+    # WHEN the native verifier admits the exact TLS outcome
+    actual = BUILDER.tls_receipt(result)
+    # THEN later native evidence retains the whole original receipt without logging it
+    assert (actual, caplog.messages) == (receipt, []), 'the accepted receipt remains byte-field equivalent and silent'
 
 
 @pytest.mark.parametrize("frozen", [True, False], ids=["frozen", "isolated-source"])

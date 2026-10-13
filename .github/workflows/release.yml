@@ -96,7 +96,8 @@ jobs:
     if: "!cancelled() && github.event_name == 'push' && needs.distribution-admit.result == 'success' && needs.pypi-consumer.result == 'success'"
     needs: [distribution-admit, pypi-consumer]
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # Issue #53: six sequential 20min visibility budgets plus 15min setup/check reserve.
+    timeout-minutes: 135
     permissions:
       contents: read
       id-token: write
@@ -179,18 +180,21 @@ jobs:
           BREWDOC_RELEASE_TAG: ${{ needs.distribution-admit.outputs.tag }}
           BREWDOC_SOURCE_SHA: ${{ needs.distribution-admit.outputs.source_sha }}
         run: |
-          uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py stage --input "${{ runner.temp }}/release-assets" --tag "$BREWDOC_RELEASE_TAG" --source-sha "$BREWDOC_SOURCE_SHA"
-          uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py publish --input "${{ runner.temp }}/release-assets" --tag "$BREWDOC_RELEASE_TAG" --source-sha "$BREWDOC_SOURCE_SHA"
+          uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py stage-publish --input "${{ runner.temp }}/release-assets" --tag "$BREWDOC_RELEASE_TAG" --source-sha "$BREWDOC_SOURCE_SHA"
           uv run --no-project --python 3.12.14 python .github/workflows/release_assets.py verify-public --input "${{ runner.temp }}/release-assets" --tag "$BREWDOC_RELEASE_TAG" --source-sha "$BREWDOC_SOURCE_SHA"
 
   pypi-consumer:
     if: "!cancelled() && github.event_name == 'push' && needs.distribution-admit.result == 'success' && needs.publish.result == 'success'"
     needs: [publish, distribution-admit]
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # Issue #53: two 10min installs plus 5min for setup, venvs and unchanged consumer checks.
+    timeout-minutes: 25
     env:
       BREWDOC_VERSION: ${{ needs.distribution-admit.outputs.version }}
     steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.12.21"
@@ -201,11 +205,7 @@ jobs:
           for route in wheel sdist; do
             prefix="${{ runner.temp }}/pypi-$route"
             uv venv --python 3.12.14 "$prefix"
-            if [ "$route" = wheel ]; then
-              uv pip install --python "$prefix/bin/python" --index-url https://pypi.org/simple --only-binary brewdoc "brewdoc==$BREWDOC_VERSION"
-            else
-              uv pip install --python "$prefix/bin/python" --index-url https://pypi.org/simple --no-binary brewdoc "brewdoc==$BREWDOC_VERSION"
-            fi
+            uv run --no-project --python 3.12.14 python "$GITHUB_WORKSPACE/.github/workflows/pypi_consumer.py" --python "$prefix/bin/python" --route "$route" --version "$BREWDOC_VERSION"
             cd "${{ runner.temp }}"
             "$prefix/bin/python" -c 'import brewdoc,importlib.metadata,os; version=os.environ["BREWDOC_VERSION"]; assert brewdoc.__version__==importlib.metadata.version("brewdoc")==version'
             "$prefix/bin/brewdoc" --self-check

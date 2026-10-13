@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import importlib.metadata
 import json
+import logging
 import os
 import platform
 import re
@@ -46,6 +47,21 @@ def command(arguments: list[str], *, cwd: Path | None = None, env: dict | None =
     if result.returncode:
         raise ValueError(f'Command failed: {arguments[0]}\n{result.stderr.decode("utf-8", "replace")}')
     return result
+
+
+def tls_receipt(result: subprocess.CompletedProcess) -> dict:
+    """Require TLS refusal and report only the observed exit and a known stage."""
+    receipt = json.loads(result.stdout.splitlines()[0])
+    stage = receipt['acquisition']['refusal_stage']
+    if (result.returncode, stage) != (1, 'tls'):
+        stages = {'timeout', 'options', 'url', 'dns', 'connect', 'tls', 'status', 'redirect',
+                  'media', 'bytes', 'encoding', 'resource', 'challenge', 'prerequisites',
+                  'javascript', 'snapshot', 'conversion', 'output'}
+        observed = stage if isinstance(stage, str) and stage in stages else 'invalid'
+        logging.getLogger(__name__).warning('Frozen TLS probe failed: exit=%d refusal_stage=%s',
+                                            result.returncode, observed)
+        raise ValueError('Frozen invalid TLS certificate was not refused at TLS')
+    return receipt
 
 
 def verifier():
@@ -877,9 +893,7 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
             raise ValueError('Frozen valid HTTPS acquisition failed')
         invalid = subprocess.run([str(binary), '--url', 'https://self-signed.badssl.com/', '--timeout', '30'],
                                  cwd=work, env=environment, capture_output=True, timeout=35)
-        invalid_receipt = json.loads(invalid.stdout.splitlines()[0])
-        if (invalid.returncode, invalid_receipt['acquisition']['refusal_stage']) != (1, 'tls'):
-            raise ValueError('Frozen invalid TLS certificate was not refused at TLS')
+        invalid_receipt = tls_receipt(invalid)
         js = subprocess.run([str(binary), '--url', 'https://example.org/', '--render-js', '--timeout', '5'],
                             cwd=work, env=environment, capture_output=True, timeout=10)
         js_receipt = json.loads(js.stdout.splitlines()[0])
