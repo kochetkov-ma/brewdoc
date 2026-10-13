@@ -141,18 +141,23 @@ These fixtures establish bounded behavior, not general website coverage.
 
 ## Python package compatibility
 
-The development and existing CI baseline remains CPython 3.12. Declared Python >=3.12 support
-and the CPython 3.12-3.14 HTML parser constraint are not proof of every OS/minor combination.
-The following package-validation targets are pending CI evidence:
+CPython 3.12.14 retains the local macOS full-suite baseline and existing CI smoke checks.
+Declared Python >=3.12 support and the CPython 3.12-3.14 HTML parser constraint are not proof
+of every OS/minor combination. The following source-package cells passed in
+[CI run 38431645006](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) for
+[PR #57](https://github.com/kochetkov-ma/brewdoc/pull/57):
 
-| Target | CPython | Package cases | Optional JS expectation |
+| Observed target | CPython | Passed package cases | Optional JS result |
 |---|---|---|---|
-| Ubuntu 22.04, x64, glibc | 3.13.15 | Wheel and sdist, base and render-js extra | Execute |
-| macOS 15, ARM64 | 3.14.7 | Wheel and sdist, base and render-js extra | Execute |
-| Windows Server 2025, x64 | 3.14.7 | Wheel and sdist, base and render-js extra | Explicit refusal before requests |
+| Ubuntu 22.04, x64, glibc 2.35 | 3.13.15 | Wheel and sdist, base and render-js extra | Module/DOM executed |
+| macOS 15.7.9, ARM64 | 3.14.7 | Wheel and sdist, base and render-js extra | Module/DOM executed |
+| Windows Server 2025 Datacenter, x64 | 3.14.7 | Wheel and sdist, base and render-js extra | Explicit refusal before requests |
 
-No passing result is claimed until those exact jobs complete. This matrix concerns Python
-packages; the published standalone binaries retain their separate bundled-runtime targets.
+All three cells used the same verified wheel/sdist pair in four independent installations each.
+Each installation converted 11 original documents and passed self-check 38 and article API/CLI
+checks. These are selected tested patches, not a claim about newer Python versions. This matrix
+concerns source-built Python packages; the published 0.3.3 standalone binaries retain their
+separate bundled-runtime targets. The evidence does not publish these source changes.
 Other OS/minor combinations, free-threaded CPython and other architectures remain untested here.
 
 ## EPUB

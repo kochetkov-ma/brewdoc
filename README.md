@@ -154,11 +154,14 @@ The receipt's `not_carried` and successful Markdown's Known omissions declare:
 The [source contract](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#article-selection-unreleased-source)
 defines selection, refusals and limits.
 
-Package validation targets await CI evidence: Ubuntu 22.04 x64/glibc with CPython 3.13.15,
-and macOS 15 ARM64/Windows Server 2025 x64 with CPython 3.14.7. Each checks wheel/sdist and
-base/optional installs; optional JS must execute on Unix and refuse before requests on Windows.
-CPython 3.12 remains the baseline. These checks are separate from the 0.3.3 standalone binaries;
-other OS/minor combinations, free-threaded CPython and other architectures remain untested.
+[Source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
+Ubuntu 22.04 x64/glibc with CPython 3.13.15, and macOS 15 ARM64/Windows Server 2025 x64
+with CPython 3.14.7. Each passed four independent wheel/sdist base/optional installs;
+optional JS executed on Unix and refused before requests on Windows. These are selected
+tested patches, not a claim about newer versions. CPython 3.12.14 retains the local macOS
+full-suite baseline and existing CI smoke checks. Package evidence is separate from the
+published 0.3.3 binaries; other OS/minor combinations, free-threaded CPython and other
+architectures remain untested here.
 See [source package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#python-package-compatibility).
 
 [Source format contracts](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/benchmarks/results/README.md)

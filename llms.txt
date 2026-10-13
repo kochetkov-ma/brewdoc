@@ -69,11 +69,13 @@ Receipt `not_carried` and successful Markdown Known omissions include
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
 See [the source contract](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#article-selection-unreleased-source).
 
-Package validation targets await CI evidence: Ubuntu 22.04 x64/glibc with CPython 3.13.15,
-macOS 15 ARM64 and Windows Server 2025 x64 with CPython 3.14.7. Each checks wheel/sdist,
-base/optional installs; optional JS must execute on Unix and refuse before requests on Windows.
-CPython 3.12 remains the baseline. These are package checks, separate from bundled binaries;
-other OS/minor combinations, free-threaded CPython and other architectures remain untested.
+[Source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
+Ubuntu 22.04 x64/glibc with CPython 3.13.15, macOS 15 ARM64 and Windows Server 2025 x64
+with CPython 3.14.7. Each passed four independent wheel/sdist base/optional installs;
+optional JS executed on Unix and refused before requests on Windows. These are selected
+tested patches. CPython 3.12.14 retains local macOS full-suite and existing CI smoke evidence.
+Source-package checks are separate from published binaries; other OS/minor combinations,
+free-threaded CPython and other architectures remain untested here.
 See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/main/FORMATS.md#python-package-compatibility).
 
 ## Related projects
