@@ -481,6 +481,30 @@ def test_aggregation_requires_all_targets_with_one_source_identity(tmp_path):
     assert (tmp_path / 'release').exists() is False, 'the failed aggregate has no publishable output'
 
 
+@pytest.mark.parametrize('host_newline', ['\n', '\r\n'], ids=['lf-host', 'crlf-host'])
+def test_native_aggregation_checksum_bytes_use_lf_on_every_host(tmp_path, monkeypatch, host_newline):
+    # GIVEN three admitted archives and real text I/O using the selected host's default newline
+    records = [smoke_record(tmp_path, target)[1] for target in ('linux-x64', 'macos-arm64', 'windows-x64')]
+    write_text = Path.write_text
+
+    def host_write_text(path, data, encoding=None, errors=None, newline=None):
+        """Use actual text translation while retaining explicit newline choices."""
+        return write_text(path, data, encoding=encoding, errors=errors,
+                          newline={None: host_newline}.get(newline, newline))
+
+    monkeypatch.setattr(Path, 'write_text', host_write_text)
+    control = tmp_path / 'host-newline.txt'
+    control.write_text('control\n', encoding='ascii')
+    assert control.read_bytes() == ('control' + host_newline).encode('ascii'), 'real text I/O must reproduce the host newline'
+    lines = [record['archive']['sha256'] + '  ' + record['archive']['filename'] for record in records]
+    expected = ('\n'.join(sorted(lines)) + '\n').encode('ascii')
+    # WHEN the native aggregate writes checksums for the complete admitted target set
+    output = tmp_path / 'release'
+    BUILDER.aggregate(tmp_path, output)
+    # THEN checksum bytes retain canonical ordering, every archive identity and LF line endings
+    assert (output / 'SHA256SUMS').read_bytes() == expected, 'checksum bytes must be identical on LF and CRLF hosts'
+
+
 @pytest.mark.parametrize('refusal', [(0, b'["127.0.0.1"]\n', b''), (1, b'output', b''),
                                    (1, b'', b'warning'), (2, b'', b'')])
 def test_windows_frozen_dns_gate_rejects_inexact_exited_owner_refusal(tmp_path, monkeypatch, refusal):
