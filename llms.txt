@@ -5,11 +5,11 @@
 Local conversion after installation is offline and downloads no runtime components.
 Supported formats and readable-file constraints are defined in FORMATS.md.
 
-- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
-- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/README.md): deterministic Markdown and machine-readable results.
-- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.2/FORMATS.md): supported/refused inputs, omissions and resource budgets.
+- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
+- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/README.md): deterministic Markdown and machine-readable results.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.3.3/FORMATS.md): supported/refused inputs, omissions and resource budgets.
 - [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest): concise features, actual assets and channel availability.
-- Examples select 0.3.2; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.2). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
+- Examples select 0.3.3; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.3.3). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
 
 ## CLI and API
 
