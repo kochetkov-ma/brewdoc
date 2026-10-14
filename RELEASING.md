@@ -1,15 +1,74 @@
 # Releasing
 
-Release notes stay short: product advantage, concrete changes, exact install choices,
-actual asset links and channel availability. Use this product description:
-
-Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
-
 Link version-specific INSTALL.md for practical lifecycle instructions; historical
 0.2.0/0.3.0/0.3.1 tags lack that file and link their own README instead. Never change
 release tags/package bytes merely to revise notes.
 Current installation examples select 0.5.0. List a channel as available only after
 its publication and consumer acceptance.
+
+## Release format
+
+Use this shared Codex and Claude contract for 0.5.0 and every future release.
+Leave historical release bodies, tags and packages unchanged. The existing
+admission, publication and consumer gates below still apply.
+
+The first line is exactly:
+
+```markdown
+[Release notes](#release-notes) | [Installation](#installation) | [Downloads](#downloads) | [Documentation](#documentation)
+```
+
+Emit these explicit anchors and level-two headings once, in this order:
+
+```markdown
+<a name="release-notes"></a>
+## Release notes
+
+<a name="installation"></a>
+## Installation
+
+<a name="downloads"></a>
+## Downloads
+
+<a name="documentation"></a>
+## Documentation
+```
+
+Under Release notes, use short Added and Fixed groups for major user-visible
+changes. Omit empty groups, minor cleanups, internal work and repeated product
+descriptions. Preserve material compatibility and limitation notes. Put a useful
+minimal example or new command beside the relevant feature when it needs one;
+use commands supported by the release source. Link a real relevant PR only when
+known; otherwise omit it. Do not invent PR numbers or add live/latest badges.
+
+Put one `---` between Release notes and Installation. Every release body keeps
+concise, complete installation, downloads and documentation sections:
+
+- Installation states the Python prerequisite and all three exact-version choices:
+  `python -m pip install "brewdoc==0.5.0"` in an active virtual environment,
+  `uv tool install --python 3.12 "brewdoc==0.5.0"` and
+  `pipx install --python 3.12 "brewdoc==0.5.0"`. Replace 0.5.0 with the release
+  version and state its declared Python compatibility. Include
+  `brewdoc --self-check` and `brewdoc file.pdf --out file.md`.
+- Public npm/npx commands require admission and consumer acceptance on Linux
+  x64/glibc and macOS ARM64. Use `npm install --global brewdoc@0.5.0` and
+  `npx --yes --package brewdoc@0.5.0 brewdoc --self-check` with the release version.
+  Staged notes keep their conditional-publication statement and omit npm commands.
+  Homebrew stays pending until public formula readback and both-host acceptance;
+  support metadata alone does not establish availability.
+- Downloads link every admitted native archive and SHA256SUMS for that exact
+  release. Include Linux x64/glibc, Windows x64 and macOS ARM64 when admitted.
+  State that bundles include Python: extract and keep the complete directory,
+  then run its `brewdoc` executable (`brewdoc.exe` on Windows). Add no unbound links.
+- Documentation links the same immutable tag's README.md, INSTALL.md and
+  FORMATS.md. INSTALL owns full lifecycle details; release notes retain usable
+  installation commands. Do not substitute branch or latest-version links.
+
+Generate deterministic notes from admitted metadata and artifacts. Before
+publication, review the body, versions, availability, commands and link targets.
+After publication, read back the exact public body and verify the rendered
+navigation, documentation links and downloads. Static checks alone do not prove
+rendered anchor behavior or consumer availability.
 
 ## Channels and publisher setup
 
@@ -74,7 +133,8 @@ proof covers three hosts; npm proof covers Linux/macOS. At most two heavy jobs r
 
 The guide helper validates version, targets, asset hashes and availability before
 rendering concise notes. Keep public byte/consumer gates when shortening text.
-Full commands belong in [INSTALL.md](INSTALL.md); format contracts in [FORMATS.md](FORMATS.md).
+Full lifecycle details belong in [INSTALL.md](INSTALL.md); retain usable installation
+commands in release notes. Format contracts belong in [FORMATS.md](FORMATS.md).
 
 Native verification retains three external HTTPS probes. Static acquisition and
 JavaScript capture use `https://example.org/`; invalid-certificate refusal uses
@@ -118,8 +178,11 @@ output, supported JS/child cleanup, unlink/relink and removal with an external u
 Cleaning/rpath precautions alone do not prove byte parity. Mismatches stop acceptance.
 
 Initial notes state that Homebrew awaits tap and consumer verification. After public formula
-readback and both-host acceptance, add a short availability line by a notes-only update and
-verify its public readback. Do not pass appended notes to the unchanged release finalizer.
+readback and both-host acceptance, replace the pending statement with a short availability
+line and accepted install command through a notes-only update. Preserve the release-format
+anchors and section order, then verify exact public readback. Never leave contradictory
+pending and available statements. Do not pass edited notes to the unchanged exact-body
+release finalizer.
 See [INSTALL.md](INSTALL.md#homebrew) for the managed lifecycle.
 
 ## Historical releases

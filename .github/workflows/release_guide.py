@@ -142,25 +142,51 @@ def admit(checkout: Path, native_path: Path, npm_path: Path, phase: str,
 def render(facts: dict) -> str:
     """Render concise notes; registry commands require admitted public consumers."""
     version = facts["version"]
+    policy = facts["policy"]
+    for field in ("release_features", "release_fixes", "release_examples"):
+        entries = policy[field] if field == "release_features" else policy.get(field, [])
+        if not isinstance(entries, list) or any(
+                not isinstance(entry, str) or not entry.strip() or "\n" in entry or "\r" in entry
+                for entry in entries):
+            raise ValueError(f"Guide release metadata differs: {field}")
+    if "release_pr" in policy and (type(policy["release_pr"]) is not int or policy["release_pr"] <= 0):
+        raise ValueError("Guide release metadata differs: release_pr")
+    notes = []
+    for title, field in (("Added", "release_features"), ("Fixed", "release_fixes")):
+        entries = policy.get(field, [])
+        if entries:
+            bullets = "\n".join(f"- {entry}" + ("" if entry.endswith((".", "!", "?")) else ".")
+                                for entry in entries)
+            notes.append(f"### {title}\n\n{bullets}")
+    if policy.get("release_examples"):
+        notes.append("Examples:\n\n```sh\n" + "\n".join(policy["release_examples"]) + "\n```")
+    if "release_pr" in policy:
+        number = policy["release_pr"]
+        notes.append(f"[PR #{number}]({REPOSITORY}/pull/{number})")
+    notes = "\n\n".join(notes)
     base = f"{REPOSITORY}/releases/download/v{version}"
-    features = "\n".join(f"- {feature}." for feature in facts["policy"]["release_features"])
     condition = ("Staged release. Install commands and downloads apply after publication and verification.\n\n"
                  if facts["phase"] == "staged" else "")
-    npm = ("npm/npx for Linux x64 (glibc) and macOS ARM64:\n\n"
+    npm = ("npm/npx: Linux x64/glibc and macOS ARM64.\n\n"
            f"```sh\nnpm install --global brewdoc@{version}\n"
            f"npx --yes --package brewdoc@{version} brewdoc --self-check\n```\n\n"
            if facts["phase"] == "public" else "npm/npx availability awaits public verification.\n\n")
+    labels = {"linux-x64": "Linux x64/glibc", "windows-x64": "Windows x64", "macos-arm64": "macOS ARM64"}
     downloads = " | ".join(
-        f"[{target}]({base}/{record['archive']['filename']})" for target, record in facts["targets"].items())
-    return f'''## brewdoc {version}
+        f"[{labels[target]}]({base}/{record['archive']['filename']})" for target, record in facts["targets"].items())
+    return f'''[Release notes](#release-notes) | [Installation](#installation) | [Downloads](#downloads) | [Documentation](#documentation)
 
-Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
+<a name="release-notes"></a>
+## Release notes
 
-PDF, DOCX, PPTX, workbooks, HTML, EPUB, ODT/ODP and EML convert to Markdown. Markdown/text pass through unchanged. Local processing produces a JSON receipt offline.
+{notes}
 
-{features}
+---
 
-{condition}Choose one Python install method (Python 3.12+, pip in an active virtual environment):
+<a name="installation"></a>
+## Installation
+
+{condition}Choose one Python method (Python 3.12+, pip in an active virtual environment):
 
 ```sh
 python -m pip install "brewdoc=={version}"
@@ -170,16 +196,24 @@ pipx install --python 3.12 "brewdoc=={version}"
 
 {npm}Homebrew availability awaits tap publication and consumer verification.
 
-Standalone downloads with bundled Python: {downloads}.
-Verify [SHA256SUMS]({base}/SHA256SUMS) and keep the complete extracted directory.
-
 ```sh
 brewdoc --self-check
 brewdoc file.pdf --out file.md
 ```
 
-[Full installation guide]({REPOSITORY}/blob/v{version}/INSTALL.md) |
-[Formats and limits]({REPOSITORY}/blob/v{version}/FORMATS.md)
+<a name="downloads"></a>
+## Downloads
+
+Standalone bundles include Python. Extract the archive and keep the complete directory. From the extraction directory, run `./brewdoc/brewdoc` (Windows: `.\\brewdoc\\brewdoc.exe`).
+
+{downloads}
+
+Verify [SHA256SUMS]({base}/SHA256SUMS).
+
+<a name="documentation"></a>
+## Documentation
+
+[README]({REPOSITORY}/blob/v{version}/README.md) | [Installation and updates]({REPOSITORY}/blob/v{version}/INSTALL.md) | [Formats and limits]({REPOSITORY}/blob/v{version}/FORMATS.md)
 '''
 
 

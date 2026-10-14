@@ -52,11 +52,19 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Offline ODT/ODP and EML conversion with explicit omissions and bounded ODF expansion and MIME structure",
-    "Strict UTF-8 Markdown and text pass-through preserves source bytes, BOM and line endings",
-    "Workbooks preserve Unicode and complete datetime values; DOCX alternative textboxes emit the selected fallback once",
-    "PDF rendering records textless pages and repairs selected caption, table-column, row-stub and fraction-label defects",
-    "Homebrew formulas reuse verified native archives for Linux x64/glibc and macOS ARM64; availability follows tap and consumer verification"
+    "Convert ODT, ODP and EML files offline.",
+    "Pass Markdown and text files through without changing their bytes.",
+    "Mixed PDFs now list pages without extracted text."
+  ],
+  "release_fixes": [
+    "Preserve workbook Unicode and full datetime values.",
+    "Avoid duplicated DOCX fallback textboxes.",
+    "Fix PDF caption order, table-cell alignment and split formula labels."
+  ],
+  "release_pr": 61,
+  "release_examples": [
+    "brewdoc report.odt --out report.md",
+    "brewdoc message.eml --out message.md"
   ],
   "releases": {
     "0.2.0": {

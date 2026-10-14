@@ -281,3 +281,128 @@ def test_cli_refusal_preserves_an_existing_reviewed_body(release, capsys):
     # THEN refusal exits one with a specific diagnostic and leaves prior output bytes intact
     assert (refusal.value.code, capsys.readouterr().err, output.read_bytes()) == (
         1, "Release guide refused: Guide native release identity differs\n", b"already reviewed\n"), "failed admission must not overwrite reviewed notes"
+
+
+def render_cli(release, phase):
+    """Render fixture manifests through the real CLI and read its output file."""
+    admit(release, phase)
+    checkout = release[0]
+    output = checkout / "release-body.md"
+    code = guide.main([
+        "render", "--checkout", str(checkout), "--phase", phase,
+        "--native-manifest", str(checkout / "binaries.json"),
+        "--npm-manifest", str(checkout / "npm-manifest.json"),
+        "--availability", str(checkout / "public-acceptance.json"), "--output", str(output),
+    ])
+    return code, output.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("phase,npm_commands,conditional_count", [
+    ("staged", (), 1),
+    ("public", ("npm install --global brewdoc@1.2.3",
+                "npx --yes --package brewdoc@1.2.3 brewdoc --self-check"), 0),
+])
+def test_cli_navigation_resolves_ordered_sections_and_preserves_channel_truth(
+        release, capsys, phase, npm_commands, conditional_count):
+    # GIVEN three admitted native targets and matching staged or public consumer evidence
+    facts = admit(release, phase)
+    assert (facts["version"], tuple(facts["targets"]), facts["phase"]) == (
+        "1.2.3", ("linux-x64", "windows-x64", "macos-arm64"), phase), "valid release identity must precede format checks"
+    # WHEN the actual rendering CLI writes its version-bound release body
+    code, body = render_cli(release, phase)
+    # THEN top links resolve unique sections and installation/download claims follow admission
+    navigation = "[Release notes](#release-notes) | [Installation](#installation) | [Downloads](#downloads) | [Documentation](#documentation)"
+    sections = re.findall(r'^<a name="([^"]+)"></a>\n## ([^\n]+)', body, re.MULTILINE)
+    before_rule, _separator, after_rule = body.partition("\n---\n")
+    installation = body.partition("## Installation\n")[2].partition('<a name="downloads"></a>')[0]
+    downloads = body.partition("## Downloads\n")[2].partition('<a name="documentation"></a>')[0]
+    documentation = body.partition("## Documentation\n")[2]
+    commands = re.findall(r'^(?:python -m pip|uv tool|pipx|npm install|npx --yes|brewdoc)[^\n]*$', installation, re.MULTILINE)
+    condition = "Staged release. Install commands and downloads apply after publication and verification."
+    observations = (
+        code, capsys.readouterr(), body.splitlines()[0], sections, body.count("\n---\n"),
+        re.findall(r'^## (Release notes|Installation|Downloads|Documentation)$', before_rule, re.MULTILINE),
+        re.findall(r'^## (Release notes|Installation|Downloads|Documentation)$', after_rule, re.MULTILINE),
+        tuple(commands), body.count(condition),
+        installation.count("Homebrew availability awaits tap publication and consumer verification."),
+        re.findall(r'/releases/download/v1\.2\.3/([^\s)]+)', downloads),
+        sorted(re.findall(r'/blob/v1\.2\.3/([^\s)]+)', documentation)),
+    )
+    assert observations == (
+        0, ("", ""), navigation,
+        [("release-notes", "Release notes"), ("installation", "Installation"),
+         ("downloads", "Downloads"), ("documentation", "Documentation")], 1,
+        ["Release notes"], ["Installation", "Downloads", "Documentation"],
+        ('python -m pip install "brewdoc==1.2.3"', 'uv tool install --python 3.12 "brewdoc==1.2.3"',
+         'pipx install --python 3.12 "brewdoc==1.2.3"', *npm_commands,
+         "brewdoc --self-check", "brewdoc file.pdf --out file.md"), conditional_count, 1,
+        [record["archive"]["filename"] for record in facts["targets"].values()] + ["SHA256SUMS"],
+        ["FORMATS.md", "INSTALL.md", "README.md"],
+    ), "release navigation, versioned installation and available native/registry channels must remain coherent"
+
+
+def test_cli_notes_group_supplied_changes_examples_and_pr_before_installation(release, capsys):
+    # GIVEN user-facing Added/Fixed sentences, relevant command examples and a supplied synthetic PR identity
+    checkout = release[0]
+    policy_path = checkout / ".github/distribution.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    added = ["Convert ODT files offline.", "Pass text files through without changing bytes."]
+    fixed = ["Keep table captions beside their tables."]
+    examples = ["brewdoc report.odt --out report.md", "brewdoc message.eml --out message.md"]
+    policy.update(release_features=added, release_fixes=fixed, release_examples=examples, release_pr=123)
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    assert admit(release)["policy"]["release_pr"] == 123, "the fixture explicitly supplies the PR number without a network claim"
+    # WHEN the actual CLI renders accepted local metadata
+    code, body = render_cli(release, "staged")
+    # THEN changes remain in their groups and examples/PR appear once inside release notes
+    notes = body.partition("## Release notes\n")[2].partition("\n---\n")[0]
+    added_block = notes.partition("### Added\n")[2].partition("\n### Fixed")[0]
+    fixed_block = notes.partition("### Fixed\n")[2].partition("\nExamples:")[0]
+    assert (code, capsys.readouterr(), re.findall(r'^- ([^\n]+)$', added_block, re.MULTILINE),
+            re.findall(r'^- ([^\n]+)$', fixed_block, re.MULTILINE),
+            re.findall(r'```sh\n(.*?)\n```', notes, re.DOTALL),
+            re.findall(re.escape(guide.REPOSITORY) + r'/pull/\d+', notes)) == (
+        0, ("", ""), added, fixed, ["\n".join(examples)], [f"{guide.REPOSITORY}/pull/123"],
+    ), "supplied complete sentences must keep punctuation and examples/PR must stay within the relevant notes"
+
+
+def test_cli_missing_optional_metadata_invents_no_fix_example_or_pr(release, capsys):
+    # GIVEN an accepted release containing only the existing Added metadata
+    policy = admit(release)["policy"]
+    assert tuple(key in policy for key in ("release_fixes", "release_examples", "release_pr")) == (
+        False, False, False), "the control must exercise absent optional fields rather than empty supplied values"
+    # WHEN the actual CLI renders the minimal accepted policy
+    code, body = render_cli(release, "staged")
+    # THEN existing features gain their Added grouping with no invented optional content
+    notes = body.partition("## Release notes\n")[2].partition("\n---\n")[0]
+    assert (code, capsys.readouterr(), re.findall(r'^- ([^\n]+)$', notes, re.MULTILINE),
+            notes.count("### Added"), notes.count("### Fixed"), notes.count("Examples:"),
+            re.findall(r'```sh\n(.*?)\n```', notes, re.DOTALL),
+            re.findall(re.escape(guide.REPOSITORY) + r'/pull/\d+', body)) == (
+        0, ("", ""), ["Accepted conversion."], 1, 0, 0, [], [],
+    ), "optional metadata absence must preserve Added while omitting empty fixes, examples and invented PR links"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("release_fixes", "a scalar is not a list"),
+    ("release_examples", ["brewdoc first.eml\nbrewdoc second.eml"]),
+    ("release_pr", True), ("release_pr", 0),
+], ids=["fixes-scalar", "multiline-example", "boolean-pr", "nonpositive-pr"])
+def test_cli_malformed_optional_metadata_refuses_before_replacing_reviewed_output(release, capsys, field, value):
+    # GIVEN valid admitted artifacts, malformed editorial metadata and a prior reviewed body
+    assert admit(release)["version"] == "1.2.3", "artifact admission must pass before the metadata substitution"
+    checkout = release[0]
+    policy_path = checkout / ".github/distribution.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy[field] = value
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    output = checkout / "release-body.md"
+    output.write_bytes(b"reviewed release body\n")
+    # WHEN the actual CLI renders malformed optional metadata
+    with pytest.raises(SystemExit) as refusal:
+        render_cli(release, "staged")
+    # THEN the field-specific refusal leaves the prior body intact
+    captured = capsys.readouterr()
+    assert (refusal.value.code, captured.out, captured.err, output.read_bytes()) == (
+        1, "", f"Release guide refused: Guide release metadata differs: {field}\n", b"reviewed release body\n",
+    ), "malformed metadata must identify its field before writing output"
