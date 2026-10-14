@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from python_calamine import CalamineWorkbook
@@ -57,10 +58,16 @@ class FormulaArtifact:
     formulas: tuple[CellFormula, ...]
 
 
+def _sheet_cell_text(cell, tally: dict) -> str:
+    """Keep exposed datetime precision and Unicode with the named text cleanup."""
+    text = cell.isoformat() if isinstance(cell, datetime) else cell_text(cell, preserve_unicode=True)
+    return sanitise(text, tally, preserve_unicode=True)
+
+
 def _sheet_grid(rows, tally: dict) -> list[list[str]]:
     """Trim trailing empty columns of nonempty grids; preserve leading/interior blanks and ragged rows.
     Sanitise every input cell into the shared tally, including cells later trimmed."""
-    grid = [[sanitise(cell_text(cell), tally) for cell in row] for row in rows]
+    grid = [[_sheet_cell_text(cell, tally) for cell in row] for row in rows]
     width = max((index + 1 for row in grid for index, cell in enumerate(row) if cell), default=0)
     return [row[:width] for row in grid] if width else []
 
@@ -122,7 +129,8 @@ def _render_book(path: Path, sheets, *, _zip_budget: _ZipBudget | None = None) -
     artifacts = _book_artifacts(path, sheets, budget)
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, source_units, units, tally,
                      not_carried=ROUTE.not_carried, artifacts=artifacts,
-                     capabilities=_book_capabilities(path.suffix.lower(), artifacts))
+                     capabilities=_book_capabilities(path.suffix.lower(), artifacts),
+                     preserve_unicode=True)
 
 
 ROUTE = Route("sheet", "sheet", (".ods", ".xls", ".xlsb", ".xlsm", ".xlsx"), _render_book,

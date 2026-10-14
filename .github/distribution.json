@@ -34,7 +34,8 @@
     "pypi": {"supported": true, "commands": ["pip", "uv", "pipx"]},
     "standalone": {"supported": true},
     "npm": {"supported": true},
-    "homebrew": {"supported": false, "issue": 28}
+    "homebrew": {"supported": true, "tap": "kochetkov-ma/brew",
+                 "targets": ["linux-x64", "macos-arm64"]}
   },
   "npm": {
     "name": "brewdoc",
@@ -51,8 +52,11 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Bounded ZIP member reads and XML preflight for DOCX/PPTX and workbook metadata/artifacts, with operation-wide accounting for repeated reads",
-    "Oversized selected work and unsupported selected ZIP compression refuse before output writes; successful output remains complete, while native workbook values and total process memory stay outside these bounds"
+    "Offline ODT/ODP and EML conversion with explicit omissions and bounded ODF expansion and MIME structure",
+    "Strict UTF-8 Markdown and text pass-through preserves source bytes, BOM and line endings",
+    "Workbooks preserve Unicode and complete datetime values; DOCX alternative textboxes emit the selected fallback once",
+    "PDF rendering records textless pages and repairs selected caption, table-column, row-stub and fraction-label defects",
+    "Homebrew formulas reuse verified native archives for Linux x64/glibc and macOS ARM64; availability follows tap and consumer verification"
   ],
   "releases": {
     "0.2.0": {

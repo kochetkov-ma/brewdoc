@@ -63,18 +63,19 @@ class BrewdocError(Exception):
 
 @dataclass(slots=True)
 class _ZipBudget:
-    """Count selected OOXML reads against limits fixed for one operation."""
+    """Count selected ZIP/XML reads against limits fixed for one operation."""
 
     limits: dict[str, int] = field(default_factory=lambda: ZIP_XML_LIMITS.copy())
     consumed_bytes: int = 0
     total_elements: int = 0
     total_characters: int = 0
+    format_name: str = "OOXML"
 
     def check(self, key: str, value: int, part: str) -> None:
         """Refuse an overrun without exposing counters in successful output."""
         if value > self.limits[key]:
-            raise BrewdocError("OOXML %s limit exceeded: %s: %d"
-                               % (key, part, self.limits[key]))
+            raise BrewdocError("%s %s limit exceeded: %s: %d"
+                               % (self.format_name, key, part, self.limits[key]))
 
     def charge(self, key: str, amount: int, part: str) -> None:
         """Charge physical rereads and repeated XML parses to the operation."""
@@ -101,7 +102,8 @@ def _local_name(tag: str) -> str:
 def _check_zip_members(package: zipfile.ZipFile, budget: _ZipBudget) -> None:
     """Bound archive entries before Brewdoc performs member searches."""
     if len(package.infolist()) > budget.limits["members"]:
-        raise BrewdocError("OOXML members limit exceeded: %d" % budget.limits["members"])
+        raise BrewdocError("%s members limit exceeded: %d"
+                           % (budget.format_name, budget.limits["members"]))
 
 
 def _zip_member_chunks(package: zipfile.ZipFile, part: str | zipfile.ZipInfo,
@@ -112,14 +114,14 @@ def _zip_member_chunks(package: zipfile.ZipFile, part: str | zipfile.ZipInfo,
     try:
         info = package.getinfo(part) if isinstance(part, str) else part
     except KeyError as exc:
-        raise BrewdocError("OOXML part is missing: %s" % part) from exc
+        raise BrewdocError("%s part is missing: %s" % (budget.format_name, part)) from exc
     name = info.filename
     if max_bytes is not None and info.file_size > max_bytes:
         raise BrewdocError(limit_error)
     budget.check("member_bytes", info.file_size, name)
     if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
-        raise BrewdocError("OOXML ZIP compression is unsupported: %s: %d"
-                           % (name, info.compress_type))
+        raise BrewdocError("%s ZIP compression is unsupported: %s: %d"
+                           % (budget.format_name, name, info.compress_type))
     size = 0
     member_limit = budget.limits["member_bytes"]
     if max_bytes is not None:
@@ -189,7 +191,7 @@ def _xml_preflight(data: bytes, part: str, budget: _ZipBudget) -> None:
 
 def _xml_part(package: zipfile.ZipFile, part: str,
               budget: _ZipBudget | None = None) -> ET.Element:
-    """Read one bounded OOXML part and preserve missing or malformed diagnostics."""
+    """Read one bounded XML part and preserve missing or malformed diagnostics."""
     if budget is None:
         budget = _ZipBudget()
     data = _zip_member_bytes(package, part, budget)
@@ -197,7 +199,8 @@ def _xml_part(package: zipfile.ZipFile, part: str,
         _xml_preflight(data, part, budget)
         return ET.fromstring(data)
     except ET.ParseError as exc:
-        raise BrewdocError("cannot parse OOXML part %s: %s" % (part, exc)) from exc
+        raise BrewdocError("cannot parse %s part %s: %s"
+                           % (budget.format_name, part, exc)) from exc
 
 
 def _resolve_ooxml_part(base: str, target: str) -> str:
@@ -280,8 +283,9 @@ def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
-    """ASCII out, every dropped class counted; `keep_layout` preserves fixed-width alignment."""
+def sanitise(text: str, tally: dict, keep_layout: bool = False, *,
+             preserve_unicode: bool = False) -> str:
+    """Count named cleanup losses; fold to ASCII unless Unicode preservation is requested."""
     drop = tally["dropped"]
     tally["broken_ligature_words"] += len(BROKEN_WORD_RE.findall(text))
     drop["cid_survivors"] += len(CID_RE.findall(text))
@@ -301,7 +305,7 @@ def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
             drop["nbsp"] += 1
             out.append(" ")
             continue
-        if ch in FOLD:
+        if not preserve_unicode and ch in FOLD:
             out.append(FOLD[ch])
             continue
         if ch in "\n\t" or " " <= ch <= "~":
@@ -314,6 +318,9 @@ def sanitise(text: str, tally: dict, keep_layout: bool = False) -> str:
             continue
         if category in ("Cc", "Cf", "Zl", "Zp"):
             drop["control_chars"] += 1
+            continue
+        if preserve_unicode:
+            out.append(ch)
             continue
         folded = "".join(c for c in unicodedata.normalize("NFKD", ch)
                          if not unicodedata.combining(c))
@@ -403,8 +410,8 @@ MARKDOWN_ESCAPES = str.maketrans({
 
 
 def _markdown_encoding(route: str) -> str:
-    """Publication and HTML output use UTF-8; legacy adapters retain strict ASCII."""
-    return "utf-8" if route in ("html", "epub") else "ascii"
+    """Unicode routes use UTF-8; other adapters retain strict ASCII."""
+    return "utf-8" if route in ("html", "epub", "sheet", "text", "eml", "odt", "odp") else "ascii"
 
 
 def _markdown_bytes(text: str) -> int:
@@ -559,13 +566,14 @@ Rendered = tuple[str, dict, tuple[str, ...], tuple[ArtifactRef, ...]]
 
 @dataclass(frozen=True, slots=True)
 class Route:
-    """One adapter's whole contract: each adapter declares exactly one, the service folds them."""
+    """One format route's contract, folded into the service's static suffix table."""
 
     name: str
     unit_kind: str
     suffixes: tuple[str, ...]
     render: Callable[..., Rendered] | None
     not_carried: tuple[str, ...]
+    markdown_schema: str = MARKDOWN_SCHEMA
 
 
 CAPABILITY_FIELDS = ("Formula capability", "Selected formula count", "VBA project capability",

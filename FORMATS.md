@@ -14,15 +14,30 @@ and python-calamine; static HTML adds its conditional native parser. Other route
 | `.epub` | stdlib ZIP/XML | EPUB 2/3 static XHTML; every declared spine item, including empty/non-linear content |
 | `.xlsx` `.xlsm` `.xls` `.xlsb` `.ods` | python-calamine | Cached values; exact selected sheets in caller order with full-source ordinals |
 | `.html` | selectolax Lexbor | Local static body/fragment in DOM order; one chapter; CPython 3.12-3.14 |
+| `.md` `.txt` | stdlib UTF-8 decoding | Exact source bytes; no generated envelope or units |
+| `.odt` `.odp` | stdlib ZIP/XML | ODT heading chapters; declared ODP slides, text and tables |
+| `.eml` | stdlib email; existing HTML renderer for HTML body | Selected headers, one MIME body and attachment names |
 
-All routes emit brewdoc.markdown/2: quoted title, deterministic metadata, artifact inventory,
+Parsed document routes emit brewdoc.markdown/2: quoted title, deterministic metadata, artifact inventory,
 known omissions, linked contents and anchored units. Empty physical pages/sheets/chapters/slides
 stay navigable. Local receipts use brewdoc.receipt/1 with route, unit kind and count:
-routes are pdf, doc, presentation, sheet, epub and html.
-PDF page/000001, DOCX/EPUB/HTML chapter/000001, PPTX slide/000001, workbook sheet/000001.
+routes are pdf, doc, presentation, sheet, epub, html, odt, odp and eml. Text uses route text, kind none,
+zero units and brewdoc.markdown/passthrough/1.
+PDF page/000001, DOCX/EPUB/HTML/ODT/EML chapter/000001, PPTX/ODP slide/000001,
+workbook sheet/000001.
 Unsupported suffixes use route/kind none; other refusals retain their route/kind and zero units.
-HTML/EPUB preserve Unicode as UTF-8 without BOM and LF newlines; other routes emit ASCII.
+Workbooks/HTML/EPUB/ODT/ODP/EML preserve Unicode as UTF-8 without BOM and LF newlines;
+PDF/DOCX/PPTX emit ASCII. Text preserves its source UTF-8 bytes and newlines.
 MiB means 1,048,576 bytes. Local conversion never acquires external resources.
+
+## UTF-8 text
+
+`.md` and `.txt` decode strict UTF-8 and return identical re-encoded bytes, including BOM,
+CRLF/bare CR/LF, whitespace, syntax and final-newline presence. Empty input succeeds.
+No normalization, parser, generated metadata, anchors, text/table counting or size cap is added.
+Invalid UTF-8 and UTF-16/32 BOM input refuse before writes. Workbook/article options refuse.
+The local receipt remains brewdoc.receipt/1 with empty unit keys, artifacts and omissions.
+`--out` contains only source bytes; stdout places the JSON receipt before those bytes.
 
 ## PDF
 
@@ -32,6 +47,17 @@ Table N cropped to the next blank band; two-column prose split at the density gu
 Images/figures and their drawn text, page-spanning tables and rotated text are not carried.
 For tables crossing pages, columns recover but wrapped rows stay separate.
 Sub/superscripts are folded into the line. Broken font ligatures are counted/folded, not guessed.
+
+In a mixed document, textless pages retain their anchors. Markdown Known omissions names
+each original page with no extractable text and whether image/vector drawing objects are
+present. These facts do not identify scans, blank pages or lost text; no OCR is performed.
+They do not change the receipt's static omissions. A nonempty wholly textless PDF still refuses.
+
+Selected recovery keeps unique adjacent table captions beside independent prose, repeated
+centered text fields beside numeric records, and one ruled group label in its first covered
+record with empty continuations. Physically contiguous unchanged ASCII letters retain one
+display token in math blocks. Ambiguous geometry retains the existing route; these fixes
+do not establish general table, reading-order or mathematical fidelity.
 
 ## Static HTML
 
@@ -142,6 +168,7 @@ These fixtures establish bounded behavior, not general website coverage.
 
 ## Python package compatibility
 
+The following compatibility evidence predates the 0.5.0 changes.
 CPython 3.12.14 retains the local macOS full-suite baseline and existing CI smoke checks.
 Declared Python >=3.12 support and the CPython 3.12-3.14 HTML parser constraint are not proof
 of every OS/minor combination. The following source-package cells passed in
@@ -296,6 +323,10 @@ Title/Heading1-Heading9 start chapters. Tabs become spaces; line breaks remain. 
 into parent cells; invalid/nonpositive spans use one column. Images/headers/footers/footnotes/comments,
 tracked-change reconstruction, list layout, style inheritance and vertical merge reconstruction are omitted.
 
+For namespace-qualified `mc:AlternateContent`, only the first direct qualified `mc:Fallback`
+is read. Choices are skipped; an alternative without a fallback contributes no text.
+Nested fallbacks retain source order. This is not a `Requires` resolver or full MCE support.
+
 PPTX follows relationships/declared slide order, including hidden/empty slides. Title placeholders
 label units, otherwise Untitled; headings are ## Slide N: "<title>" with slide/000001 keys.
 render_presentation tallies slides without a Slides metadata row. Grouped shape XML, paragraphs/runs
@@ -369,22 +400,64 @@ are unchanged. A file below these limits can still require substantial memory/ti
 Readable VBA modules and module/script counts are unavailable/unknown; projects never execute.
 Stable explicit keys select artifacts; typed formula APIs enumerate selected formula sheets.
 Artifact requests do not change Markdown bytes. Numbers stay as stored (for example 85.0);
-dates use ISO days. Formula Markdown contains cached values, not recalculated results.
+dates use ISO days and exposed datetime values retain their full `isoformat()` precision.
+No timezone or unexposed time is inferred from source formatting. Workbook cells and labels
+preserve ordinary Unicode, with the existing named control/ligature cleanup and whitespace handling.
+Formula Markdown contains cached values, not recalculated results.
 
-## Planned
+## OpenDocument text and presentations
 
-Planned inputs are refused today and each requires its own acceptance task; no new parser dependency.
-Order follows value for agents:
+ODT/ODP require unique `mimetype`, `META-INF/manifest.xml` and `content.xml` members,
+matching qualified media types and the expected office body. Missing, duplicate, malformed
+or consumed encrypted content refuses. Optional styles/settings/metadata are ignored.
+No extraction, external resource fetching, decryption or macro execution occurs.
 
-| Order | Input | Mechanism/output |
-|---|---|---|
-| 1 | .odt/.odp | stdlib ZIP/content.xml, paragraphs/tables; one chapter per ODP slide |
-| 2 | .md/.txt | Pass-through bytes with receipt |
-| 3 | .eml | stdlib email: headers, text body, attachment names |
+ODT keeps ordered paragraphs, heading chapters, section/list descendants and tables.
+Inline spans, hyperlink labels, tails, `text:s` space counts, tabs and line breaks retain
+text; list numbering, notes, comments and tracked-change history are omitted. ODT drawing text,
+bibliography containers and fields outside that inline vocabulary are not read.
+ODP keeps direct page order, including hidden/empty slides, grouped text and frame tables.
+The first nonempty title-class frame labels a slide, otherwise its declared name or Untitled.
+Masters and automatic headers/footers are omitted. Images, charts, equations, embedded objects,
+styles, positioning and layout are not carried. This is qualified text extraction, not full
+ODF conformance validation or fidelity.
 
-Image handling is not accepted yet; no OCR. Five suffixes map to three modules: ODT/ODP together,
-MD/TXT together, EML separate. Each new module requires its own acceptance task
-and explicit approval.
+Tables expand explicit row/cell repeats and covered cells, retaining merged owner text once.
+Malformed/nonpositive counts and contradictory merged grids refuse. The shared
+[ZIP/XML reader limits](#zipxml-reader-limits) apply to all selected ODF reads and parses.
+Additional inclusive expansion limits are 256 columns, 65,536 slots per table, 262,144 slots
+per operation and 33,554,432 expanded characters per operation. Empty slots and
+every repeated text copy count. Space counts and repeats are checked before materialization.
+No source-size or final-Markdown cap is added; these limits do not bound process memory.
+
+## MIME email
+
+EML emits one chapter. Its first decoded Subject labels it, otherwise Untitled.
+From, To, Cc, Date, Subject and Message-ID appear in that fixed order; repeated values retain
+source order within each name. Encoded words decode strictly and headers unfold without
+address/date normalization. Names and headers are literal data, never active Markdown or paths.
+
+Stdlib body selection prefers plain over HTML, even when HTML occurs first. An empty plain
+body stays empty. Related-root selection follows stdlib; attachment dispositions are excluded,
+while a filename alone does not exclude an inline text body. Only the selected body decodes,
+with its declared charset or ASCII when absent. Invalid selected text, unknown charset/transfer
+encoding, consumed structure defects and base64 defects refuse. Literal quoted-printable
+recovery follows stdlib. Plain bodies retain literal text with CRLF/bare CR normalized to LF.
+Missing supported body is stated explicitly.
+
+Selected HTML uses the existing offline HTML renderer and its 8 MiB UTF-8 input and structural
+limits; it needs the same supported parser runtime. No article selection is applied.
+Named inline parts and attachment names appear in MIME order, with unnamed attachment markers.
+Attached-message inventory stops at `message/rfc822`. Attachment payloads, nested-message bodies,
+unselected alternatives and non-body inline resources are omitted, with no retrievable artifacts.
+Other headers, including Bcc, routing and signature fields, are omitted. No decryption or
+signature verification occurs.
+
+The parser admits at most 1,024 retained MIME nodes before constructing the next node.
+Root depth one is checked against a maximum of 64 before body selection. Parser recursion
+failure is a named refusal. The stdlib parser can recurse and retain encoded payloads before
+that depth check. There is no EML raw-size, attachment-size, decoded-plain-body or final-output
+cap; node/depth checks do not guarantee streaming, constant memory or process memory safety.
 
 ## Excluded
 

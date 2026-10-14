@@ -2,7 +2,10 @@
 
 import importlib
 import importlib.util
+import ast
+import base64
 import contextlib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,11 +22,187 @@ from types import SimpleNamespace
 import pytest
 
 from brewdoc import htmlurl
+from test_workbook_fidelity import fidelity_book
 
 BUILDER_SPEC = importlib.util.spec_from_file_location(
     'standalone_builder', Path(__file__).resolve().parents[1] / '.github/workflows/build_standalone.py')
 BUILDER = importlib.util.module_from_spec(BUILDER_SPEC)
 BUILDER_SPEC.loader.exec_module(BUILDER)
+
+
+def oracle_observer():
+    """Compile the actual installed oracle observation without executing its full build driver."""
+    import brewdoc
+
+    syntax = ast.parse(BUILDER.ORACLE_CODE)
+    function = next(node for node in syntax.body if isinstance(node, ast.FunctionDef) and node.name == 'observe')
+    namespace = {'brewdoc': brewdoc, 'helper': BUILDER.verifier(), 'hashlib': hashlib}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), '<installed oracle>', 'exec'), namespace)
+    return namespace['observe']
+
+
+@pytest.mark.parametrize('suffix,create', [
+    ('.txt', lambda path: path.write_bytes('café 東京\r\nraw'.encode('utf-8'))),
+    ('.xlsx', fidelity_book),
+], ids=['text', 'workbook'])
+def test_full_native_oracle_seals_actual_unicode_routes_as_utf8(tmp_path, suffix, create):
+    # GIVEN a small source accepted by the real service with ordinary Unicode output
+    import brewdoc
+
+    source = tmp_path / ('source' + suffix)
+    create(source)
+    code, receipt, markdown = brewdoc.run(source)
+    assert (code, receipt['file_ok']) == (0, True), 'the actual source engine must accept the Unicode precondition'
+    expected = {'path': source.name, 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+                'receipt': receipt, 'code': 0, 'markdown_encoding': 'utf-8',
+                'markdown_sha256': hashlib.sha256(markdown.encode('utf-8')).hexdigest(),
+                'markdown_bytes': len(markdown.encode('utf-8'))}
+    # WHEN the actual embedded installed-oracle observer seals this source
+    actual = oracle_observer()(source)
+    # THEN the complete sealed row binds UTF-8 bytes without changing the public receipt
+    assert actual == expected, 'full native observation must seal the actual Unicode output with explicit private encoding'
+
+
+@pytest.mark.parametrize('route', ['text', 'sheet'])
+def test_native_windows_utf8_output_keeps_sealed_crlf_bytes(monkeypatch, route):
+    # GIVEN a new sealed UTF-8 row and successful Windows receipt/stdout framing
+    body = 'café 東京\r\nraw'.encode('utf-8')
+    row = {'code': 0, 'receipt': {'route': route, 'out': None}, 'markdown_encoding': 'utf-8',
+           'markdown_bytes': len(body), 'markdown_sha256': hashlib.sha256(body).hexdigest()}
+    stdout = (json.dumps(row['receipt'], sort_keys=True) + '\r\n').encode('ascii') + body
+    process = subprocess.CompletedProcess(['brewdoc'], 0, stdout, b'')
+    monkeypatch.setattr(BUILDER.os, 'linesep', '\r\n')
+    assert process.stdout == stdout, 'the consumer must already contain the exact sealed UTF-8 body'
+    # WHEN the actual frozen-output checker sees the explicit UTF-8 profile
+    BUILDER.check_output(process, row)
+    # THEN CRLF and Unicode bytes are accepted without legacy ASCII normalization
+    assert process.stdout == stdout, 'UTF-8 verification must preserve exact source newlines rather than rewrite them'
+
+
+def test_native_windows_legacy_ascii_sheet_row_keeps_its_historical_normalization(monkeypatch):
+    # GIVEN an immutable old sheet row without any new private encoding field
+    body = b'| old value |\n'
+    row = {'code': 0, 'receipt': {'route': 'sheet', 'out': None},
+           'markdown_bytes': len(body), 'markdown_sha256': hashlib.sha256(body).hexdigest()}
+    stdout = (json.dumps(row['receipt'], sort_keys=True) + '\r\n').encode() + body.replace(b'\n', b'\r\n')
+    process = subprocess.CompletedProcess(['brewdoc'], 0, stdout, b'')
+    monkeypatch.setattr(BUILDER.os, 'linesep', '\r\n')
+    assert tuple(row) == ('code', 'receipt', 'markdown_bytes', 'markdown_sha256'), 'legacy evidence must remain unversioned'
+    # WHEN current tooling checks the historical Windows text-stream output
+    BUILDER.check_output(process, row)
+    # THEN old CRLF normalization still admits the unchanged sealed LF bytes
+    assert process.stdout == stdout, 'the legacy consumer observation must be accepted without changing historical evidence'
+
+
+def test_native_windows_utf8_newline_corruption_is_refused(monkeypatch):
+    # GIVEN a sealed UTF-8 raw source with CRLF and a consumer that silently changed it to LF
+    body = 'café\r\nraw'.encode()
+    row = {'code': 0, 'receipt': {'route': 'text', 'out': None}, 'markdown_encoding': 'utf-8',
+           'markdown_bytes': len(body), 'markdown_sha256': hashlib.sha256(body).hexdigest()}
+    corrupted = body.replace(b'\r\n', b'\n')
+    process = subprocess.CompletedProcess(['brewdoc'], 0,
+                                          (json.dumps(row['receipt'], sort_keys=True) + '\r\n').encode() + corrupted, b'')
+    monkeypatch.setattr(BUILDER.os, 'linesep', '\r\n')
+    assert len(corrupted) == len(body) - 1, 'the consumer must differ by the missing carriage return'
+    # WHEN the frozen consumer is checked against exact raw-byte evidence
+    with pytest.raises(ValueError, match='^Standalone Markdown differs from the sealed engine$'):
+        BUILDER.check_output(process, row)
+    # THEN neither sealed identity nor failed consumer bytes are repaired to pass
+    assert process.stdout == (json.dumps(row['receipt'], sort_keys=True) + '\r\n').encode() + corrupted, (
+        'refusal must preserve the complete original failed observation')
+
+
+def full_native_manifest(version, suffixes, **fields):
+    """Create a small schema-1 packet with complete identity and selected oracle rows."""
+    routes = {'.pdf': 'pdf', '.docx': 'docx', '.pptx': 'pptx', '.html': 'html', '.epub': 'epub',
+              '.xlsx': 'sheet', '.xlsm': 'sheet', '.xls': 'sheet', '.xlsb': 'sheet', '.ods': 'sheet',
+              '.odt': 'odt', '.odp': 'odp', '.eml': 'eml', '.md': 'text', '.txt': 'text'}
+    rows = [{'path': 'tests/fixtures/tiny-%02d%s' % (index, suffix), 'source_sha256': 'a' * 64,
+             'code': 0, 'receipt': {'out': None, 'route': routes[suffix]},
+             'markdown_bytes': 1, 'markdown_sha256': 'b' * 64} for index, suffix in enumerate(suffixes)]
+    return {'schema': 1, 'source_sha': 'a' * 40, 'version': version, 'python': '3.12.14',
+            'target': 'linux-x64', 'wheel_sha256': 'b' * 64, 'lock_sha256': 'c' * 64,
+            'archive': {'filename': 'brewdoc-%s-linux-x64.tar.gz' % version, 'bytes': 1, 'sha256': 'd' * 64},
+            'executable': 'brewdoc/brewdoc', 'inventory': {
+                'brewdoc': {'kind': 'directory', 'mode': 0o755},
+                'brewdoc/brewdoc': {'kind': 'file', 'mode': 0o755, 'bytes': 1, 'sha256': 'e' * 64}},
+            'oracle': rows, 'probes': [{'probe': name, 'path': 'tests/fixtures/tiny.xlsx'}
+                                     for name in ('sheet-order', 'vba', 'epub2', 'formula')], **fields}
+
+
+LEGACY_NATIVE_SUFFIXES = ('.pdf', '.docx', '.pptx', '.html', '.epub', '.xlsx', '.xlsm', '.xls', '.xlsb', '.ods', '.epub')
+
+
+def test_modern_full_native_manifest_accepts_all_sixteen_selected_rows():
+    # GIVEN all fifteen current suffixes plus the second accepted EPUB in one modern full packet
+    suffixes = LEGACY_NATIVE_SUFFIXES + ('.odt', '.odp', '.eml', '.md', '.txt')
+    manifest = full_native_manifest('0.5.0', suffixes)
+    encodings = dict.fromkeys(('html', 'epub', 'sheet', 'odt', 'odp', 'eml', 'text'), 'utf-8')
+    manifest['oracle'] = [{**row, 'markdown_encoding': encodings.get(row['receipt']['route'], 'ascii')}
+                          for row in manifest['oracle']]
+    before = json.loads(json.dumps(manifest))
+    assert (len(manifest['oracle']), len(set(suffixes)), suffixes.count('.epub')) == (16, 15, 2), (
+        'the complete modern profile must include exactly sixteen unique selected paths across fifteen suffixes')
+    # WHEN the actual schema-1 native admission sees the current full profile
+    BUILDER.validate_manifest(manifest)
+    # THEN complete current selection is admitted without truncating rows or altering schema
+    assert manifest == before, 'current full mode must retain all selected formats and private encoding markers'
+
+
+@pytest.mark.parametrize('damage,message', [
+    (lambda row: row.update(path='tests/fixtures/tiny-15.pdf'),
+     'Standalone oracle differs from its format coverage'),
+    (lambda row: row.update(markdown_encoding='ascii'),
+     'Standalone Markdown encoding differs from its route'),
+    (lambda row: row.pop('markdown_encoding'), 'Standalone Markdown encoding is missing'),
+], ids=['missing-suffix', 'wrong-encoding', 'missing-encoding'])
+def test_modern_full_native_manifest_refuses_incomplete_format_or_encoding_identity(damage, message):
+    # GIVEN an admitted complete modern packet before exactly one format or encoding identity changes
+    manifest = full_native_manifest('0.5.0', LEGACY_NATIVE_SUFFIXES + ('.odt', '.odp', '.eml', '.md', '.txt'))
+    encodings = dict.fromkeys(('html', 'epub', 'sheet', 'odt', 'odp', 'eml', 'text'), 'utf-8')
+    manifest['oracle'] = [{**row, 'markdown_encoding': encodings.get(row['receipt']['route'], 'ascii')}
+                          for row in manifest['oracle']]
+    assert BUILDER.validate_manifest(manifest) is None, 'the complete modern packet must be valid before corruption'
+    damage(manifest['oracle'][-1])
+    before = json.loads(json.dumps(manifest))
+    assert len(manifest['oracle']) == 16, 'the corrupted packet must retain the complete row count'
+    # WHEN actual admission sees one missing format or wrong private byte encoding
+    with pytest.raises(ValueError) as raised:
+        BUILDER.validate_manifest(manifest)
+    # THEN refusal identifies the broken contract without repairing the malformed evidence
+    assert (str(raised.value), manifest) == (message, before), 'the exact refusal must preserve all malformed evidence'
+
+
+def test_historical_full_native_manifest_keeps_the_immutable_eleven_row_profile():
+    # GIVEN the historical full schema-1 shape and no new row encoding fields
+    manifest = full_native_manifest('0.3.1', LEGACY_NATIVE_SUFFIXES)
+    before = json.loads(json.dumps(manifest))
+    assert len(manifest['oracle']) == 11, 'the historical full profile must remain exactly eleven rows'
+    # WHEN current admission reads unchanged historical evidence
+    BUILDER.validate_manifest(manifest)
+    # THEN the old full profile remains accepted with no migrated fields or oracle refresh
+    assert manifest == before, 'historical sealed full manifests must remain byte-for-byte equivalent objects'
+
+
+@pytest.mark.parametrize('version', ['0.3.1', '0.5.0'])
+def test_old_and_current_smoke_native_manifest_keep_zero_oracle_rows_and_two_probes(version):
+    # GIVEN existing schema-1 smoke evidence with its unchanged two synthetic probe names
+    payload = b'x'
+    digest = hashlib.sha256(payload).hexdigest()
+    probes = [{'probe': 'epub2', 'path': 'sample.epub', 'bytes_base64': base64.b64encode(payload).decode(),
+               'source_sha256': digest, 'code': 0, 'receipt': {'out': None, 'route': 'epub'},
+               'markdown_bytes': 1, 'markdown_sha256': digest},
+              {'probe': 'formula', 'path': 'formulas.xlsx', 'bytes_base64': base64.b64encode(payload).decode(),
+               'source_sha256': digest, 'code': 0, 'receipt': {'out': None, 'route': 'sheet'},
+               'markdown_bytes': 1, 'markdown_sha256': digest,
+               'artifact': {'key': 'formula/sheet/000002', 'bytes': 1, 'sha256': digest}}]
+    manifest = full_native_manifest(version, (), verification_scope='smoke', probes=probes)
+    before = json.loads(json.dumps(manifest))
+    assert (len(manifest['oracle']), len(manifest['probes'])) == (0, 2), 'smoke shape must stay unchanged at either version'
+    # WHEN actual native admission reads old or current smoke evidence
+    BUILDER.validate_manifest(manifest)
+    # THEN retained smoke evidence stays accepted without new mandatory row fields
+    assert manifest == before, 'the normal smoke producer must preserve its existing admission shape'
 
 
 def test_native_zip_member_probe_requires_the_real_cli_refusal_and_preserves_output(tmp_path):

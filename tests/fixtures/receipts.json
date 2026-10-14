@@ -93,6 +93,51 @@
   "unit_kind": "chapter",
   "units": 1
  },
+ "eml/tika-testGroupWiseEml.eml": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "eml",
+  "tables": 0,
+  "text_regions": 3,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "eml/tika-testRFC822_dkim.eml": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "eml",
+  "tables": 0,
+  "text_regions": 2,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "eml/tika-testRFC822_multipart_attachments.eml": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "eml",
+  "tables": 0,
+  "text_regions": 3,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
  "epub/epubcheck-minimal.epub": {
   "accepted_output": {
    "markdown_sha256": "2d9347ede4475376b676c54edcded45d0c84c1eadbcdc8a49fc17bc4b68ab401",
@@ -348,6 +393,62 @@
   "unit_kind": "chapter",
   "units": 1
  },
+ "md/calamine-README.md": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/passthrough/1",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "text",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [],
+  "unit_kind": "none",
+  "units": 0
+ },
+ "md/pdfplumber-README.md": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/passthrough/1",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "text",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [],
+  "unit_kind": "none",
+  "units": 0
+ },
+ "odp/tika-testMasterFooter.odp": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "odp",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [
+   "slide/000001"
+  ],
+  "unit_kind": "slide",
+  "units": 1
+ },
+ "odp/tika-testODPMacro.odp": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "odp",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [
+   "slide/000001"
+  ],
+  "unit_kind": "slide",
+  "units": 1
+ },
  "ods/calamine-any_sheets.ods": {
   "artifacts": [],
   "file_ok": true,
@@ -431,6 +532,51 @@
   "unit_kind": "sheet",
   "units": 1
  },
+ "odt/tika-testODFwithOOo3.odt": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "odt",
+  "tables": 0,
+  "text_regions": 7,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "odt/tika-testODTStyles2.odt": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "odt",
+  "tables": 1,
+  "text_regions": 8,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
+ "odt/tika-testOpenOffice2.odt": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/2",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "odt",
+  "tables": 0,
+  "text_regions": 1,
+  "unit_keys": [
+   "chapter/000001"
+  ],
+  "unit_kind": "chapter",
+  "units": 1
+ },
  "pdf/arxiv-2302.13971v1.pdf": {
   "artifacts": [],
   "file_ok": true,
@@ -480,7 +626,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
   "tables": 2,
-  "text_regions": 170,
+  "text_regions": 171,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -723,6 +869,32 @@
   ],
   "unit_kind": "slide",
   "units": 10
+ },
+ "txt/nasa-giss-global-temperature-index.txt": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/passthrough/1",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "text",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [],
+  "unit_kind": "none",
+  "units": 0
+ },
+ "txt/noaa-ghcn-daily-readme.txt": {
+  "artifacts": [],
+  "file_ok": true,
+  "markdown_schema": "brewdoc.markdown/passthrough/1",
+  "rc": 0,
+  "receipt_schema": "brewdoc.receipt/1",
+  "route": "text",
+  "tables": 0,
+  "text_regions": 0,
+  "unit_keys": [],
+  "unit_kind": "none",
+  "units": 0
  },
  "xls/calamine-any_sheets.xls": {
   "artifacts": [],

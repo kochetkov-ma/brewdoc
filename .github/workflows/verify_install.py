@@ -24,9 +24,10 @@ import tomllib
 import xml.etree.ElementTree as ET
 import zipfile
 
-SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".epub", ".xlsx", ".xlsm", ".xls", ".xlsb", ".ods"}
+SUFFIXES = {".pdf", ".docx", ".pptx", ".html", ".epub", ".xlsx", ".xlsm", ".xls", ".xlsb", ".ods",
+            ".odt", ".odp", ".eml", ".md", ".txt"}
 PRIVATE_PARTS = {".codex", ".agents", ".claude", ".venv", "docs", "AGENTS.md", "CLAUDE.md"}
-UNICODE_ROUTES = {"html", "epub"}
+UNICODE_ROUTES = {"html", "epub", "sheet", "text", "odt", "odp", "eml"}
 EPUB_INPUTS = {"tests/fixtures/epub/epubcheck-minimal.epub",
                "tests/fixtures/epub/standardebooks-herland.epub"}
 VERIFIER_SOURCE = ".github/workflows/verify_install.py"
@@ -329,6 +330,36 @@ def probe_epub_refusal(console: str) -> dict:
     return {"receipt": receipt, "cli": checked, "preserved_output_sha256": digest(out)}
 
 
+def probe_new_refusals(console: str) -> list[dict]:
+    """Check new local routes refuse malformed input without changing destinations."""
+    import brewdoc
+
+    observed = []
+    for suffix in ("md", "txt", "odt", "odp", "eml"):
+        path = Path.cwd() / ("refused." + suffix)
+        if suffix in {"odt", "odp"}:
+            with zipfile.ZipFile(path, "w"):
+                pass
+        else:
+            path.write_bytes(b"Content-Type: text/plain; charset=unknown-brewdoc\n\nbody"
+                             if suffix == "eml" else b"invalid UTF-8: \xff")
+        out = Path.cwd() / (suffix + "-refusal.md")
+        sentinel = b"existing output\n"
+        out.write_bytes(sentinel)
+        actual = brewdoc.run(path, out=out)
+        code, receipt, markdown = actual
+        if ((code, receipt["file_ok"], receipt["route"], receipt["units"], markdown,
+             out.read_bytes()) != (1, False, "text" if suffix in {"md", "txt"} else suffix,
+                                  0, "", sentinel) or not receipt["reason"]):
+            raise ValueError(f"Installed {suffix} refusal changed existing output")
+        result = subprocess.run([console, str(path), "--out", str(out)], capture_output=True, timeout=120)
+        checked = check_cli(result, actual)
+        if out.read_bytes() != sentinel:
+            raise ValueError(f"Installed {suffix} console refusal changed existing output")
+        observed.append({"receipt": receipt, "cli": checked, "preserved_output_sha256": digest(out)})
+    return observed
+
+
 def installed_url_runtime(enabled: bool) -> dict:
     """Count all installed brewdoc and optional native bytes, including generated caches."""
     import brewdoc
@@ -531,7 +562,7 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool 
                            markdown.encode("utf-8" if receipt["route"] in UNICODE_ROUTES else "ascii")).hexdigest()})
         if path.suffix == ".epub":
             epubs.append(probe_epub(path, actual, snapshot.get("accepted_output", {}), console))
-        if path.suffix in {".html", ".xlsx"}:
+        if path.suffix in {".html", ".xlsx", ".odt", ".odp", ".eml", ".md", ".txt"}:
             cli.append(check_cli(subprocess.run([console, str(path)], capture_output=True, timeout=120), actual))
             out = Path.cwd() / "nested" / (path.name + ".md")
             expected = (code, {**receipt, "out": str(out)}, markdown)
@@ -566,14 +597,15 @@ def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool 
                               "bytes_base64": base64.b64encode(payload.read_bytes()).decode("ascii")})
     absent = Path("missing.pdf")
     cli.append(check_cli(subprocess.run([console, str(absent)], capture_output=True, timeout=120), brewdoc.run(absent)))
-    unsupported = Path("unsupported.txt")
+    unsupported = Path("unsupported.bin")
     cli.append(check_cli(subprocess.run([console, str(unsupported)], capture_output=True, timeout=120), brewdoc.run(unsupported)))
     return {"verification_scope": "full", "python": sys.version, "runtime": identity,
             "module": str(Path(brewdoc.__file__).resolve()),
             "prefix": sys.prefix, "self_check": checked.stdout.decode(), "routes": routes,
             "cli": cli, "artifacts": artifacts, "epub": epubs,
             "article": probe_article(console),
-            "epub_refusal": probe_epub_refusal(console), "javascript": probe_js(render_js),
+            "epub_refusal": probe_epub_refusal(console), "new_refusals": probe_new_refusals(console),
+            "javascript": probe_js(render_js),
             "packages": sorted((item.metadata["Name"], item.version)
                                for item in importlib.metadata.distributions())}
 

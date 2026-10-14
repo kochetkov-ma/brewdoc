@@ -413,7 +413,7 @@ def _body_columns(page, bbox, structural) -> list[float]:
                and bbox[0] <= (word["x0"] + word["x1"]) / 2 <= bbox[2] for word in band) >= 2]
     if len(records) < 2:
         return []
-    anchors = []
+    anchors, centres = [], []
     for row, band in enumerate(records):
         groups = []
         for word in sorted(band, key=lambda item: item["x0"]):
@@ -423,17 +423,29 @@ def _body_columns(page, bbox, structural) -> list[float]:
                 groups[-1]["x1"] = word["x1"]
             else:
                 groups.append(dict(word))
-        for group in groups:
-            anchor = group["x1"] if numeric.fullmatch(group["text"]) else group["x0"]
-            anchors.append((anchor, row, group["x0"], group["x1"]))
-    clusters = []
-    for anchor in sorted(anchors):
-        if not clusters or anchor[0] - clusters[-1][0][0] > COLUMN_TOLERANCE:
-            clusters.append([])
-        clusters[-1].append(anchor)
-    stable = [group for group in clusters if len({anchor[1] for anchor in group}) >= max(2, len(records) * 0.5)]
-    stable = [group for group in stable if bbox[0] <= statistics.median(anchor[0] for anchor in group) <= bbox[2]
-              or len({anchor[1] for anchor in group}) >= len(records) * 0.75]
+        for index, group in enumerate(groups):
+            number = numeric.fullmatch(group["text"])
+            anchor = group["x1"] if number else group["x0"]
+            item = (anchor, row, group["x0"], group["x1"], index)
+            anchors.append(item)
+            if not number:
+                centres.append(((group["x0"] + group["x1"]) / 2, *item[1:]))
+
+    def supported(anchors):
+        """Keep independently repeated anchors within the existing record bounds."""
+        clusters = []
+        for anchor in sorted(anchors):
+            if not clusters or anchor[0] - clusters[-1][0][0] > COLUMN_TOLERANCE:
+                clusters.append([])
+            clusters[-1].append(anchor)
+        return [group for group in clusters
+                if len({anchor[1] for anchor in group}) >= max(2, len(records) * 0.5)
+                and (bbox[0] <= statistics.median(anchor[0] for anchor in group) <= bbox[2]
+                     or len({anchor[1] for anchor in group}) >= len(records) * 0.75)]
+
+    stable = supported(anchors)
+    owned = {(anchor[1], anchor[4]) for group in stable for anchor in group}
+    stable += supported([anchor for anchor in centres if (anchor[1], anchor[4]) not in owned])
     stable.sort(key=lambda group: statistics.median(anchor[2] for anchor in group))
     if len(stable) < 2:
         return []
@@ -601,7 +613,21 @@ def _math_block(chars, bars, tally: dict) -> list[str]:
     for char in sorted(chars, key=lambda item: (item["top"], item["x0"])):
         if not rows or char["top"] - rows[-1][0] > 0.8:
             rows.append((char["top"], []))
-        rows[-1][1].append((round((char["x0"] - left) / unit), char["text"]))
+        runs = rows[-1][1]
+        previous = runs[-1][-1] if runs else None
+        plain = re.fullmatch(r"[A-Za-z]", char["text"]) and char.get("_source_text", char["text"]) == char["text"]
+        if (previous is not None and plain and not char.get("_unresolved")
+                and re.fullmatch(r"[A-Za-z]", previous["text"])
+                and previous.get("_source_text", previous["text"]) == previous["text"]
+                and not previous.get("_unresolved")
+                and all(abs(char[key] - previous[key]) <= 1e-6 for key in ("top", "bottom", "size"))
+                and char["fontname"] == previous["fontname"]
+                and abs(char["x0"] - previous["x1"]) <= 1e-6):
+            runs[-1].append(char)
+        else:
+            runs.append([char])
+    rows = [(y, [(round((run[0]["x0"] - left) / unit), "".join(char["text"] for char in run))
+                 for run in runs]) for y, runs in rows]
     reservations = {}
     for _, tokens in rows:
         widths = Counter()
@@ -927,6 +953,27 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
             row["standalone"] |= any("bold" in char["fontname"].lower() or char["size"] > height * 1.25
                                      for char in word["chars"])
     rows.sort(key=lambda row: row["anchor"])
+    rules = _snap([edge["top"] for edge in page.edges if edge["orientation"] == "h"
+                   and edge["x0"] <= xs[0] + RULE_SNAP and edge["x1"] >= xs[-1] - RULE_SNAP])
+    spanning = set()
+    for row in rows:
+        if (row["standalone"] or not row["cells"][0] or any(row["cells"][1:])
+                or not re.search(r"[A-Za-z]", row["cells"][0])):
+            continue
+        above = max((y for y in rules if y <= row["top"]), default=None)
+        below = min((y for y in rules if y >= row["bottom"]), default=None)
+        if above is None or below is None:
+            continue
+        group = [other for other in rows if above <= other["top"] and other["bottom"] <= below]
+        records = [other for other in group if sum(bool(cell) for cell in other["cells"][1:]) >= 2]
+        if (len(records) >= 2 and all(not other["cells"][0] for other in records)
+                and sum(bool(other["cells"][0]) for other in group) == 1
+                and records[0]["top"] < row["top"] < records[-1]["bottom"]):
+            records[0]["cells"][0] = row["cells"][0]
+            records[0]["chars"][0] = row["chars"][0]
+            records[0]["left"][0] = row["left"][0]
+            spanning.add(id(row))
+    rows = [row for row in rows if id(row) not in spanning]
     out, owned = [], []
     for index, row in enumerate(rows):
         filled = [column for column, cell in enumerate(row["cells"]) if cell]
@@ -1035,6 +1082,59 @@ def _rule_table(page, band, columns: tuple[list[float], float, float]):
     return start, end, cells
 
 
+def _local_caption(page, bbox):
+    """Extend a narrow table through a unique adjacent caption beside independent prose."""
+    if bbox[2] - bbox[0] >= WIDE_TABLE * page.width:
+        return None
+    words = page.extract_words(x_tolerance_ratio=0.15)
+    if not words:
+        return None
+    height = statistics.median(word["bottom"] - word["top"] for word in words)
+    starts = [word for word in words if word["text"].lower() == "table"
+              and bbox[3] <= word["top"] <= bbox[3] + height * BLANK_BAND
+              and abs(word["x0"] - bbox[0]) <= height]
+    if len(starts) != 1:
+        return None
+    start = starts[0]
+    neighbours = [word for word in words if bbox[1] <= word["top"] <= start["bottom"]
+                  and word["x1"] < start["x0"]]
+    if len({round(word["top"], 1) for word in neighbours}) < 2:
+        return None
+    separator = max((max(word["x1"] for word in neighbours) + min(bbox[0], start["x0"])) / 2,
+                    start["x0"] - height * 0.5)
+    side = page.filter(lambda obj: obj["object_type"] != "char"
+                       or (obj["x0"] + obj["x1"]) / 2 >= separator)
+    lines = sorted(side.extract_text_lines(), key=lambda line: (line["top"], line["x0"]))
+    caption = []
+    for line in lines:
+        if line["top"] < start["top"] - 1e-6:
+            continue
+        if not caption:
+            if not TABLE_CAPTION_RE.match(line["text"]):
+                return None
+        elif (line["top"] - caption[-1]["bottom"] > height * BLANK_BAND
+              or abs(line["x0"] - start["x0"]) > height * 0.5):
+            break
+        source = [word for word in words if abs(word["top"] - line["top"]) <= height * 0.4]
+        left = max((word["x1"] for word in source if word["x1"] <= separator), default=None)
+        right = min((word["x0"] for word in source if word["x0"] >= separator), default=None)
+        if (any(word["x0"] < separator < word["x1"] for word in source)
+                or (left is not None and right is not None and right - left <= height * 0.6)):
+            break
+        caption.append(line)
+    if not caption:
+        return None
+    bottom = max(line["bottom"] for line in caption)
+    # Keep side prose through the last baseline before full-width source flow resumes.
+    for word in words:
+        if (word["x1"] < separator and word["top"] <= bottom
+                and word["bottom"] > bottom):
+            bottom = word["bottom"]
+    extent = (min(bbox[0], min(line["x0"] for line in caption)), bbox[1],
+              max(bbox[2], max(line["x1"] for line in caption)), bottom)
+    return extent, caption
+
+
 def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
     """Render qualified table boxes and preserve the text beside them in column order."""
     page = _structural_page(_pdf_page(page))
@@ -1059,7 +1159,12 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
         repaired = _repair_table(page, table)
         cells, bbox = repaired if repaired else (_table_cells(page, table), table.bbox)
         if not any(_overlap(bbox, previous[0]) for previous in regions):
-            regions.append((bbox, cells, "table"))
+            caption = _local_caption(page, bbox)
+            if (caption is not None and not any(_overlap(caption[0], other[0]) for other in regions)
+                    and not any(_overlap(caption[0], other.bbox) for other in tables if other is not table)):
+                regions.append((caption[0], (cells, caption[1]), "caption"))
+            else:
+                regions.append((bbox, cells, "table"))
 
     counted = set()
 
@@ -1096,7 +1201,13 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
         if crop is not None:
             count_chars(crop.chars)
         tally["tables"] += 1
-        return [("table", [[sanitise(cell, tally).strip() for cell in row] for row in cells])]
+        caption = cells[1] if kind == "caption" else None
+        grid = cells[0] if caption is not None else cells
+        blocks = [("table", [[sanitise(cell, tally).strip() for cell in row] for row in grid])]
+        if caption is not None:
+            tally["text_regions"] += 1
+            blocks.append(("text", _text_lines(page, caption, tally, margins)))
+        return blocks
 
     def render_region(box, items):
         """Partition disjoint columns before carving stacked objects within each column."""
@@ -1107,10 +1218,15 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
         if (gutter is not None and all(not (bbox[0] < gutter < bbox[2]) for bbox, _, _ in items)
                 and all(bbox[2] - bbox[0] < WIDE_TABLE * (box[2] - box[0]) for bbox, _, _ in items)):
             tally["columns_split"] += 1
-            return (render_region((box[0], box[1], gutter, box[3]),
-                                  [item for item in items if item[0][2] <= gutter])
-                    + render_region((gutter, box[1], box[2], box[3]),
-                                    [item for item in items if item[0][0] >= gutter]))
+            words = crop.extract_words() if any(kind == "caption" for _, _, kind in items) else ()
+            local = any(kind == "caption" and any(word["x0"] < gutter < word["x1"]
+                        and word["top"] >= bbox[3] for word in words)
+                        for bbox, _, kind in items)
+            if not local:
+                return (render_region((box[0], box[1], gutter, box[3]),
+                                      [item for item in items if item[0][2] <= gutter])
+                        + render_region((gutter, box[1], box[2], box[3]),
+                                        [item for item in items if item[0][0] >= gutter]))
         ordered = sorted(items, key=lambda item: (item[0][1], item[0][0]))
         top, bottom = ordered[0][0][1], ordered[0][0][3]
         group = []
@@ -1161,11 +1277,17 @@ def furniture(margins: list[list[str]]) -> tuple[set[str], set[str]]:
 def _render_pdf(path: Path, _sheets=None) -> Rendered:
     """Release page caches and PDF resources; assemble global furniture and refuse nonempty textless PDFs."""
     tally = new_tally()
-    pages, margins, empty = [], [], 0
+    pages, margins, notes, empty = [], [], [], 0
     with reading(path, "pdf"), pdfplumber.open(path) as pdf:
         for page in pdf.pages:
             if not page.chars:
                 empty += 1
+                image = bool(page.images)
+                vector = bool(page.lines or page.rects or page.curves)
+                content = ("image and vector drawing content present" if image and vector else
+                           "image content present" if image else "vector drawing content present" if vector else
+                           "no image or vector drawing objects detected")
+                notes.append("Page %d: no extractable text; %s." % (len(pages) + 1, content))
             blocks, page_margins = render_page(page, tally)
             pages.append(blocks)
             margins.append(page_margins)
@@ -1178,7 +1300,7 @@ def _render_pdf(path: Path, _sheets=None) -> Rendered:
     units = [(number, "Page %d" % number, blocks)
              for number, blocks in enumerate(pages, 1)]
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, len(pages), units, tally,
-                     not_carried=ROUTE.not_carried, heads=heads, numbers=numbers)
+                     not_carried=(*ROUTE.not_carried, *notes), heads=heads, numbers=numbers)
 
 
 ROUTE = Route("pdf", "page", (".pdf",), _render_pdf,

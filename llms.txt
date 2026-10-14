@@ -4,15 +4,21 @@
 
 Local conversion after installation is offline and downloads no runtime components.
 Supported formats and readable-file constraints are defined in FORMATS.md.
-Version 0.4.1 adds [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#zipxml-reader-limits)
+Version 0.4.1 added [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/FORMATS.md#zipxml-reader-limits)
 for DOCX/PPTX and workbook metadata/artifacts, with refusal before output writes.
 Native workbook values and total process memory are outside those bounds.
 
-- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
-- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
-- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
+Version 0.5.0 adds ODT/ODP text and tables, selected MIME email bodies and exact UTF-8
+MD/TXT pass-through. It preserves workbook Unicode and exposed datetime precision and uses
+qualified DOCX Fallback-only selection. Selected PDF caption/table/math-spacing fixes and
+textless-page facts are included. FORMATS.md owns the limits.
+
+- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
+- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
 - [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest): concise features, actual assets and channel availability.
-- Installation examples select 0.4.1; use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.4.1). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
+- Installation examples select 0.5.0. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.5.0). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
+- When listed as available in the release, `kochetkov-ma/brew/brewdoc` installs the complete bundle on macOS 15+ ARM64 or Linux x64/system glibc 2.35+; see installation for lifecycle commands.
 
 ## CLI and API
 
@@ -24,8 +30,9 @@ brewdoc --self-check
 
 Conversion prints a JSON receipt first; without --out, Markdown follows on stdout.
 Paths resolve against the caller's directory; --out creates parents. --sheet and
---artifact are repeatable and workbook-only. Markdown is brewdoc.markdown/2;
-local receipts are brewdoc.receipt/1, URL receipts brewdoc.receipt/2.
+--artifact are repeatable and workbook-only. Parsed documents use brewdoc.markdown/2;
+UTF-8 MD/TXT use brewdoc.markdown/passthrough/1 with exact bytes, no envelope and zero units.
+Local receipts are brewdoc.receipt/1, URL receipts brewdoc.receipt/2.
 Exit 0 means conversion, 1 refusal and 2 invalid usage. Success does not prove fidelity.
 
 ```python
@@ -52,7 +59,7 @@ See the format limits for supported JS runtimes and prerequisite refusals.
 ## Article mode
 
 Introduced in 0.4.0; use a channel listed as available in the release. Python JS capture
-needs `brewdoc[render-js]==0.4.1`; supported standalone bundles include its prerequisites.
+needs `brewdoc[render-js]==0.5.0`; supported standalone bundles include its prerequisites.
 
 ```sh
 brewdoc page.html --article --out article.md
@@ -71,16 +78,17 @@ Use single articles or marked documentation. Peer-article feeds refuse. Visible 
 disqualify main fallback; forms inside an eligible explicit article remain rendered content.
 Receipt `not_carried` and successful Markdown Known omissions include
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
-See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#article-selection).
+See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/FORMATS.md#article-selection).
 
-[Source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
+[Earlier source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
 Ubuntu 22.04 x64/glibc with CPython 3.13.15, macOS 15 ARM64 and Windows Server 2025 x64
 with CPython 3.14.7. Each passed four independent wheel/sdist base/optional installs;
 optional JS executed on Unix and refused before requests on Windows. These are selected
 tested patches. CPython 3.12.14 retains local macOS full-suite and existing CI smoke evidence.
+These results predate the 0.5.0 changes.
 Source-package checks are separate from standalone binaries; other OS/minor combinations,
 free-threaded CPython and other architectures remain untested here.
-See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.4.1/FORMATS.md#python-package-compatibility).
+See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.5.0/FORMATS.md#python-package-compatibility).
 
 ## Related projects
 

@@ -103,6 +103,8 @@ def test_full_installations_bind_the_same_pair_to_four_independent_expected_runt
 
 def test_installed_smoke_generates_and_checks_synthetic_cli_without_corpus(tmp_path, monkeypatch):
     # GIVEN a corpus selector that fails whenever smoke attempts licensed input selection
+    from brewdoc import __version__
+
     monkeypatch.chdir(tmp_path)
 
     def forbidden(*arguments):
@@ -125,10 +127,10 @@ def test_installed_smoke_generates_and_checks_synthetic_cli_without_corpus(tmp_p
     spec = importlib.util.spec_from_file_location('native_smoke', CHECKOUT / '.github/workflows/build_standalone.py')
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)
-    manifest = {'schema': 1, 'verification_scope': 'smoke', 'source_sha': 'a' * 40, 'version': '0.3.0',
+    manifest = {'schema': 1, 'verification_scope': 'smoke', 'source_sha': 'a' * 40, 'version': __version__,
                 'python': '3.12.14', 'target': 'linux-x64', 'wheel_sha256': 'b' * 64, 'lock_sha256': 'c' * 64,
                 'executable': 'brewdoc/brewdoc', 'oracle': [], 'probes': result['probes'],
-                'archive': {'filename': 'brewdoc-0.3.0-linux-x64.tar.gz', 'bytes': 1, 'sha256': 'd' * 64},
+                'archive': {'filename': f'brewdoc-{__version__}-linux-x64.tar.gz', 'bytes': 1, 'sha256': 'd' * 64},
                 'inventory': {'brewdoc': {'kind': 'directory', 'mode': 0o755},
                               'brewdoc/brewdoc': {'kind': 'file', 'mode': 0o755, 'bytes': 1, 'sha256': 'e' * 64}}}
     assert builder.validate_manifest(manifest) is None, 'actual installed synthetic records also satisfy the native seal'
@@ -156,3 +158,87 @@ def test_installed_scope_mismatch_refuses_before_installation_or_probe(tmp_path,
     # THEN the rejection creates no installed or probe outputs
     assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob('*')) == [
         'ci-package', 'ci-package/manifest.json'], 'scope refusal preserves the producer evidence without consumer output'
+
+
+@pytest.mark.parametrize('route', ['sheet', 'text', 'odt', 'odp', 'eml'])
+@pytest.mark.parametrize('file_output', [False, True])
+def test_installed_cli_admits_exact_unicode_bytes_for_new_utf8_routes(tmp_path, route, file_output):
+    # GIVEN a complete receipt line and UTF-8 content with source-preserved newlines
+    markdown = '\ufeffcafé 東京\r\nno final newline'
+    destination = tmp_path / 'output.md'
+    output = {False: None, True: destination}[file_output]
+    receipt = {'file_ok': True, 'route': route, 'out': {False: None, True: str(destination)}[file_output]}
+    line = (json.dumps(receipt, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
+    body = markdown.encode('utf-8')
+    stdout = line + {False: body, True: b''}[file_output]
+    result = subprocess.CompletedProcess(['brewdoc'], 0, stdout, b'')
+    destination.write_bytes(body)
+    assert body.endswith(b'no final newline'), 'the fixture has no implicit final newline'
+    # WHEN installed verification checks stdout or destination placement
+    checked = INSTALL.check_cli(result, (0, receipt, markdown), output)
+    # THEN accepted bytes retain Unicode, BOM and CRLF without ASCII encoding or rewriting
+    assert checked == {'exit': 0, 'stdout': stdout.decode('utf-8'), 'stderr': ''}, \
+        'the installed verifier must accept every supported UTF-8 route verbatim'
+
+
+def test_installed_full_selection_includes_each_new_supported_suffix(tmp_path):
+    # GIVEN a bounded indexed corpus with all released suffixes and both accepted EPUBs
+    names = ['sample' + suffix for suffix in (
+        '.pdf', '.docx', '.pptx', '.html', '.xlsx', '.xlsm', '.xls', '.xlsb', '.ods',
+        '.odt', '.odp', '.eml', '.md', '.txt')]
+    paths = ['tests/fixtures/' + name for name in names] + sorted(INSTALL.EPUB_INPUTS)
+    documents = [{'id': str(index), 'path': path, 'size_bytes': index + 1,
+                  'features': ['sheet-order']} for index, path in enumerate(paths)]
+    snapshots = {Path(path).relative_to('tests/fixtures').as_posix():
+                 {'rc': 0, 'artifacts': [{'kind': 'vba-project'}]} for path in paths}
+    (tmp_path / 'benchmarks').mkdir()
+    (tmp_path / 'tests/fixtures').mkdir(parents=True)
+    (tmp_path / 'benchmarks/corpus.json').write_text(json.dumps({'documents': documents}))
+    (tmp_path / 'tests/fixtures/receipts.json').write_text(json.dumps(snapshots))
+    assert len(paths) == 16, 'the fixture has fifteen suffixes and a second accepted EPUB'
+    # WHEN full installed verification chooses one successful consumer input per suffix
+    selected = INSTALL.select_inputs(tmp_path)
+    # THEN the new formats receive installed verification alongside every existing format
+    assert sorted(row['path'] for row, _snapshot in selected) == sorted(paths), \
+        'full installed selection must include text, ODF and EML inputs'
+
+
+@pytest.mark.parametrize('suffix', ['.md', '.txt', '.odt', '.odp', '.eml'])
+def test_shipped_self_check_exercises_and_detects_a_broken_new_route(monkeypatch, capsys, suffix):
+    # GIVEN one refused route in an otherwise working shipped self-check
+    import brewdoc.selfcheck as shipped
+
+    original = shipped.run
+    observed = []
+
+    def broken(path, *arguments, **options):
+        """Expose the selected broken route while preserving every other consumer."""
+        observed.append(Path(path).suffix)
+        result = original(path, *arguments, **options)
+        return {True: (1, result[1], ''), False: result}[Path(path).suffix == suffix]
+
+    monkeypatch.setattr(shipped, 'run', broken)
+    assert observed == [], 'the self-check has not run before fault injection'
+    # WHEN the shipped consumer evaluates its deterministic synthetic documents
+    code = shipped.self_check()
+    output = capsys.readouterr()
+    # THEN every added route is executed and its refusal makes the public verdict fail
+    assert suffix in observed, 'the self-check must execute the newly supported suffix'
+    assert (code, output.out.splitlines()[-1], output.err) == (1, 'self-check: FAIL (38 checks)', ''), \
+        'a broken new route must fail the existing shipped verdict without changing seal counts'
+
+
+def test_installed_new_route_refusals_preserve_destinations_through_actual_api_and_cli(tmp_path, monkeypatch):
+    # GIVEN independent existing output destinations and the actual local console
+    monkeypatch.chdir(tmp_path)
+    console = Path(sysconfig.get_path('scripts')) / {'nt': 'brewdoc.exe', 'posix': 'brewdoc'}[os.name]
+    assert list(tmp_path.iterdir()) == [], 'refusal consumers begin without generated inputs'
+    # WHEN malformed text, ODF and EML are consumed through API and CLI
+    observed = INSTALL.probe_new_refusals(str(console))
+    # THEN every public route refuses and preserves its own existing output bytes
+    assert [(row['receipt']['route'], row['receipt']['file_ok'], row['cli']['exit'])
+            for row in observed] == [('text', False, 1), ('text', False, 1),
+                                    ('odt', False, 1), ('odp', False, 1), ('eml', False, 1)], \
+        'both text suffixes and all new document routes must refuse through their own consumers'
+    assert [path.read_bytes() for path in sorted(tmp_path.glob('*-refusal.md'))] == [b'existing output\n'] * 5, \
+        'none of the API or console refusals may replace a destination'

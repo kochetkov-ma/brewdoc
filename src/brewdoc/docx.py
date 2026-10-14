@@ -13,6 +13,7 @@ from brewdoc.common import (BrewdocError, Rendered, Route, _ZipBudget, _assemble
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 W_STRICT = "{http://purl.oclc.org/ooxml/wordprocessingml/main}"
 W_NAMESPACES = (W, W_STRICT)
+MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 DOC_BODY = "Body"                     # the chapter of a document that declares no headings
 HEADING_STYLE_RE = re.compile(r"(?:Heading[1-9]|Title)")
 
@@ -30,11 +31,27 @@ def _word_value(element) -> str | None:
                  if element.get(namespace + "val") is not None), None)
 
 
+def _doc_elements(node):
+    """Walk descendants in order, selecting only the first direct compatibility fallback."""
+    stack = [iter((node,))]
+    while stack:
+        element = next(stack[-1], None)
+        if element is None:
+            stack.pop()
+        elif element.tag == MC + "AlternateContent":
+            fallback = next((child for child in element if child.tag == MC + "Fallback"), None)
+            if fallback is not None:
+                stack.append(iter(fallback))
+        else:
+            yield element
+            stack.append(iter(element))
+
+
 def _doc_lines(node, tally: dict) -> list[str]:
     """Read descendant Word text with tabs as spaces and breaks as lines.
     Sanitise through the shared tally and omit empty lines."""
     lines, current = [], []
-    for element in node.iter():
+    for element in _doc_elements(node):
         if _word_tag(element, "t"):
             current.append(element.text or "")
         elif _word_tag(element, "tab"):
@@ -49,7 +66,7 @@ def _doc_lines(node, tally: dict) -> list[str]:
 def _doc_label(node) -> str:
     """Read a heading label without folding semantic Unicode before Markdown escaping."""
     parts = []
-    for element in node.iter():
+    for element in _doc_elements(node):
         if _word_tag(element, "t"):
             parts.append(element.text or "")
         elif (_word_tag(element, "tab") or _word_tag(element, "br")

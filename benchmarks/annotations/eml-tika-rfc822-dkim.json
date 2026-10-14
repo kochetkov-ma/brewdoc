@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "document_id": "eml-tika-rfc822-dkim",
+  "source_sha256": "728f516e5dcdb6813f80ba9b8650b39c343e766aca58cb34eba81947f82f74a8",
+  "title": "RFC 822 message with a DKIM signature",
+  "topics": [
+    "literal-headers",
+    "plain-body",
+    "signature-header"
+  ],
+  "language": "en",
+  "annotation_scope": "root_message",
+  "review_status": "complete within declared scope",
+  "evidence_method": "Standard-library source structure inspection. No Brewdoc output or visual rendering supplies these facts.",
+  "mime": {
+    "content_type": "text/plain",
+    "declared_charset": null,
+    "transfer_encoding": null,
+    "message_nodes": 1,
+    "attachment_count": 0,
+    "header_names": [
+      "DKIM-Signature",
+      "Received",
+      "From",
+      "To",
+      "Subject",
+      "Date",
+      "Message-ID"
+    ]
+  },
+  "chapters": [
+    {
+      "index": 1,
+      "name": "Is dinner ready?",
+      "source": "root message",
+      "headers": [
+        [
+          "From",
+          "Joe SixPack <joe@football.example.com>"
+        ],
+        [
+          "To",
+          "Suzie Q <suzie@shopping.example.net>"
+        ],
+        [
+          "Subject",
+          "Is dinner ready?"
+        ],
+        [
+          "Date",
+          "Fri, 11 Jul 2003 21:00:37 -0700 (PDT)"
+        ],
+        [
+          "Message-ID",
+          "<20030712040037.46341.5F8J@football.example.com>"
+        ]
+      ],
+      "body": "Hi.\n\nWe lost the game. Are you hungry yet?\n\nJoe."
+    }
+  ],
+  "limitations": [
+    "Headers and body are inventoried as supplied; the DKIM signature was not verified."
+  ]
+}

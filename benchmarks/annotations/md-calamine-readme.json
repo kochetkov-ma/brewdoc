@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "document_id": "md-calamine-readme",
+  "source_sha256": "97340d41949b5f9f813cae99027b5fdfb47cb9d8c918c2e455f54f7d31e0cbf0",
+  "title": "Calamine README",
+  "topics": [
+    "raw-text",
+    "code-fences",
+    "lists"
+  ],
+  "language": "en",
+  "annotation_scope": "opaque_utf8_text",
+  "review_status": "complete within declared scope",
+  "evidence_method": "Complete source bytes were decoded as strict UTF-8 and line endings measured. No Markdown parser or Brewdoc output supplies these facts.",
+  "source_text": {
+    "utf8_bytes": 13296,
+    "unicode_codepoints": 13268,
+    "logical_lines": 419,
+    "crlf_sequences": 0,
+    "lf_bytes": 419,
+    "trailing_lf": true
+  },
+  "limitations": [
+    "Opaque source identity and line endings are inventoried; Markdown syntax and table semantics are not annotated."
+  ]
+}

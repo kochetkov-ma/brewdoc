@@ -39,9 +39,9 @@ EMPTY = '<a id="brewdoc-sheet-000003"></a>\n## Sheet 3: "Empty"\n'
     pytest.param([[None, True, False, 42, 1.25, -0.0, date(2024, 2, 29),
                    datetime(2024, 2, 29, 23, 45), time(1, 2, 3), timedelta(days=1, seconds=2),
                    "café\n東京|\x01", "(cid:2)"]],
-                 [["", "true", "false", "42", "1.25", "-0.0", "2024-02-29", "2024-02-29",
-                   "01:02:03", "1 day, 0:00:02", "cafe ??|"]],
-                 {"control_chars": 1, "cid_survivors": 1, "non_ascii_replaced": 2}, id="typed-cells"),
+                 [["", "true", "false", "42", "1.25", "-0.0", "2024-02-29", "2024-02-29T23:45:00",
+                   "01:02:03", "1 day, 0:00:02", "café 東京|"]],
+                 {"control_chars": 1, "cid_survivors": 1}, id="typed-cells"),
     pytest.param([["left", None, ""], [], [7], ["", "right", "\x01"]],
                  [["left", ""], [], ["7"], ["", "right"]],
                  {"control_chars": 1}, id="ragged-interior-blanks-and-sanitized-width"),
@@ -996,9 +996,9 @@ def test_special_sheet_labels_and_selected_empty_sheet_remain_navigable(tmp_path
                    'name="R&amp;D &lt;Plan&gt; café #1"'.encode("utf-8"))
     # WHEN both sheets are selected in caller order
     markdown, actual_tally = brewdoc.render_book(path, sheets=("R&D <Plan> café #1", "Empty"))
-    # THEN labels are safely ASCII encoded, link full-source ordinals, and the empty sheet keeps
+    # THEN labels preserve Unicode with safe escaping, link full-source ordinals, and the empty sheet keeps
     # its own anchor and count
-    label = '"R&amp;D &lt;Plan&gt; caf&#233; \\#1"'
+    label = '"R&amp;D &lt;Plan&gt; café \\#1"'
     assert (markdown[markdown.index('<a id="brewdoc-contents"></a>'):], actual_tally) == (
         '<a id="brewdoc-contents"></a>\n## Contents\n\n'
         "- [Sheet 2: %s](#brewdoc-sheet-000002)\n"

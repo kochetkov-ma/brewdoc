@@ -10,17 +10,22 @@ ROOT = Path(__file__).parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
 MANIFEST = ROOT / "benchmarks" / "corpus.json"
 UNIT_FIELDS = {"pages", "sheets", "chapters", "slides"}
-UNIT_FIELD_BY_FORMAT = {
-    "pdf": "pages",
-    "docx": "chapters",
-    "epub": "chapters",
-    "html": "chapters",
-    "pptx": "slides",
-    "ods": "sheets",
-    "xls": "sheets",
-    "xlsb": "sheets",
-    "xlsm": "sheets",
-    "xlsx": "sheets",
+UNIT_FIELDS_BY_FORMAT = {
+    "pdf": ("pages",),
+    "docx": ("chapters",),
+    "epub": ("chapters",),
+    "html": ("chapters",),
+    "pptx": ("slides",),
+    "ods": ("sheets",),
+    "xls": ("sheets",),
+    "xlsb": ("sheets",),
+    "xlsm": ("sheets",),
+    "xlsx": ("sheets",),
+    "odt": ("chapters",),
+    "odp": ("slides",),
+    "eml": ("chapters",),
+    "md": (),
+    "txt": (),
 }
 
 
@@ -51,9 +56,9 @@ def test_manifest_structure_is_unique_and_covers_all_container_and_html_fixtures
     # THEN the index is complete, unique and bound to every container fixture
     assert (manifest["schema_version"], len(documents), sum(doc["size_bytes"] for doc in documents)) == (
         2,
-        50,
-        5_670_670,
-    ), "the manifest must retain schema 2 and the accepted 50-input byte total"
+        55,
+        5_742_306,
+    ), "the manifest must retain schema 2 and the indexed 55-input byte total"
     assert duplicate_ids == [], "benchmark document IDs must be unique"
     assert duplicate_paths == [], "each benchmark input path must identify one document"
     assert missing_paths == [], "every benchmark input path must exist in the checkout"
@@ -61,8 +66,8 @@ def test_manifest_structure_is_unique_and_covers_all_container_and_html_fixtures
         "the manifest must cover all six DOCX, two EPUB, four PPTX and seven HTML fixtures"
     )
     assert Counter(document["group"] for document in documents) == {
-        "core": 13, "feature_probe": 37,
-    }, "the original flexbox ambiguity fixture adds one feature probe"
+        "core": 13, "feature_probe": 42,
+    }, "the new format installation inputs add five source-backed feature probes"
 
 
 def test_annotations_bind_to_manifest_with_one_format_unit_collection():
@@ -93,7 +98,7 @@ def test_annotations_bind_to_manifest_with_one_format_unit_collection():
         for document_id, annotation in annotations.items()
     }
     expected_unit_fields = {
-        document["id"]: (UNIT_FIELD_BY_FORMAT.get(document["format"]),)
+        document["id"]: UNIT_FIELDS_BY_FORMAT[document["format"]]
         for document in documents
     }
     schema_versions = {document_id: annotation["schema_version"]
@@ -102,7 +107,7 @@ def test_annotations_bind_to_manifest_with_one_format_unit_collection():
     assert bindings == expected_bindings, "each annotation must match its manifest ID and source hash"
     assert schema_versions == dict.fromkeys(schema_versions, 1), "all source annotations use schema 1"
     assert unit_fields == expected_unit_fields, (
-        "each annotation must have exactly one pages, sheets, chapters or slides collection for its format"
+        "document annotations need one format unit collection; opaque text has no generated units"
     )
 
 
