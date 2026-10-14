@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "document_id": "txt-nasa-giss-global-temperature-index",
+  "source_sha256": "f2cda52e1dce11e0c94915ac67159f4f02ec5de0d754a548145d2854f8383418",
+  "title": "NASA GISS global temperature index",
+  "topics": [
+    "raw-text",
+    "fixed-width-table",
+    "no-final-newline"
+  ],
+  "language": "en",
+  "annotation_scope": "opaque_utf8_text",
+  "review_status": "complete within declared scope",
+  "evidence_method": "Complete source bytes were decoded as strict UTF-8 and line endings measured. No Markdown parser or Brewdoc output supplies these facts.",
+  "source_text": {
+    "utf8_bytes": 17039,
+    "unicode_codepoints": 17039,
+    "logical_lines": 176,
+    "crlf_sequences": 0,
+    "lf_bytes": 175,
+    "trailing_lf": false
+  },
+  "limitations": [
+    "Opaque source identity and line endings are inventoried; Markdown syntax and table semantics are not annotated."
+  ]
+}

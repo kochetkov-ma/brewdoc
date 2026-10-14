@@ -848,6 +848,29 @@ def _article_root(body):
     raise BrewdocError(_ARTICLE_NO_ROOT)
 
 
+def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> tuple[str, list]:
+    """Render bounded decoded HTML without applying source charset declarations."""
+    if not _SUPPORTED_RUNTIME:
+        raise BrewdocError("HTML requires CPython 3.12-3.14")
+    if LexborHTMLParser is None:
+        raise BrewdocError("HTML parser unavailable: selectolax 0.4.13: %s" % _PARSER_ERROR)
+    if len(decoded_text.encode("utf-8")) > _INPUT_BYTE_LIMIT:
+        raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
+    parser = LexborHTMLParser(decoded_text)
+    _validate_html(parser)
+    layouts = _table_layouts(parser.body)
+    root = _article_root(parser.body) if article else parser.body
+    if article:
+        layouts = {node: layout for node, layout in layouts.items() if root in _ancestors(node)}
+    tables = _prepare_tables(layouts)
+    title = next((label for node in parser.head.css("title")
+                  if (label := _SPACE.sub(" ", node.text()).strip())), "Untitled")
+    blocks = _html_blocks(root, tally, tables)
+    if article and not blocks:
+        raise BrewdocError(_ARTICLE_EMPTY)
+    return title, blocks
+
+
 def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered:
     """Render one static chapter, or explicitly refuse an unavailable HTML prerequisite."""
     if not _SUPPORTED_RUNTIME:
@@ -860,18 +883,7 @@ def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered
             raw = source.read(_INPUT_BYTE_LIMIT + 1)
         if len(raw) > _INPUT_BYTE_LIMIT:
             raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
-        parser = LexborHTMLParser(_decode_html(raw))
-        _validate_html(parser)
-        layouts = _table_layouts(parser.body)
-        root = _article_root(parser.body) if article else parser.body
-        if article:
-            layouts = {node: layout for node, layout in layouts.items() if root in _ancestors(node)}
-        tables = _prepare_tables(layouts)
-        title = next((label for node in parser.head.css("title")
-                      if (label := _SPACE.sub(" ", node.text()).strip())), "Untitled")
-        blocks = _html_blocks(root, tally, tables)
-        if article and not blocks:
-            raise BrewdocError(_ARTICLE_EMPTY)
+        title, blocks = _html_content(_decode_html(raw), tally, article=article)
     rendered = _assemble(path, ROUTE.name, ROUTE.unit_kind, 1, [(1, title, blocks)], tally,
                          not_carried=ROUTE.not_carried + ((ARTICLE_OMISSION,) if article else ()))
     if len(rendered[0].encode("utf-8")) > _MARKDOWN_BYTE_LIMIT:

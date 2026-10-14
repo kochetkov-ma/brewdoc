@@ -1,6 +1,6 @@
 [project]
 name = "brewdoc"
-version = "0.4.1"
+version = "0.5.0"
 description = "Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services."
 readme = "README.md"
 license = "MIT"

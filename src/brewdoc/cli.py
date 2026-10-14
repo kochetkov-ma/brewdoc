@@ -55,7 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
                "Without --out the Markdown follows that line on stdout."
                % SUFFIXES)
     parser.add_argument("document", nargs="?",
-                        help="the .pdf, .docx, .pptx, .epub, .html or spreadsheet to render")
+                        help="the PDF, DOCX, PPTX, EPUB, HTML, ODT, ODP, EML or spreadsheet to render; "
+                             "UTF-8 .md/.txt pass through unchanged")
     parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
     parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
                         help="maximum waiting for one --url call and JS; positive finite seconds "
@@ -64,7 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
     parser.add_argument("--article", action="store_true",
                         help="select one explicit HTML article or suitable main; refuse ambiguous pages")
-    parser.add_argument("--out", help="write Markdown here (HTML/EPUB UTF-8, other formats ASCII); default stdout")
+    parser.add_argument("--out", help="write Markdown here (PDF/DOCX/PPTX ASCII; other formats UTF-8); "
+                                     "default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
     parser.add_argument("--artifact", action="append",

@@ -314,7 +314,7 @@ def test_installed_origin_accepts_a_separate_noneditable_environment(tmp_path):
 
 @pytest.mark.parametrize("newline,route,body,stdout_body", [
     ("\n", "sheet", "one\ntwo\n", b"one\ntwo\n"),
-    ("\r\n", "sheet", "one\ntwo\n", b"one\r\ntwo\r\n"),
+    ("\r\n", "sheet", "one\ntwo\n", b"one\ntwo\n"),
     ("\r\n", "html", "café\n", b"caf\xc3\xa9\n"),
     ("\r\n", "epub", "café\n", b"caf\xc3\xa9\n"),
 ])
@@ -327,7 +327,7 @@ def test_console_validation_preserves_native_receipt_newlines_and_unicode_routes
     process = subprocess.CompletedProcess([], 0, line + stdout_body, b"")
     # WHEN the entire console response is checked
     actual = verification.check_cli(process, (0, receipt, body))
-    # THEN Windows ASCII translation and direct Unicode bytes remain distinct
+    # THEN native receipt newlines and literal UTF-8 body bytes remain distinct
     assert actual == {"exit": 0, "stdout": (line + stdout_body).decode("utf-8"), "stderr": ""}, (
         "console validation must retain the platform and route byte contract")
 

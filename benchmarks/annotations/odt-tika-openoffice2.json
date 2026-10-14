@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "document_id": "odt-tika-openoffice2",
+  "source_sha256": "daee7b62602780f2599c19b3593a1e455a21e041959416304c112bdb136640bb",
+  "title": "OpenOffice 2 text sample",
+  "topics": [
+    "paragraph-order",
+    "explicit-text-space",
+    "empty-paragraph"
+  ],
+  "language": "en",
+  "annotation_scope": "declared_text_body",
+  "review_status": "complete within declared scope",
+  "evidence_method": "Standard-library source structure inspection. No Brewdoc output or visual rendering supplies these facts.",
+  "package": {
+    "mimetype": "application/vnd.oasis.opendocument.text",
+    "office_version": "1.0",
+    "archive_members": 16,
+    "content_part": "content.xml"
+  },
+  "chapters": [
+    {
+      "index": 1,
+      "source_part": "content.xml",
+      "headings": [],
+      "paragraphs": [
+        "This is a sample Open Office document, written in NeoOffice 2.2.1 for the Mac.",
+        ""
+      ],
+      "explicit_space_elements": 1,
+      "tables": []
+    }
+  ],
+  "limitations": [
+    "Styles and visual page layout are not annotated."
+  ]
+}

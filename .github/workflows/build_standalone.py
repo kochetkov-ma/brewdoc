@@ -189,9 +189,16 @@ def validate_manifest(manifest: dict) -> None:
         raise ValueError('Standalone inventory has no executable')
     scope = verification_scope(manifest)
     rows = manifest['oracle']
-    count = 0 if scope == 'smoke' else 11
+    current_formats = tuple(map(int, version.split('.'))) >= (0, 5, 0)
+    count = 0 if scope == 'smoke' else (16 if current_formats else 11)
     if len(rows) != count or len({row['path'] for row in rows}) != count:
         raise ValueError('Standalone oracle differs from its verification scope')
+    if current_formats and scope == 'full':
+        suffixes = [PurePosixPath(row['path']).suffix.lower() for row in rows]
+        if set(suffixes) != verifier().SUFFIXES or suffixes.count('.epub') != 2:
+            raise ValueError('Standalone oracle differs from its format coverage')
+        if any('markdown_encoding' not in row for row in rows):
+            raise ValueError('Standalone Markdown encoding is missing')
     for row in rows:
         path = PurePosixPath(row['path'])
         if (not path.is_relative_to('tests/fixtures') or '..' in path.parts or '\\' in row['path']
@@ -225,6 +232,12 @@ def validate_manifest(manifest: dict) -> None:
                 raise ValueError('Invalid generated standalone probe path')
         elif not path.is_relative_to('tests/fixtures') or '..' in path.parts or '\\' in row['path']:
             raise ValueError('Invalid standalone supplementary source path')
+    unicode_routes = verifier().UNICODE_ROUTES if current_formats else {'html', 'epub'}
+    for row in rows + probes:
+        if 'markdown_encoding' in row:
+            expected = 'utf-8' if row['receipt']['route'] in unicode_routes else 'ascii'
+            if row['markdown_encoding'] != expected:
+                raise ValueError('Standalone Markdown encoding differs from its route')
 
 
 def validate_verification(manifest: dict, verification: dict) -> None:
@@ -254,12 +267,15 @@ def admit_manifest(path: Path) -> dict:
     return manifest
 
 
-def inventory(root: Path) -> dict:
-    """Record regular files, directories and safe internal links without following them."""
+def inventory(root: Path, *, logical_root: str | None = None) -> dict:
+    """Record actual files and safe links under the admitted logical bundle root."""
+    if logical_root not in (None, 'brewdoc'):
+        raise ValueError('Invalid standalone logical root')
+    logical_name = root.name if logical_root is None else logical_root
     records, aliases = {}, set()
     paths = [root, *sorted(root.rglob('*'))]
     for path in paths:
-        name = relative_name(path.relative_to(root.parent).as_posix())
+        name = relative_name((PurePosixPath(logical_name) / path.relative_to(root)).as_posix())
         alias = unicodedata.normalize('NFC', name).casefold()
         if alias in aliases:
             raise ValueError(f'Ambiguous standalone path: {name}')
@@ -553,16 +569,20 @@ checkout=Path(sys.argv[2]);rows=[];extra=[]
 def observe(source,options=None):
  code,receipt,markdown=brewdoc.run(source,**(options or {}))
  if code!=0: raise ValueError('Installed probe refused '+str(source))
- body=markdown.encode('utf-8' if receipt['route'] in ('html','epub') else 'ascii')
+ encoding='utf-8' if receipt['route'] in helper.UNICODE_ROUTES else 'ascii'
+ body=markdown.encode(encoding)
  return {'path':source.name,'source_sha256':helper.digest(source),'receipt':receipt,'code':code,
+         'markdown_encoding':encoding,
          'markdown_sha256':hashlib.sha256(body).hexdigest(),'markdown_bytes':len(body)}
 for document,expected in ([] if sys.argv[4]=='smoke' else helper.select_inputs(checkout)):
  source=checkout/document['path'];actual=brewdoc.run(source)
  code,receipt,markdown=actual
  if code!=0: raise ValueError('Accepted installed engine refused '+str(source))
  if 'accepted_output' in expected: helper.check_accepted_output(source,actual,expected['accepted_output'])
- body=markdown.encode('utf-8' if receipt['route'] in ('html','epub') else 'ascii')
+ encoding='utf-8' if receipt['route'] in helper.UNICODE_ROUTES else 'ascii'
+ body=markdown.encode(encoding)
  rows.append({'path':document['path'],'source_sha256':helper.digest(source),'receipt':receipt,
+              'markdown_encoding':encoding,
               'code':code,'markdown_sha256':hashlib.sha256(body).hexdigest(),'markdown_bytes':len(body)})
  if source.suffix=='.xlsx':
   with zipfile.ZipFile(source) as package: tree=ET.fromstring(package.read('xl/workbook.xml'))
@@ -774,7 +794,10 @@ def check_output(result: subprocess.CompletedProcess, row: dict, output: Path | 
     body = output.read_bytes() if output is not None else result.stdout[len(line):]
     if output is not None and result.stdout != line:
         raise ValueError('Standalone --out also emitted Markdown to stdout')
-    if output is None and receipt['route'] not in ('html', 'epub'):
+    encoding = row.get('markdown_encoding', 'utf-8' if receipt['route'] in ('html', 'epub') else 'ascii')
+    if encoding not in ('ascii', 'utf-8'):
+        raise ValueError('Invalid standalone Markdown encoding')
+    if output is None and encoding == 'ascii':
         body = body.replace(os.linesep.encode('ascii'), b'\n')
     if (len(body), hashlib.sha256(body).hexdigest()) != (row['markdown_bytes'], row['markdown_sha256']):
         raise ValueError('Standalone Markdown differs from the sealed engine')

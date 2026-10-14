@@ -1,0 +1,80 @@
+name: homebrew
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact published current Brewdoc tag
+        type: string
+        required: true
+      source_sha:
+        description: Exact current Brewdoc source commit
+        type: string
+        required: true
+      bootstrap_tap_sha:
+        description: Published tap commit installing actual 0.4.1
+        type: string
+        required: true
+      tap_sha:
+        description: Published tap commit installing the current release
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-${{ inputs.tag }}-${{ inputs.tap_sha }}
+  cancel-in-progress: false
+
+jobs:
+  consumer:
+    name: Homebrew (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-22.04
+            brew: /home/linuxbrew/.linuxbrew/bin/brew
+          - target: macos-arm64
+            os: macos-15
+            brew: /opt/homebrew/bin/brew
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BREWDOC_RELEASE_TAG: ${{ inputs.tag }}
+      BREWDOC_SOURCE_SHA: ${{ inputs.source_sha }}
+      BREWDOC_BOOTSTRAP_TAP_SHA: ${{ inputs.bootstrap_tap_sha }}
+      BREWDOC_TAP_SHA: ${{ inputs.tap_sha }}
+      BREWDOC_BREW: ${{ matrix.brew }}
+      BREWDOC_TARGET: ${{ matrix.target }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.21"
+          python-version: "3.12.14"
+      - name: Activate existing runner Homebrew
+        shell: bash
+        run: |
+          eval "$("$BREWDOC_BREW" shellenv)"
+          printf '%s\n' "${BREWDOC_BREW%/*}" >> "$GITHUB_PATH"
+      - name: Verify published bootstrap, upgrade and installed engine lifecycle
+        shell: bash
+        run: |
+          uv run --no-project --python 3.12.14 python .github/workflows/verify_homebrew.py --checkout "$GITHUB_WORKSPACE" --tag "$BREWDOC_RELEASE_TAG" --source-sha "$BREWDOC_SOURCE_SHA" --bootstrap-tap-sha "$BREWDOC_BOOTSTRAP_TAP_SHA" --tap-sha "$BREWDOC_TAP_SHA" --target "$BREWDOC_TARGET" --brew "$BREWDOC_BREW" --output "${{ runner.temp }}/homebrew-evidence"
+      - name: Preserve actual installed inventory and lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: homebrew-${{ matrix.target }}
+          path: ${{ runner.temp }}/homebrew-evidence/
+          if-no-files-found: warn

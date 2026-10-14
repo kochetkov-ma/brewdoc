@@ -34,7 +34,8 @@
     "pypi": {"supported": true, "commands": ["pip", "uv", "pipx"]},
     "standalone": {"supported": true},
     "npm": {"supported": true},
-    "homebrew": {"supported": false, "issue": 28}
+    "homebrew": {"supported": true, "tap": "kochetkov-ma/brew",
+                 "targets": ["linux-x64", "macos-arm64"]}
   },
   "npm": {
     "name": "brewdoc",
@@ -51,8 +52,19 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Bounded ZIP member reads and XML preflight for DOCX/PPTX and workbook metadata/artifacts, with operation-wide accounting for repeated reads",
-    "Oversized selected work and unsupported selected ZIP compression refuse before output writes; successful output remains complete, while native workbook values and total process memory stay outside these bounds"
+    "Convert ODT, ODP and EML files offline.",
+    "Pass Markdown and text files through without changing their bytes.",
+    "Mixed PDFs now list pages without extracted text."
+  ],
+  "release_fixes": [
+    "Preserve workbook Unicode and full datetime values.",
+    "Avoid duplicated DOCX fallback textboxes.",
+    "Fix PDF caption order, table-cell alignment and split formula labels."
+  ],
+  "release_pr": 61,
+  "release_examples": [
+    "brewdoc report.odt --out report.md",
+    "brewdoc message.eml --out message.md"
   ],
   "releases": {
     "0.2.0": {

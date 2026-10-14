@@ -369,7 +369,10 @@ def test_cli_resolves_relative_paths_against_the_caller_s_cwd(tmp_path, monkeypa
 
 def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
     # GIVEN a path whose suffix no route reads and its API receipt
-    path = tmp_path / "notes.txt"
+    path = tmp_path / "notes.csv"
+    path.write_bytes(b"name,value\nexample,1\n")
+    assert (path.is_file(), path.suffix in service.ROUTES) == (True, False), (
+        "the refusal must concern an existing file with an unsupported suffix")
     receipt = brewdoc.run(path)[1]
     # WHEN the CLI is asked to render it
     code = main([str(path)])
@@ -390,7 +393,8 @@ def test_cli_prints_the_api_refusal_receipt_and_exits_one(tmp_path, capsys):
         pytest.param(
             "brief.doc", lambda path: path.write_bytes(b"\xd0\xcf\x11\xe0"), "none",
             "unsupported suffix '.doc' in {path}: brewdoc reads "
-            ".docx .epub .html .ods .pdf .pptx .xls .xlsb .xlsm .xlsx", id="binary-word"),
+            ".docx .eml .epub .html .md .odp .ods .odt .pdf .pptx .txt .xls .xlsb .xlsm .xlsx",
+            id="binary-word"),
         pytest.param("absent.pdf", lambda path: None, "pdf", "no such file: {path}",
                      id="missing-file"),
     ],
@@ -691,7 +695,8 @@ def test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes(tmp_path, 
                                             "0 0 0 rg 100 100 20 20 re f\n"),
             dict(NOT_APPLICABLE, name="partial\\.pdf", suffix=".pdf", route="pdf", unit="page",
                  count=2, keys="page/000001, page/000002", pages=2, sheets=0, chapters=0,
-                 tables=0, text_regions=1, omissions=PDF_OMISSIONS,
+                 tables=0, text_regions=1, omissions=PDF_OMISSIONS
+                 + "\n- Page 2: no extractable text; vector drawing content present\\.",
                  contents="- [Page 1](#brewdoc-page-000001)\n- [Page 2](#brewdoc-page-000002)"),
             '<a id="brewdoc-page-000001"></a>\n## Page 1\n\nkept body\n\n'
             '<a id="brewdoc-page-000002"></a>\n## Page 2\n', id="pdf-empty-page"),

@@ -1999,6 +1999,171 @@
       "origin_kind": "original_document",
       "features": ["declared-spine", "front-back-matter", "publication-metadata", "navigation-labels", "hgroup-headings", "unicode-text", "image-metadata", "cross-document-link", "verse-quotes"],
       "annotation_path": "benchmarks/annotations/epub-standardebooks-herland.json"
+    },
+    {
+      "id": "md-calamine-readme",
+      "title": "Calamine README",
+      "topics": [
+        "raw-text",
+        "code-fences",
+        "lists"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/md/calamine-README.md",
+      "source_url": "https://raw.githubusercontent.com/tafia/calamine/master/README.md",
+      "download_url": "https://raw.githubusercontent.com/tafia/calamine/master/README.md",
+      "source_verification": {
+        "method": "retained fixture SHA-256 and size",
+        "status": "match",
+        "note": "Local retained bytes match SOURCES.md. The upstream URL was not fetched for this annotation."
+      },
+      "license": "MIT",
+      "license_url": "https://github.com/tafia/calamine/blob/master/LICENSE-MIT.md",
+      "sha256": "97340d41949b5f9f813cae99027b5fdfb47cb9d8c918c2e455f54f7d31e0cbf0",
+      "size_bytes": 13296,
+      "format": "md",
+      "variant": "UTF-8 Markdown",
+      "group": "feature_probe",
+      "origin_kind": "original_document",
+      "features": [
+        "raw-text",
+        "code-fences",
+        "lists"
+      ],
+      "annotation_path": "benchmarks/annotations/md-calamine-readme.json"
+    },
+    {
+      "id": "txt-nasa-giss-global-temperature-index",
+      "title": "NASA GISS global temperature index",
+      "topics": [
+        "raw-text",
+        "fixed-width-table",
+        "no-final-newline"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/txt/nasa-giss-global-temperature-index.txt",
+      "source_url": "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.txt",
+      "download_url": "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.txt",
+      "source_verification": {
+        "method": "retained fixture SHA-256 and size",
+        "status": "match",
+        "note": "Local retained bytes match SOURCES.md. The upstream URL was not fetched for this annotation."
+      },
+      "license": "US Government work, public domain (17 U.S.C. 105)",
+      "license_url": "https://www.usa.gov/government-works",
+      "sha256": "f2cda52e1dce11e0c94915ac67159f4f02ec5de0d754a548145d2854f8383418",
+      "size_bytes": 17039,
+      "format": "txt",
+      "variant": "UTF-8 plain text",
+      "group": "feature_probe",
+      "origin_kind": "original_document",
+      "features": [
+        "raw-text",
+        "fixed-width-table",
+        "no-final-newline"
+      ],
+      "annotation_path": "benchmarks/annotations/txt-nasa-giss-global-temperature-index.json"
+    },
+    {
+      "id": "eml-tika-rfc822-dkim",
+      "title": "RFC 822 message with a DKIM signature",
+      "topics": [
+        "literal-headers",
+        "plain-body",
+        "signature-header"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/eml/tika-testRFC822_dkim.eml",
+      "source_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-mail-module/src/test/resources/test-documents/testRFC822_dkim.eml",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-mail-module/src/test/resources/test-documents/testRFC822_dkim.eml",
+      "source_verification": {
+        "method": "retained fixture SHA-256 and size",
+        "status": "match",
+        "note": "Local retained bytes match SOURCES.md. The upstream URL was not fetched for this annotation."
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/main/LICENSE.txt",
+      "sha256": "728f516e5dcdb6813f80ba9b8650b39c343e766aca58cb34eba81947f82f74a8",
+      "size_bytes": 866,
+      "format": "eml",
+      "variant": "RFC 822 mail",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "literal-headers",
+        "plain-body",
+        "signature-header"
+      ],
+      "annotation_path": "benchmarks/annotations/eml-tika-rfc822-dkim.json"
+    },
+    {
+      "id": "odt-tika-openoffice2",
+      "title": "OpenOffice 2 text sample",
+      "topics": [
+        "paragraph-order",
+        "explicit-text-space",
+        "empty-paragraph"
+      ],
+      "language": "en",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/odt/tika-testOpenOffice2.odt",
+      "source_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testOpenOffice2.odt",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testOpenOffice2.odt",
+      "source_verification": {
+        "method": "retained fixture SHA-256 and size",
+        "status": "match",
+        "note": "Local retained bytes match SOURCES.md. The upstream URL was not fetched for this annotation."
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/main/LICENSE.txt",
+      "sha256": "daee7b62602780f2599c19b3593a1e455a21e041959416304c112bdb136640bb",
+      "size_bytes": 26460,
+      "format": "odt",
+      "variant": "ODF 1.0 text",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "paragraph-order",
+        "explicit-text-space",
+        "empty-paragraph"
+      ],
+      "annotation_path": "benchmarks/annotations/odt-tika-openoffice2.json"
+    },
+    {
+      "id": "odp-tika-master-footer",
+      "title": "ODP empty slide with a master footer",
+      "topics": [
+        "declared-slide",
+        "empty-title",
+        "master-footer"
+      ],
+      "language": "und",
+      "provenance_kind": "public",
+      "path": "tests/fixtures/odp/tika-testMasterFooter.odp",
+      "source_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testMasterFooter.odp",
+      "download_url": "https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testMasterFooter.odp",
+      "source_verification": {
+        "method": "retained fixture SHA-256 and size",
+        "status": "match",
+        "note": "Local retained bytes match SOURCES.md. The upstream URL was not fetched for this annotation."
+      },
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/apache/tika/blob/main/LICENSE.txt",
+      "sha256": "c786aecfc72a2ff55ede5a21c4dfda14af298cebf1e788da685262da7025c833",
+      "size_bytes": 13975,
+      "format": "odp",
+      "variant": "ODF 1.2 presentation",
+      "group": "feature_probe",
+      "origin_kind": "upstream_parser_fixture",
+      "features": [
+        "declared-slide",
+        "empty-title",
+        "master-footer"
+      ],
+      "annotation_path": "benchmarks/annotations/odp-tika-master-footer.json"
     }
   ],
   "gaps": [

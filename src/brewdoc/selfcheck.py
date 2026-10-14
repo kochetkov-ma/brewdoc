@@ -17,7 +17,7 @@ from brewdoc.epub import render_epub
 from brewdoc.pdf import render_pdf
 from brewdoc.pptx import render_presentation
 from brewdoc.service import EXIT_FAIL, EXIT_OK, run
-from brewdoc.sheets import render_book
+from brewdoc.sheets import _sheet_cell_text, render_book
 
 
 def synthetic_pdf(pages, font: bool = True) -> bytes:
@@ -100,7 +100,7 @@ FIXTURE_SEGMENTED = (
               for i in range(6)))
 
 
-SHEET_ROWS = [["Zone", "Area", "Sown"], ["North", 12.5, "2026-07-18"], ["South", 9.0, ""]]
+SHEET_ROWS = [["Zone", "Area", "Sown"], ["café 東京", 12.5, "2026-07-18"], ["South", 9.0, ""]]
 
 
 def _synthetic_xlsx(path: Path) -> None:
@@ -245,6 +245,28 @@ def _synthetic_epub() -> bytes:
     return buffer.getvalue()
 
 
+def _synthetic_odf(kind: str) -> bytes:
+    """Build one qualified ODF body with no optional package parts."""
+    mime = "application/vnd.oasis.opendocument." + {"odt": "text", "odp": "presentation"}[kind]
+    blocks = {"odt": '<text:h text:outline-level="1">Title</text:h><text:p>café 東京</text:p>',
+              "odp": '<draw:page draw:name="Title"><draw:frame><draw:text-box>'
+                     '<text:p>café 東京</text:p></draw:text-box></draw:frame></draw:page>'}[kind]
+    body_tag = {"odt": "text", "odp": "presentation"}[kind]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as package:
+        package.writestr("mimetype", mime)
+        package.writestr("META-INF/manifest.xml", '<manifest:manifest xmlns:manifest="urn:oasis:'
+                         'names:tc:opendocument:xmlns:manifest:1.0"><manifest:file-entry '
+                         'manifest:full-path="/" manifest:media-type="%s"/>'
+                         '</manifest:manifest>' % mime)
+        package.writestr("content.xml", '<office:document-content xmlns:office="urn:oasis:names:'
+                         'tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:'
+                         'opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:'
+                         'xmlns:drawing:1.0"><office:body><office:%s>%s</office:%s>'
+                         '</office:body></office:document-content>' % (body_tag, blocks, body_tag))
+    return buffer.getvalue()
+
+
 def self_check() -> int:
     """Render synthetic fixtures and compare against pinned expectations; 0 when green."""
     failures, checks = [], []
@@ -266,7 +288,10 @@ def self_check() -> int:
          (1, 1, 1, 1, 1, 1, 1))
     want("a float keeps its spreadsheet form", cell_text(85.0), "85.0")
     want("an empty cell is '' and renders empty", cell_text(""), "")
-    want("a date is one ISO day", cell_text(datetime.date(2026, 7, 18)), "2026-07-18")
+    want("dates and workbook datetime precision survive",
+         (cell_text(datetime.date(2026, 7, 18)),
+          _sheet_cell_text(datetime.datetime(2026, 7, 18, 12, 34, 56, 789012), tally)),
+         ("2026-07-18", "2026-07-18T12:34:56.789012"))
     want("a ragged table is padded, never cut", markdown_table([["a", "b"], ["c"]]),
          ["| a | b |", "| --- | --- |", "| c |  |"])
 
@@ -347,12 +372,12 @@ def self_check() -> int:
         want("the sheet's measured types survive",
              chapter_lines(book_md, "Zones"),
              ["| Zone | Area | Sown |", "| --- | --- | --- |",
-              "| North | 12.5 | 2026-07-18 |", "| South | 9.0 |  |"])
+              "| café 東京 | 12.5 | 2026-07-18 |", "| South | 9.0 |  |"])
         want("the sheet route counts its sheets", book_tally["sheets"], 1)
         out = Path(tmp, "out.md")
         rc, line, _ = run(book_path, out=out)
-        want("a written render is ASCII and re-readable",
-             (rc, line["route"], out.read_text(encoding="ascii") == book_md), (EXIT_OK, "sheet", True))
+        want("a written workbook preserves exact UTF-8",
+             (rc, line["route"], out.read_bytes()), (EXIT_OK, "sheet", book_md.encode("utf-8")))
         rc, line, _ = run(Path(tmp, "absent.pdf"))
         want("a missing file names the path", (rc, line["reason"]),
              (EXIT_FAIL, "no such file: %s" % Path(tmp, "absent.pdf")))
@@ -398,10 +423,30 @@ def self_check() -> int:
         want("EPUB conversion is deterministic", run(epub_path), (rc, line, epub_md))
         epub_out = Path(tmp, "epub.md")
         written_rc, written_line, written_md = run(epub_path, out=epub_out)
-        want("EPUB writes the exact UTF-8 service payload",
-             (written_rc, written_line["file_ok"], written_md,
-              epub_out.read_bytes() if written_rc == EXIT_OK else None),
-             (EXIT_OK, True, epub_md, epub_md.encode("utf-8")))
+        new_routes, expected_routes = [], []
+        plain = "\ufeffcafé 東京\r\nno final newline".encode("utf-8")
+        inputs = [("md", plain, "none", plain.decode("utf-8")),
+                  ("txt", plain, "none", plain.decode("utf-8")),
+                  ("odt", _synthetic_odf("odt"), "chapter", "café 東京\n"),
+                  ("odp", _synthetic_odf("odp"), "slide", "café 東京\n"),
+                  ("eml", b"Subject: Title\nContent-Type: text/plain; charset=utf-8\n\n"
+                   + "café 東京".encode("utf-8"), "chapter", "```\ncafé 東京\n```\n")]
+        for suffix, payload, unit, ending in inputs:
+            source = Path(tmp, "new." + suffix)
+            source.write_bytes(payload)
+            target = Path(tmp, suffix + ".md")
+            code, receipt, content = run(source, out=target)
+            raw = unit == "none"
+            new_routes.append((code, receipt["route"], receipt.get("markdown_schema"),
+                               receipt.get("unit_keys"), content == ending if raw else content.endswith(ending),
+                               target.read_bytes() == content.encode("utf-8") if target.exists() else False))
+            expected_routes.append((EXIT_OK, "text" if raw else suffix,
+                                    "brewdoc.markdown/passthrough/1" if raw else "brewdoc.markdown/2",
+                                    [] if raw else [unit + "/000001"], True, True))
+        want("Unicode formats write exact UTF-8 and text keeps its source bytes",
+             ((written_rc, written_line["file_ok"], written_md,
+               epub_out.read_bytes() if written_rc == EXIT_OK else None), new_routes),
+             ((EXIT_OK, True, epub_md, epub_md.encode("utf-8")), expected_routes))
 
     for failure in failures:
         print("FAIL %s" % failure)

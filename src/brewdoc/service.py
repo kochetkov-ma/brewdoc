@@ -7,16 +7,19 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from brewdoc.common import (MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route,
+from brewdoc.common import (RECEIPT_SCHEMA, BrewdocError, Route,
                             _ZipBudget, _markdown_encoding, new_tally)
 from brewdoc.docx import ROUTE as DOC_ROUTE
+from brewdoc.eml import ROUTE as EML_ROUTE
 from brewdoc.epub import ROUTE as EPUB_ROUTE
-from brewdoc.htmltext import ARTICLE_OMISSION, ROUTE as HTML_ROUTE
+from brewdoc.htmltext import ARTICLE_OMISSION, ROUTE as HTML_ROUTE, _html_content
+from brewdoc.odf import ODP_ROUTE, ODT_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
 from brewdoc.pdf import ROUTE as PDF_ROUTE
 from brewdoc.pptx import ROUTE as PRESENTATION_ROUTE
 from brewdoc.sheets import ROUTE as SHEET_ROUTE
 from brewdoc.sheets import _artifact_payloads, _sheet_selection
+from brewdoc.text import ROUTE as TEXT_ROUTE
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE = 0, 1, 2
 
@@ -33,7 +36,8 @@ def _route_map(*routes: Route) -> dict[str, Route]:
     return table
 
 
-ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE, HTML_ROUTE, EPUB_ROUTE)
+ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE, HTML_ROUTE,
+                    EPUB_ROUTE, TEXT_ROUTE, EML_ROUTE, ODT_ROUTE, ODP_ROUTE)
 SUFFIXES = " ".join(sorted(ROUTES))
 NO_ROUTE = Route("none", "none", (), None, ())
 
@@ -64,7 +68,7 @@ def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = N
             "broken_ligature_words": tally["broken_ligature_words"],
             "not_carried": list(route.not_carried)}
     if file_ok:
-        line.update({"artifacts": list(artifacts), "markdown_schema": MARKDOWN_SCHEMA,
+        line.update({"artifacts": list(artifacts), "markdown_schema": route.markdown_schema,
                      "unit_keys": list(unit_keys)})
         if selected_sheets is not None:
             line["selected_sheets"] = list(selected_sheets)
@@ -108,6 +112,8 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
         zip_budget = _ZipBudget() if route.name == "sheet" else None
         if route.name == "sheet":
             rendered = route.render(path, sheets, _zip_budget=zip_budget)
+        elif route.name == "eml":
+            rendered = route.render(path, sheets, _html_content=_html_content)
         else:
             rendered = route.render(path, sheets, article=True) if article else route.render(path, sheets)
         markdown, tally, unit_keys, references = rendered
@@ -128,9 +134,10 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
         _write_outputs(tuple(zip(targets, payloads)))
     except (BrewdocError, OSError) as exc:
         return EXIT_FAIL, _line(route, False, "output write failed: %s" % exc, path), ""
-    reason = "%s rendered: %d %ss, %d tables, %d text regions, %d column splits" % (
-        route.name, len(unit_keys), route.unit_kind, tally["tables"], tally["text_regions"],
-        tally["columns_split"])
+    reason = ("text passed through without normalization" if route.name == "text" else
+              "%s rendered: %d %ss, %d tables, %d text regions, %d column splits" % (
+                  route.name, len(unit_keys), route.unit_kind, tally["tables"],
+                  tally["text_regions"], tally["columns_split"]))
     shown = {key: text for key, _target, text in pairs}
     receipt_artifacts = tuple(item.to_dict(shown.get(item.key)) for item in references)
     return EXIT_OK, _line(route, True, reason, path, tally, out, unit_keys,
