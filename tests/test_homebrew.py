@@ -56,6 +56,7 @@ class Brewdoc < Formula
       odie "Unexpected Brewdoc archive layout"
     end
     libexec.install Dir.children(".") - [".brew_home"]
+    libexec.chmod 0755
     bin.install_symlink libexec/"brewdoc"
   end
 
@@ -138,6 +139,53 @@ def test_emitted_homebrew_install_excludes_staging_home_and_retains_hidden_paylo
     # THEN only Homebrew's staging home is excluded and every hidden or ordinary payload entry remains
     assert (process.returncode, process.stderr) == (0, b""), "the actual emitted Ruby statement must execute successfully"
     assert json.loads(process.stdout) == payload, "bundle copy must exclude only .brew_home while preserving complete payload"
+
+
+@pytest.mark.skipif(os.name != "posix" or shutil.which("ruby") is None, reason="Bundle modes require Unix and Ruby")
+@pytest.mark.parametrize("mask", ["0002", "0022"], ids=["group-writable-umask", "standard-umask"])
+def test_emitted_homebrew_install_preserves_root_mode_and_complete_payload(tmp_path, release, homebrew, mask):
+    # GIVEN an admitted 0755 bundle with hidden payload and independently declared descendant modes
+    stage, expected = installed_tree(tmp_path)
+    stage = stage.rename(tmp_path / "stage")
+    hidden = stage / ".payload-data"
+    hidden.mkdir()
+    hidden.chmod(0o750)
+    expected["brewdoc/.payload-data"] = {"kind": "directory", "mode": 0o750}
+    for name, payload, mode in ((".payload-identity", b"hidden identity\n", 0o640),
+                                (".payload-data/seal", b"hidden seal\n", 0o600)):
+        path = stage / name
+        path.write_bytes(payload)
+        path.chmod(mode)
+        expected["brewdoc/" + name] = {"kind": "file", "bytes": len(payload),
+                                     "sha256": hashlib.sha256(payload).hexdigest(), "mode": mode}
+    assert homebrew.native.inventory(stage, logical_root="brewdoc") == expected, (
+        "the complete source bundle must pin root and descendant modes, bytes and its internal link before installation")
+    staging_home = stage / ".brew_home"
+    staging_home.mkdir()
+    (staging_home / ".gitignore").write_bytes(b"Homebrew staging state\n")
+    destination = tmp_path / "prefix/libexec"
+    destination.parent.mkdir()
+    formula = homebrew.guide.render_homebrew(admit(release, "public"))
+    statements = [line.strip() for line in formula.splitlines() if line.strip().startswith("libexec.")]
+    assert (destination.exists(), sum(line.startswith("libexec.install ") for line in statements)) == (
+        False, 1), "the real emitted install selection must create a fresh destination exactly once"
+    ruby = ('require "pathname"\nrequire "fileutils"\n'
+            'File.umask(Integer(ARGV.fetch(0), 8))\n'
+            'destination = Pathname.new(ARGV.fetch(1))\n'
+            'def destination.install(paths)\n'
+            '  mkpath\n'
+            '  paths.each { |source| FileUtils.mv(source, to_s) }\n'
+            'end\n'
+            'define_singleton_method(:libexec) { destination }\n')
+    # WHEN actual emitted Ruby copies the staging children under a process-scoped umask
+    process = subprocess.run([shutil.which("ruby"), "-e", ruby + "\n".join(statements), mask, str(destination)],
+                             cwd=stage, capture_output=True, timeout=5, check=False)
+    # THEN the root is 0755 while every payload mode, byte, hidden entry and internal link stays exact
+    assert (process.returncode, process.stdout, process.stderr,
+            homebrew.native.inventory(destination, logical_root="brewdoc"),
+            (staging_home / ".gitignore").read_bytes()) == (
+        0, b"", b"", expected, b"Homebrew staging state\n",
+    ), "an inherited group-writable mask must not alter the bundle root or require changing any descendant payload"
 
 
 def test_staged_homebrew_request_refuses_without_replacing_reviewed_formula(release):
@@ -276,6 +324,7 @@ def test_installed_inventory_normalizes_only_the_outer_bundle_name(tmp_path, hom
 
 @pytest.mark.skipif(os.name != "posix", reason="Homebrew bundle modes and links require Unix")
 @pytest.mark.parametrize(("alter", "name", "changed"), [
+    (lambda root: root.chmod(0o775), "brewdoc", {"kind": "directory", "mode": 0o775}),
     (lambda root: (root / "brewdoc").write_bytes(b"altered executable\n"), "brewdoc/brewdoc",
      {"kind": "file", "bytes": 19, "sha256": hashlib.sha256(b"altered executable\n").hexdigest(), "mode": 0o755}),
     (lambda root: (root / "_internal/engine.so").chmod(0o600), "brewdoc/_internal/engine.so",
@@ -283,7 +332,7 @@ def test_installed_inventory_normalizes_only_the_outer_bundle_name(tmp_path, hom
     (lambda root: ((root / "_internal/engine-link.so").unlink(),
                   (root / "_internal/engine-link.so").symlink_to("../licenses/MIT.txt")),
      "brewdoc/_internal/engine-link.so", {"kind": "symlink", "target": "../licenses/MIT.txt"}),
-], ids=["bytes", "mode", "internal-link"])
+], ids=["root-mode", "bytes", "mode", "internal-link"])
 def test_installed_inventory_refuses_drift_and_retains_actual_evidence(tmp_path, homebrew, alter, name, changed):
     # GIVEN a complete immutable expected inventory followed by one installed change
     root, expected = installed_tree(tmp_path)
@@ -324,7 +373,7 @@ def consumer_arguments(release):
     brew = checkout / "brew"
     brew.write_bytes(b"unit Homebrew path\n")
     return argparse.Namespace(checkout=checkout, brew=brew, output=checkout / "evidence",
-                              tag="v1.2.3", source_sha="a" * 40, bootstrap_tap_sha="b" * 40,
+                              tag="v1.2.3", source_sha="a" * 40, tool_source_sha="f" * 40, bootstrap_tap_sha="b" * 40,
                               tap_sha="c" * 40, target="linux-x64")
 
 
@@ -373,6 +422,40 @@ def test_checkout_source_mismatch_stops_before_native_or_public_work(release, ho
     assert (requests, arguments.output.exists()) == (
         [["git", "-C", str(arguments.checkout), "rev-parse", "HEAD"]], False,
     ), "foreign source must stop before native validation, publication reads or output changes"
+
+
+@pytest.mark.parametrize("tool_sha,expected_reads", [("f" * 40, ("release", "tool")), ("G" * 40, ("release",))],
+                         ids=["tool-head-mismatch", "malformed-tool-sha"])
+def test_tool_source_refusal_precedes_native_public_work_and_output_creation(
+        release, homebrew, monkeypatch, tool_sha, expected_reads):
+    # GIVEN a valid immutable release checkout and an invalid executing-tool identity
+    arguments = consumer_arguments(release)
+    arguments.tool_source_sha = tool_sha
+    release_head = ["git", "-C", str(arguments.checkout), "rev-parse", "HEAD"]
+    tool_head = ["git", "-C", str(homebrew.assets.CHECKOUT), "rev-parse", "HEAD"]
+    assert (homebrew.guide.project_version(arguments.checkout), arguments.source_sha,
+            arguments.output.exists()) == ("1.2.3", "a" * 40, False), (
+        "release metadata must be valid and no evidence may exist before tool identity refusal")
+    requests = []
+    replies = {tuple(release_head): ("a" * 40 + "\n").encode(),
+               tuple(tool_head): ("e" * 40 + "\n").encode()}
+
+    def read_head(command):
+        """Record exact checkout reads without calling Git or public services."""
+        requests.append(command)
+        return replies[tuple(command)]
+
+    monkeypatch.setattr(homebrew.assets, "command", read_head)
+    monkeypatch.setattr(homebrew.native, "facts", reject_external_activity)
+    monkeypatch.setattr(homebrew, "public_native", reject_external_activity)
+    monkeypatch.setattr(homebrew.subprocess, "run", reject_external_activity)
+    # WHEN the consumer validates the tool independently after the unchanged release check
+    with pytest.raises(ValueError, match="^Homebrew tool source differs$"):
+        homebrew.verify(arguments)
+    # THEN only necessary identity reads occur before any native/public work or evidence write
+    assert (requests, arguments.output.exists()) == (
+        [{"release": release_head, "tool": tool_head}[name] for name in expected_reads], False,
+    ), "malformed or foreign tool source must refuse independently while preserving the release guard order"
 
 
 def test_published_formula_admits_exact_bytes_at_the_selected_immutable_commit(release, homebrew, monkeypatch):
@@ -482,6 +565,8 @@ def test_failed_install_stops_upgrade_retains_command_evidence_and_cleans_tempor
     # GIVEN valid local identities and controlled external preflight responses
     arguments = consumer_arguments(release)
     checkout, native, _npm, _availability = release
+    assert (arguments.source_sha, arguments.tool_source_sha) == ("a" * 40, "f" * 40), (
+        "the valid lifecycle fixture must exercise different immutable release and executing-tool identities")
     old = {**native, "version": "0.4.1", "source_sha": "d" * 40,
            "targets": {target: {**record, "version": "0.4.1", "source_sha": "d" * 40,
                                 "archive": {**record["archive"], "filename": record["archive"]["filename"].replace("1.2.3", "0.4.1")}}
@@ -496,13 +581,21 @@ def test_failed_install_stops_upgrade_retains_command_evidence_and_cleans_tempor
     old_formula = homebrew.guide.render_homebrew({"phase": "public", **old})
     callbacks = {
         ("git", "-C", str(checkout), "rev-parse", "HEAD"): lambda: ("a" * 40 + "\n").encode(),
+        ("git", "-C", str(homebrew.assets.CHECKOUT), "rev-parse", "HEAD"): lambda: ("f" * 40 + "\n").encode(),
         ("gh", "api", "repos/kochetkov-ma/homebrew-brew/git/ref/heads/main"): lambda: json.dumps({"object": {"sha": "c" * 40}}).encode(),
         ("git", "-C", str(repository), "rev-parse", "HEAD"): lambda: ("e" * 40 + "\n").encode(),
         ("git", "-C", str(tap), "merge-base", "--is-ancestor", "b" * 40, "c" * 40): lambda: b"",
         ("git", "-C", str(tap), "checkout", "--detach", "b" * 40): lambda: (
             (tap / "Formula/brewdoc.rb").write_text(old_formula), b"")[1],
     }
-    monkeypatch.setattr(homebrew.assets, "command", lambda command: callbacks[tuple(command)]())
+    preflight_requests = []
+
+    def preflight_command(command):
+        """Record independent release and tool reads before the controlled lifecycle."""
+        preflight_requests.append(command)
+        return callbacks[tuple(command)]()
+
+    monkeypatch.setattr(homebrew.assets, "command", preflight_command)
     replies = {("--version",): (0, b"Homebrew unit protocol\n", b""),
                ("--repository",): (0, (str(repository) + "\n").encode(), b""),
                ("list", "--formula"): (0, b"", b""), ("tap",): (0, b"", b""),
@@ -533,10 +626,12 @@ def test_failed_install_stops_upgrade_retains_command_evidence_and_cleans_tempor
     with pytest.raises(ValueError, match="^Homebrew lifecycle command failed: install$"):
         homebrew.verify(arguments)
     # THEN no upgrade or acceptance follows, diagnostics remain and temporary sentinels are cleaned
-    assert (commands, [path.exists() for path in temporary_work],
+    assert (preflight_requests[:2], commands, [path.exists() for path in temporary_work],
             (arguments.output / "verification.json").exists(),
             (arguments.output / "command-6.stdout").read_bytes(),
             (arguments.output / "command-6.stderr").read_bytes()) == (
+        [["git", "-C", str(checkout), "rev-parse", "HEAD"],
+         ["git", "-C", str(homebrew.assets.CHECKOUT), "rev-parse", "HEAD"]],
         [[str(arguments.brew), *command] for command in replies], [False], False,
         b"install details\n", b"unit install failure\n",
     ), "first install failure must stop upgrade and retain truthful failure evidence without leaking temporary work"
