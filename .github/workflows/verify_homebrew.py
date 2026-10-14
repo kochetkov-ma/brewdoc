@@ -145,6 +145,9 @@ def verify(args: argparse.Namespace) -> None:
         raise ValueError("Homebrew dispatch identities differ")
     if assets.command(["git", "-C", str(args.checkout), "rev-parse", "HEAD"]).decode().strip() != args.source_sha:
         raise ValueError("Homebrew checkout source differs")
+    if (not re.fullmatch(r"[0-9a-f]{40}", args.tool_source_sha)
+            or assets.command(["git", "-C", str(assets.CHECKOUT), "rev-parse", "HEAD"]).decode().strip() != args.tool_source_sha):
+        raise ValueError("Homebrew tool source differs")
     native.facts(args.checkout, args.target)
     if not args.brew.is_absolute() or not args.brew.is_file():
         raise ValueError("Homebrew executable must be an existing absolute path")
@@ -230,6 +233,7 @@ def verify(args: argparse.Namespace) -> None:
         brew("untap", TAP)
     assets.write_json(args.output / "verification.json", {
         "schema": 1, "verdict": "PASS", "version": version, "source_sha": args.source_sha,
+        "tool_source_sha": args.tool_source_sha,
         "tag": args.tag, "target": args.target, "host": platform.platform(), "brew": brew_version,
         "brew_sha": brew_sha,
         "runner_image": {key: os.environ.get(key) for key in ("ImageOS", "ImageVersion", "RUNNER_OS", "RUNNER_ARCH")},
@@ -242,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     for name in ("checkout", "brew", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
-    for name in ("tag", "source-sha", "bootstrap-tap-sha", "tap-sha"):
+    for name in ("tag", "source-sha", "tool-source-sha", "bootstrap-tap-sha", "tap-sha"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--target", choices=("linux-x64", "macos-arm64"), required=True)
     args = parser.parse_args(argv)

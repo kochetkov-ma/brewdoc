@@ -177,6 +177,10 @@ links against admitted bundle inventories. Verify conversion, self-check, refusa
 output, supported JS/child cleanup, unlink/relink and removal with an external user-file sentinel.
 Cleaning/rpath precautions alone do not prove byte parity. Mismatches stop acceptance.
 
+Run the reviewed consumer tools from the dispatch commit. Check out the immutable release
+tag separately and pass that directory as --checkout. Keep its tag/source identity checks;
+validate and record the executing tool_source_sha separately from the release source_sha.
+
 Initial notes state that Homebrew awaits tap and consumer verification. After public formula
 readback and both-host acceptance, replace the pending statement with a short availability
 line and accepted install command through a notes-only update. Preserve the release-format

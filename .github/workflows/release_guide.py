@@ -272,6 +272,7 @@ class Brewdoc < Formula
       odie "Unexpected Brewdoc archive layout"
     end
     libexec.install Dir.children(".") - [".brew_home"]
+    libexec.chmod 0755
     bin.install_symlink libexec/"brewdoc"
   end
 
