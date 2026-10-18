@@ -3,7 +3,7 @@
 Link version-specific INSTALL.md for practical lifecycle instructions; historical
 0.2.0/0.3.0/0.3.1 tags lack that file and link their own README instead. Never change
 release tags/package bytes merely to revise notes.
-Current installation examples select 0.5.0. List a channel as available only after
+Current installation examples select 0.6.0. List a channel as available only after
 its publication and consumer acceptance.
 
 ## Release format
@@ -45,14 +45,14 @@ Put one `---` between Release notes and Installation. Every release body keeps
 concise, complete installation, downloads and documentation sections:
 
 - Installation states the Python prerequisite and all three exact-version choices:
-  `python -m pip install "brewdoc==0.5.0"` in an active virtual environment,
-  `uv tool install --python 3.12 "brewdoc==0.5.0"` and
-  `pipx install --python 3.12 "brewdoc==0.5.0"`. Replace 0.5.0 with the release
+  `python -m pip install "brewdoc==0.6.0"` in an active virtual environment,
+  `uv tool install --python 3.12 "brewdoc==0.6.0"` and
+  `pipx install --python 3.12 "brewdoc==0.6.0"`. Replace 0.6.0 with the release
   version and state its declared Python compatibility. Include
   `brewdoc --self-check` and `brewdoc file.pdf --out file.md`.
 - Public npm/npx commands require admission and consumer acceptance on Linux
-  x64/glibc and macOS ARM64. Use `npm install --global brewdoc@0.5.0` and
-  `npx --yes --package brewdoc@0.5.0 brewdoc --self-check` with the release version.
+  x64/glibc and macOS ARM64. Use `npm install --global brewdoc@0.6.0` and
+  `npx --yes --package brewdoc@0.6.0 brewdoc --self-check` with the release version.
   Staged notes keep their conditional-publication statement and omit npm commands.
   Homebrew stays pending until public formula readback and both-host acceptance;
   support metadata alone does not establish availability.
@@ -150,7 +150,9 @@ probe still requires exit 1 and refusal at `tls`; its failure logs only the obse
 exit code and a known refusal stage. A failure at `dns`, `connect` or `timeout`
 does not establish a certificate-validation defect. Existing acquisition budgets
 remain 30 seconds for static/TLS and 5 seconds for JavaScript, with process ceilings
-of 35 and 10 seconds. Issue #53 measured no stable external-host lag to justify a retry.
+of 35 and 10 seconds. Issue #53 measured no stable external-host lag to justify a probe retry.
+Acquisition itself never re-sends a request; it only tries the next validated address after a
+TCP connect failure.
 
 Draft staging retains the release ID returned by GitHub creation. The `stage-publish`
 controller carries it through final staging, publication and public-byte verification,
@@ -166,14 +168,14 @@ native archives with exact versioned URLs and downloaded SHA-256 values. Install
 bundle in libexec, including runtime files, licenses, manifest and internal links; link its
 existing executable. Do not rebuild from source or add a release asset.
 
-Publish two real tap versions in order: accepted public 0.4.1, then public 0.5.0 after its
-native release passes admission. A fabricated old formula or relabelled archive is not an
+Publish two real tap versions in order: accepted public 0.4.1, then the current release after
+its native release passes admission. A fabricated old formula or relabelled archive is not an
 upgrade baseline. Both versions belong to the existing tap; no second Brewdoc PR is needed.
 
 After both formula commits are public, dispatch the two-host Homebrew consumer workflow
 on Ubuntu 22.04 x64 and macOS 15 ARM64 with exact tag/source/tap identities. Install 0.4.1,
-perform a real upgrade to 0.5.0, and compare installed file hashes, sizes, modes and internal
-links against admitted bundle inventories. Verify conversion, self-check, refusal preserving
+perform a real upgrade to the current release, and compare installed file hashes, sizes, modes
+and internal links against admitted bundle inventories. Verify conversion, self-check, refusal preserving
 output, supported JS/child cleanup, unlink/relink and removal with an external user-file sentinel.
 Cleaning/rpath precautions alone do not prove byte parity. Mismatches stop acceptance.
 
