@@ -68,7 +68,7 @@
     "Try the next address before any request bytes are sent.",
     "Keep a JavaScript capture when one sub-request fails."
   ],
-  "release_pr": 61,
+  "release_pr": 65,
   "release_examples": [
     "brewdoc --body-only paper.pdf --out paper.md",
     "brewdoc --url https://arxiv.org/pdf/1706.03762 --out attention.md",
