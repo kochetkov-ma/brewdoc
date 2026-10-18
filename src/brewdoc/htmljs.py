@@ -21,7 +21,7 @@ from ._standalone import child_command
 BYTE_LIMIT = 8 * 1048576
 IPC_LIMIT = 18 * 1048576
 PROCESS_LIMIT = 256 * 1048576
-SOFT_WINDOW = 12
+SETTLE_MS = 500
 STACK_LIMIT = 1048576
 _SIGNAL_PREREQUISITE = False
 _CHILD_ONLY = False
@@ -264,19 +264,30 @@ def _guarded_call(function, *, protect=False, probe=False):
     return result[0]
 
 
+def _page_url(base_url, value):
+    """Resolve one page-controlled URL; None when it cannot parse, like a browser TypeError."""
+    from .htmlurl import URLSyntaxError, _validate_url
+    try:
+        return _validate_url(urljoin(base_url, value))
+    except (ValueError, URLSyntaxError):
+        return None
+
+
 def _host_response(request, fetch, document_url, base_url):
     """Validate finite request permissions and enforce document-origin CORS."""
-    from .htmlurl import URLPolicyError, URLResourceError, _header, _search_body, _validate_url
+    from .htmlurl import URLPolicyError, URLResourceError, _header, _search_body
     post = request.get('method') == 'POST'
     if post and (type(request.get('body')) is not str
                  or any(type(request.get(name)) is not bool for name in
                         ('body_present', 'xhr', 'with_credentials', 'headers_conflict'))
                  or request['body_present'] is not True or type(request.get('url')) is not str):
         raise URLPolicyError('JS search request IPC invalid')
-    url = _validate_url(urljoin(base_url, str(request.get('url', ''))))
+    url = _page_url(base_url, str(request.get('url', '')))
     kind = request.get('kind', 'api')
     if kind not in ('script', 'module', 'api'):
         raise URLPolicyError('JS unknown host request kind refused')
+    if url is None:
+        return {'error': 'ancillary_transport_failed'}
     if not post and (request.get('method', 'GET') != 'GET' or request.get('body_present')):
         return {'error': 'request_options_unsupported'}
     if request.get('credentials', 'omit') not in ('same-origin', 'omit'):
@@ -346,9 +357,9 @@ def _host_response(request, fetch, document_url, base_url):
             'url': final_url, 'redirected': final_url != url}
 
 
-def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
+def render(source, final_url, fetch, deadline, *, soft_window):
     """Acquire child-requested resources and return a bounded frozen DOM."""
-    from .htmlurl import URLPolicyError, URLResourceError, URLTimeoutError
+    from .htmlurl import URLPolicyError, URLResourceError, URLTimeoutError, _capture_errors
     _check_runtime(deadline=deadline)
     if len(source.encode('utf-8')) > BYTE_LIMIT:
         raise BrewdocError('JS resource main source byte limit exceeded')
@@ -373,7 +384,7 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
     parent_error_count = 0
     recovery_deadline = deadline + 1
     def terminate():
-        """Cancel the still-owned child group without repeating a successful signal."""
+        """Cancel the still-owned child group; macOS EPERM means an exited, unreaped leader."""
         nonlocal cancelled
         with cancellation_lock:
             if cancelled or process.poll() is not None:
@@ -381,7 +392,7 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
             try:
                 os.killpg(process.pid, signal.SIGKILL)
                 cancelled = True
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
     watchdog = threading.Timer(max(0, recovery_deadline - time.monotonic()), terminate)
     watchdog.start()
@@ -430,16 +441,16 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
                 if response.get('error'):
                     parent_error_count += 1
                     if len(parent_errors) < 20:
-                        parent_errors.append({'category': response['error'], 'resource_url': None})
+                        parent_errors.append({'category': response['error'], 'resource_url':
+                                              _page_url(base_url, str(request.get('url', '')))})
                 if timing_stop:
                     response = {'timing': True}
                 _send(parent, response)
             elif message.get('kind') == 'base':
-                from .htmlurl import _validate_url
                 value = message.get('value')
-                if not isinstance(value, str) or len(value.encode('utf-8')) > 8192:
+                if not isinstance(value, str):
                     raise BrewdocError('JS resource base IPC invalid')
-                base_url = _validate_url(urljoin(final_url, value))
+                base_url = _page_url(final_url, value) or final_url
                 _send(parent, {'timing': True} if timing_stop else {'base': base_url})
             elif message.get('kind') == 'timing':
                 offered = message.get('recovery_deadline')
@@ -463,6 +474,9 @@ def render(source, final_url, fetch, deadline, *, soft_window=SOFT_WINDOW):
                 if not result['html'].strip() or len(result['html'].encode('utf-8')) > BYTE_LIMIT:
                     raise BrewdocError('JS resource snapshot invalid or byte limit exceeded')
                 _validate_capture(result, soft_window)
+                if parent_error_count:
+                    result.update(errors=_capture_errors(parent_errors + result['errors'], 20), capture_status='partial',
+                                  error_count=parent_error_count + result['error_count'])
                 return result
             elif message.get('kind') == 'error':
                 if message == {'kind': 'error', 'cause': 'timing'}:
@@ -602,8 +616,6 @@ def _capture(source, url, channel, soft_window, deadline=None):
         response = _receive(channel)
         if response.get('timing') is True:
             raise URLTimeoutError('JS loading deadline exceeded')
-        if response.get('error'):
-            errors.append({'category': response['error'], 'resource_url': None})
         return response
     def module_source(name):
         """Retain redirected module identity and unknown graph completion."""
@@ -734,6 +746,7 @@ def _capture(source, url, channel, soft_window, deadline=None):
         drain()
         call('Loaded')
         drain()
+        soft_end = started + soft_window
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 raise URLTimeoutError('JS loading deadline exceeded')
@@ -741,27 +754,31 @@ def _capture(source, url, channel, soft_window, deadline=None):
             call('Clock', int(now))
             queue = json.loads(call('Requests'))
             for queued in queue:
+                # Unserved requests and their promises stay pending in the receipt.
+                if time.monotonic() >= soft_end:
+                    return finish(inspect_pending())
                 response = request({**queued, 'kind': 'api'})
                 call('Complete', json.dumps({**response, 'id': queued['id']}))
             drain()
             added = scripts()
-            timers = json.loads(call('Timers'))
-            for timer in sorted(timers, key=lambda item: (item['due'], item['id'])):
+            for timer in sorted(json.loads(call('Timers')), key=lambda item: (item['due'], item['id'])):
                 if timer['due'] > now:
                     continue
-                counts['timer_callbacks'] += 1
+                # Animation frames stay bounded by the soft window, not the callback cap.
+                counts['timer_callbacks'] += not timer['frame']
                 if counts['timer_callbacks'] > 200:
                     raise BrewdocError('JS resource timer callback limit exceeded')
                 call('RunTimer', timer['id'], int(now))
                 drain()
             pending = inspect_pending()
-            if not any(pending.values()) and not queue and not added:
-                break
-            if time.monotonic() - started >= soft_window:
-                break
+            # Intervals, frames, later one-shot timers, unresolved promises and modules never hold capture open.
+            blocking = (pending['requests'] or queue or added or pending['jobs']
+                        or any(not timer['repeat'] and not timer['frame'] and timer['due'] <= now + SETTLE_MS
+                               for timer in json.loads(call('Timers'))))
+            if not blocking or time.monotonic() >= soft_end:
+                return finish(pending)
             if not queue and not added:
                 time.sleep(0.005)
-        return finish(pending)
     except (NativeError, URLTimeoutError) as exc:
         if isinstance(exc, NativeError) and not exc.timing:
             raise

@@ -157,7 +157,7 @@ def test_transport_emits_only_exact_host_controlled_xhr_marker(monkeypatch, orig
     # THEN the marker exists only for the actual matching origin.
     assert connection.requests == [('GET', '/data', {
         'Host': 'fixture.test', 'User-Agent': 'brewdoc URL acquisition', 'Accept': '*/*',
-        'Accept-Encoding': 'identity', 'Connection': 'close', **expected,
+        'Accept-Encoding': 'gzip', 'Connection': 'close', **expected,
     })], 'The transport must emit only fixed controlled header values.'
     assert captured['body'] == b'{}', 'The existing bounded response body contract must remain intact.'
 

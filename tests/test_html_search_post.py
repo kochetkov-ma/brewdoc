@@ -506,7 +506,7 @@ def test_admitted_search_reaches_real_http_with_original_utf8_bytes_and_form_hea
     assert (line, body, {header.split(b":", 1)[0].lower(): header.split(b":", 1)[1].strip() for header in headers}) == (
         b"POST " + SEARCH.partition(".net")[2].encode() + b" HTTP/1.1\r\n", BODY.encode("utf-8"),
         {b"host": b"uj5wyc0l7x-dsn.algolia.net", b"user-agent": htmlurl._USER_AGENT.encode(),
-         b"accept": htmlurl._ACCEPT["api"].encode(), b"accept-encoding": b"identity", b"connection": b"close",
+         b"accept": htmlurl._ACCEPT["api"].encode(), b"accept-encoding": b"gzip", b"connection": b"close",
          b"origin": b"https://hn.algolia.com", b"content-type": FORM.encode(),
          b"content-length": str(len(BODY.encode("utf-8"))).encode()},
     ), "guarded POST must preserve original UTF-8/form bytes and host-controlled headers"

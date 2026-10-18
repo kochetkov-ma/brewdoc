@@ -21,6 +21,8 @@ MARKDOWN = "# Ready article\n"
 RECEIPT = {"receipt_schema": "brewdoc.receipt/2", "route": "html", "file_ok": True}
 MAX_TIMEOUT_SECONDS = min(threading.TIMEOUT_MAX, 2147483.647)
 CHAPTER = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Untitled"\n\n'
+# Child start, settle and conversion under parallel load; below the 12.5 s timer and 10 s window.
+SETTLE_BOUND = 3.0
 
 
 @pytest.mark.parametrize("render_js", [False, True], ids=["static", "javascript"])
@@ -46,7 +48,8 @@ def test_url_cli_forwards_each_requests_effective_timeout_once(render_js, argume
     # THEN both acquisition modes receive exactly one effective per-call value.
     assert (code, calls, capsys.readouterr().out) == (
         0, [(URL, None, {"render_js": render_js, "timeout": expected_timeout,
-                        "sheets": None, "artifact_outputs": None, "article": False})],
+                        "sheets": None, "artifact_outputs": None, "article": False,
+                        "body_only": False})],
         json.dumps(RECEIPT, sort_keys=True) + "\n" + MARKDOWN,
     ), "the CLI must pass the request's effective timeout and preserve output"
 
@@ -108,7 +111,8 @@ def test_local_cli_without_timeout_keeps_its_original_route_and_receipt(monkeypa
     code = cli.main(["article.html"])
     # THEN no timeout keyword or acquisition envelope changes the local contract.
     assert (code, calls, capsys.readouterr().out) == (
-        0, [("article.html", None, {"sheets": None, "artifact_outputs": None, "article": False})],
+        0, [("article.html", None, {"sheets": None, "artifact_outputs": None, "article": False,
+                              "body_only": False})],
         json.dumps(receipt, sort_keys=True) + "\n" + MARKDOWN,
     ), "local conversion must retain its original arguments and receipt"
 
@@ -247,11 +251,11 @@ def test_huge_negative_integer_timeout_keeps_the_generic_positive_value_refusal(
 
 
 @pytest.mark.parametrize("render_js,options,expected", [
-    pytest.param(True, {}, (30.0, 30.0, "request"), id="default-js-refusal"),
+    pytest.param(True, {}, (30.0, 12.0, "request"), id="default-js-refusal"),
     pytest.param(False, {}, (30.0, None, None), id="default-static-refusal"),
-    pytest.param(True, {"timeout": 10}, (10.0, 10.0, "request"), id="explicit-ten-js-refusal"),
+    pytest.param(True, {"timeout": 10}, (10.0, 5.0, "request"), id="explicit-ten-js-refusal"),
     pytest.param(False, {"timeout": 10}, (10.0, None, None), id="explicit-ten-static-refusal"),
-    pytest.param(True, {"timeout": 20}, (20.0, 20.0, "request"), id="configured-js-refusal"),
+    pytest.param(True, {"timeout": 20}, (20.0, 10.0, "request"), id="configured-js-refusal"),
     pytest.param(False, {"timeout": 20}, (20.0, None, None), id="static-has-no-js-interval"),
     pytest.param(True, {"timeout": 0}, (None, None, None), id="invalid-timeout-has-no-configuration"),
 ])
@@ -271,7 +275,7 @@ def test_early_url_refusal_retains_effective_timeout_configuration_before_io(ren
     assert (code, markdown, calls, output.read_bytes(),
             (acquisition["timeout_seconds"], acquisition["soft_window_seconds"], acquisition["soft_window_origin"])) == (
         1, "", [], b"previous output\n", expected,
-    ), "early refusal must retain configured T/request while static and invalid values stay null"
+    ), "early refusal must retain min(12, T/2)/request while static and invalid values stay null"
 
 
 def _html_response(body, *, deadline, budget, **options):
@@ -378,12 +382,11 @@ def test_response_headers_after_five_seconds_use_the_remaining_request_budget(mo
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Native timeout regressions require isolated Linux.")
-@pytest.mark.parametrize("timeout,expected_markdown,status,errors", [
-    pytest.param(1.0, "Initial article\n", "partial", [{"category": "capture_timeout", "resource_url": None}],
-                 id="short-budget-preserves-initial-content"),
-    pytest.param(20.0, "Late article\n", "settled", [], id="larger-budget-admits-content-after-twelve-seconds"),
+@pytest.mark.parametrize("timeout,soft_window", [
+    pytest.param(1.0, 0.5, id="short-budget-halves-soft-window"),
+    pytest.param(20.0, 10.0, id="larger-budget-halves-soft-window"),
 ])
-def test_requested_timeout_controls_actual_late_timer_content(timeout, expected_markdown, status, errors, monkeypatch):
+def test_late_timer_beyond_settle_window_never_delays_capture(timeout, soft_window, monkeypatch):
     # GIVEN useful initial HTML and real page content arriving after twelve seconds.
     body = b"<html><body><p>Initial article</p><script>setTimeout(()=>document.querySelector('p').textContent='Late article',12500)</script></body></html>"
     monkeypatch.setattr(htmlurl, "_fetch", lambda url, **options: _html_response(body, **options))
@@ -393,13 +396,45 @@ def test_requested_timeout_controls_actual_late_timer_content(timeout, expected_
     code, receipt, markdown = htmlurl._run_url(URL, render_js=True, timeout=timeout)
     elapsed = time.monotonic() - started
     acquisition = receipt["acquisition"]
-    # THEN the configured budget governs content and provenance without a fresh window.
-    assert code == 0, "a waiting timeout must preserve acquired content for conversion"
-    assert (_chapter_body(markdown), acquisition["capture_status"], acquisition["errors"],
-            acquisition["timeout_seconds"], acquisition["soft_window_seconds"], acquisition.get("soft_window_origin")) == (
-        expected_markdown, status, errors, timeout, timeout, "request",
-    ), "actual timer content must follow each request's budget instead of the fixed twelve-second window"
-    assert elapsed < timeout + 2.5, "loading must stop within its budget plus the explicit recovery/reap allowance"
+    # THEN capture settles at once with the timer pending, inside the explicit startup tolerance.
+    assert (code, _chapter_body(markdown), acquisition["capture_status"], acquisition["errors"],
+            acquisition["timeout_seconds"], acquisition["soft_window_seconds"], acquisition["soft_window_origin"],
+            elapsed) == (
+        0, "Initial article\n", "partial", [], timeout, soft_window, "request", pytest.approx(0.0, abs=SETTLE_BOUND),
+    ), "a one-shot timer due after the 500 ms settle window must neither block capture nor run"
+
+
+@pytest.mark.parametrize("timeout,expected_window", [
+    pytest.param(30, 12.0, id="default-caps-at-twelve"),
+    pytest.param(20, 10.0, id="twenty-halves"),
+    pytest.param(10, 5.0, id="ten-halves"),
+    pytest.param(1, 0.5, id="one-halves"),
+    pytest.param(0.5, 0.25, id="half-second-halves"),
+])
+def test_js_capture_receives_the_remaining_soft_window_from_request_start(timeout, expected_window, monkeypatch):
+    # GIVEN instant local acquisition and a capture boundary recording its soft window.
+    from brewdoc import htmljs
+    body = b"<html><body><p>Initial article</p></body></html>"
+    windows = []
+
+    def capture(source, final_url, fetch, deadline, *, soft_window):
+        """Record the forwarded window and return a settled synthetic DOM."""
+        windows.append(soft_window)
+        return {"html": source, "capture_status": "settled", "errors": [], "error_count": 0,
+                "pending": {"requests": 0, "timers": 0, "modules": 0, "promises": 0, "jobs": False},
+                "counts": {"promise_jobs": 0, "timer_callbacks": 0}}
+
+    monkeypatch.setattr(htmlurl, "_fetch", lambda url, **options: _html_response(body, **options))
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
+    monkeypatch.setattr(htmljs, "render", capture)
+    assert windows == [], "no capture may start before acquisition"
+    # WHEN JavaScript acquisition runs with this request timeout.
+    code, receipt, markdown = htmlurl._run_url(URL, render_js=True, timeout=timeout)
+    acquisition = receipt["acquisition"]
+    # THEN the receipt keeps min(12, T/2) and capture gets its remainder; 0.2 s covers local stubs.
+    assert (code, windows, acquisition["soft_window_seconds"], acquisition["soft_window_origin"]) == (
+        0, [pytest.approx(expected_window, abs=0.2)], expected_window, "request",
+    ), "the soft window must be min(12, T/2) from request start, not the whole timeout"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Native timeout regressions require isolated Linux.")
