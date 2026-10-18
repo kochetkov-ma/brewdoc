@@ -25,48 +25,48 @@ FULL_WIDTH = ["This full-width paragraph crosses the local separator and remains
               "Continuation stays in the full-width flow."]
 DPO_HASH = "92cb3a2b71362acda98a789b03d88688fd33cf5fcf13f81d2b1de30ee7d3b67a"
 DPO_LEFT_9 = [
-    "TofurthercomparetheperformanceofPPOandDPOun-",
-    "derdistributionshifts,weevaluatethePPOandDPOpoli-",
-    "ciesfromourRedditTL;DRsummarizationexperimenton",
-    "adifferentdistribution,newsarticlesinthetestsplitofthe",
-    "CNN/DailyMaildataset[26],usingthebestsamplingtemper-",
-    "aturesfromTL;DR(0and0.25). Theresultsarepresented",
+    "To further compare the performance of PPO and DPO un-",
+    "der distribution shifts, we evaluate the PPO and DPO poli-",
+    "cies from our Reddit TL;DR summarization experiment on",
+    "a different distribution, news articles in the test split of the",
+    "CNN/DailyMail dataset [26], using the best sampling temper-",
+    "atures from TL;DR (0 and 0.25). The results are presented",
     "in Table 1. We computed the GPT-4 win rate against the",
-    "ground-truthsummariesinthedatasets,usingthesameGPT-",
+    "ground-truth summaries in the datasets, using the same GPT-",
 ]
 DPO_CAPTION_9 = ["Table 1: GPT-4 win rates vs. ground",
-                 "truth summaries for out-of-distribution", "CNN/DailyMailinputarticles."]
+                 "truth summaries for out-of-distribution", "CNN/DailyMail input articles."]
 DPO_AFTER_9 = [
-    '4(C)promptweusedforRedditTL;DR,butreplacingthewords"forumpost"with"newsarticle".',
-    "Forthisnewdistribution,DPOcontinuestooutperformthePPOpolicybyasignificantmargin. This",
-    "experimentprovidesinitialevidencethatDPOpoliciescangeneralizesimilarlywelltoPPOpolicies,",
-    "eventhoughDPOdoesnotusetheadditionalunlabeledRedditTL;DRpromptsthatPPOuses.",
+    '4 (C) prompt we used for Reddit TL;DR, but replacing the words "forum post" with "news article".',
+    "For this new distribution, DPO continues to outperform the PPO policy by a significant margin. This",
+    "experiment provides initial evidence that DPO policies can generalize similarly well to PPO policies,",
+    "even though DPO does not use the additional unlabeled Reddit TL;DR prompts that PPO uses.",
 ]
 DPO_LEFT_10 = [
-    "middle-performing(SFT,temp. 0.25)methodwith",
-    "theaimofcoveringadiversityofsamplequalities;",
+    "middle-performing (SFT, temp. 0.25) method with",
+    "the aim of covering a diversity of sample qualities;",
     "all three methods are compared against greedily-",
     "sampled PPO (its best-performing temperature).",
     "We find that with both prompts, GPT-4 tends to",
-    "agreewithhumansaboutasoftenashumansagree",
-    "witheachother,suggestingthatGPT-4isareason-",
-    "ableproxyforhumanevaluations(duetolimited",
-    "humanraters,weonlycollectmultiplehumanjudg-",
-    "mentsfortheDPOandPPO-1comparisons). Over-",
-    "all,theGPT-4(C)promptgenerallyprovideswin",
-    "ratesmorerepresentativeofhumans;wetherefore",
-    "usethispromptforthemainresultsinSection6.2.",
+    "agree with humans about as often as humans agree",
+    "with each other, suggesting that GPT-4 is a reason-",
+    "able proxy for human evaluations (due to limited",
+    "human raters, we only collect multiple human judg-",
+    "ments for the DPO and PPO-1 comparisons). Over-",
+    "all, the GPT-4 (C) prompt generally provides win",
+    "rates more representative of humans; we therefore",
+    "use this prompt for the main results in Section 6.2.",
     "For additional details about the human study, in-",
-    "cludingthewebinterfacepresentedtoratersand",
-    "thelistofhumanvolunteers,seeAppendixD.3.",
+    "cluding the web interface presented to raters and",
+    "the list of human volunteers, see Appendix D.3.",
 ]
 DPO_CAPTION_10 = [
     "Table 2: Comparing human and GPT-4 win rates",
-    "andper-judgmentagreementonTL;DRsummariza-",
-    "tionsamples.HumansagreewithGPT-4aboutas",
-    "muchastheyagreewitheachother.Eachexperi-",
-    "mentcomparesasummaryfromthestatedmethod",
-    "withasummaryfromPPOwithtemperature0.",
+    "and per-judgment agreement on TL;DR summariza-",
+    "tion samples. Humans agree with GPT-4 about as",
+    "much as they agree with each other. Each experi-",
+    "ment compares a summary from the stated method",
+    "with a summary from PPO with temperature 0.",
 ]
 DPO_TABLE_9 = [["", "Win rate vs. ground truth", ""], ["Alg.", "Temp 0", "Temp 0.25"],
                ["DPO", "0.36", "0.31"], ["PPO", "0.26", "0.23"]]
@@ -94,9 +94,9 @@ def expected_pdf(path, body, *, pages=1, tables=0, regions=1, columns=0, notes=(
         "unit_keys": keys,
     }
     markdown = schema_two(
-        path, body, **NOT_APPLICABLE, name="sample\\.pdf", suffix=".pdf", route="pdf", unit="page",
+        path, body, **NOT_APPLICABLE, name="sample.pdf", suffix=".pdf", route="pdf", unit="page",
         count=pages, keys=", ".join(keys) or "none", pages=pages, sheets=0, chapters=0, tables=tables,
-        text_regions=regions, omissions="\n".join("- " + item.replace(".", "\\.")
+        text_regions=regions, omissions="\n".join("- " + item
                                                 for item in (*PDF_NOT_CARRIED, *notes)),
         contents="\n".join("- [Page %d](#brewdoc-page-%06d)" % (ordinal, ordinal)
                            for ordinal in range(1, pages + 1))).rstrip() + "\n"
@@ -287,7 +287,7 @@ def test_nonlocal_caption_guards_preserve_existing_full_output(tmp_path, command
 @pytest.mark.parametrize("ordinal,region,left_box,caption_box,grid_box,left,caption,bounds,expected,regions", [
     (9, (100, 510, 510, 670), (100, 535, 350, 625), (352, 585, 507, 616), (355, 523, 497, 581),
      DPO_LEFT_9, DPO_CAPTION_9, (355.222, 503.999, 355.5, 496.439),
-     [("text", ["6.3 Generalizationtoanewinputdistribution"]), ("text", DPO_LEFT_9),
+     [("text", ["6.3 Generalization to a new input distribution"]), ("text", DPO_LEFT_9),
       ("table", DPO_TABLE_9), ("text", DPO_CAPTION_9), ("text", DPO_AFTER_9)], 4),
     (10, (100, 170, 510, 345), (100, 170, 312, 345), (316, 284, 507, 345), (320, 179, 499, 282),
      DPO_LEFT_10, DPO_CAPTION_10, (317.557, 505.488, 321.078, 498.561),
@@ -305,7 +305,8 @@ def test_dpo_selected_regions_keep_caption_extents_and_neighbor_flow(
         observed_bounds = tuple(round(value, 3) for value in (
             min(char["x0"] for char in caption_source.chars), max(char["x1"] for char in caption_source.chars),
             min(edge["x0"] for edge in grid_source.edges), max(edge["x1"] for edge in grid_source.edges)))
-        assert (page.crop(left_box).extract_text().splitlines(), caption_source.extract_text().splitlines(),
+        assert (page.crop(left_box).extract_text(x_tolerance_ratio=0.15).splitlines(),
+                caption_source.extract_text(x_tolerance_ratio=0.15).splitlines(),
                 observed_bounds) == (left, caption, bounds), (
             "independent source crops must prove every caption line and its outlying footprint")
         tally = common.new_tally()

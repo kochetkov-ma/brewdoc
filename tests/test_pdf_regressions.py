@@ -1,6 +1,8 @@
 """Synthetic regressions for PDF record boundaries, prose and technical notation."""
 
 import re
+from itertools import groupby
+from operator import itemgetter
 from types import SimpleNamespace
 
 import pdfplumber
@@ -556,9 +558,8 @@ def test_fused_header_token_keeps_body_supported_heads_and_every_character_once(
     # WHEN the fused word is associated with the independently established body columns
     code, receipt, markdown = service.run(path)
     # THEN complete headers follow their body centres and every source glyph survives once
-    assert (code, receipt["file_ok"], receipt["route"], receipt["units"], receipt["tables"],
-            receipt["text_regions"], receipt["columns_split"], receipt["broken_ligature_words"],
-            receipt["dropped"]) == (0, True, "pdf", 1, 1, 0, 0, 0, dict.fromkeys(common.DROP_KEYS, 0)), "the synthetic table must retain the exact successful PDF counters without drops"
+    assert (code, receipt) == (0, page_receipt("fused-heads.pdf", 1, 0)), (
+        "the synthetic table must retain the exact successful PDF counters without drops")
     assert len(ownership[0][1]) == len("".join(source).replace(" ", "")), "the observed table must own all nonspace source characters"
     assert [owned for owned, _ in ownership] == [expected for _, expected in ownership], "every extraction must assign each original source index and char object exactly once to its final cells"
     content = selfcheck.chapter_lines(markdown, "Page 1")
@@ -601,8 +602,8 @@ def test_spanning_header_token_crossing_body_boundary_stays_whole(tmp_path):
     # WHEN a spanning source word crosses the same independently inferred boundary
     code, receipt, markdown = service.run(path)
     # THEN it stays whole in one cell above the unchanged headers and body records
-    assert (code, receipt["file_ok"], receipt["tables"], receipt["text_regions"],
-            receipt["columns_split"], receipt["dropped"]) == (0, True, 1, 0, 0, dict.fromkeys(common.DROP_KEYS, 0)), "the spanning table must keep its exact counters without drops"
+    assert (code, receipt) == (0, page_receipt("spanning-body-boundary.pdf", 1, 0)), (
+        "the spanning table must keep its exact counters without drops")
     assert selfcheck.chapter_lines(markdown, "Page 1") == [
         "|  |  |  | SharedRisk |  |", "| --- | --- | --- | --- | --- |",
         "| Model | Score | Rate | Risk | Truth |", "| Alpha | 11.1 | 12.2 | 13.3 | 14.4 |",
@@ -667,3 +668,91 @@ def test_trimmed_cmidrule_segments_keep_their_grouped_header_table(tmp_path):
         "|  | Warm | Cold | Exact | Fuzzy |", "| OLMo | 11 | 12 | 13 | 14 |",
         "| Llama | 21 | 22 | 23 | 24 |",
     ], 1), "a trimmed cmidrule must keep its grouped header table whichever segment group is chosen"
+
+
+def upright_runs(path):
+    """Group source chars into `(upright, text)` runs in content-stream order."""
+    with pdfplumber.open(path) as document:
+        chars = document.pages[0].chars
+        return [(upright, "".join(char["text"] for char in group))
+                for upright, group in groupby(chars, key=itemgetter("upright"))]
+
+
+def page_receipt(source, tables, text_regions):
+    """Build the full literal receipt of a clean one-page PDF run."""
+    return {
+        "file_ok": True, "route": "pdf", "source": source, "out": None,
+        "reason": f"pdf rendered: 1 pages, {tables} tables, {text_regions} text regions, 0 column splits",
+        "receipt_schema": "brewdoc.receipt/1", "unit_kind": "page", "units": 1, "tables": tables,
+        "text_regions": text_regions, "columns_split": 0,
+        "dropped": {"control_chars": 0, "soft_hyphens": 0, "nbsp": 0, "pua_glyphs": 0, "cid_survivors": 0,
+                    "ligatures": 0, "running_heads": 0, "page_numbers": 0, "non_ascii_replaced": 0},
+        "broken_ligature_words": 0,
+        "not_carried": ["images, figures and the text drawn inside them", "a table that spans a page break",
+                        "text rotated out of the horizontal reading order"],
+        "artifacts": [], "markdown_schema": "brewdoc.markdown/2", "unit_keys": ["page/000001"],
+    }
+
+
+@pytest.mark.parametrize("operands, glyphs, expected", [
+    pytest.param("[(alpha) -250 (beta) -250 (gamma)]", "alphabetagamma", ["alpha beta gamma"],
+                 id="latex-word-gaps-split"),
+    pytest.param("[(al) -30 (pha) -250 (beta)]", "alphabeta", ["alpha beta"], id="intra-word-kern-stays-whole"),
+])
+def test_tight_word_gaps_without_space_glyphs_keep_words_separate(tmp_path, operands, glyphs, expected):
+    # GIVEN one 10 pt line whose words differ only by 2.5 pt TJ gaps, with no space glyph
+    path = tmp_path / "tight-kerning.pdf"
+    path.write_bytes(selfcheck.synthetic_pdf([f"BT /F1 10 Tf 1 0 0 1 72 700 Tm {operands} TJ ET\n"]))
+    assert upright_runs(path) == [(True, glyphs)], "the source must hold only upright word glyphs"
+    # WHEN the line is rendered as page prose
+    code, receipt, markdown = service.run(path)
+    # THEN each word gap becomes one space while a 0.3 pt intra-word kern does not
+    assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
+        0, page_receipt("tight-kerning.pdf", 0, 1), expected), "a word gap wider than 0.15 em must separate words in prose"
+
+
+def test_rotated_margin_stamp_stays_out_of_upright_prose(tmp_path):
+    # GIVEN upright prose and a 90-degree arXiv margin stamp on the same page
+    path = tmp_path / "rotated-stamp.pdf"
+    stamp = "BT /F1 10 Tf 0 1 -1 0 30 400 Tm (arXiv:0000.00000v1) Tj ET\n"
+    path.write_bytes(selfcheck.synthetic_pdf([text_op(72, 700, "Body text") + stamp]))
+    assert upright_runs(path) == [(True, "Body text"), (False, "arXiv:0000.00000v1")], "the source must hold one upright and one rotated run"
+    # WHEN the page is rendered
+    code, receipt, markdown = service.run(path)
+    # THEN only upright prose remains and the dropped stamp adds no tally or table
+    assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
+        0, page_receipt("rotated-stamp.pdf", 0, 1), ["Body text"]), "rotated text must not enter prose"
+
+
+def test_rotated_header_inside_a_ruled_table_stays_in_its_cell(tmp_path):
+    # GIVEN a two-column ruled table whose first header reads top to bottom
+    path = tmp_path / "rotated-header.pdf"
+    drawing = "".join(rule(80, y, 200) for y in (700, 640, 620))
+    drawing += "".join(rule(x, 620, 0.5, 80) for x in (80, 180, 280))
+    drawing += "BT /F1 10 Tf 0 -1 1 0 125 690 Tm (Rot) Tj ET\n" + text_op(185, 665, "Name")
+    drawing += text_op(85, 626, "11") + text_op(185, 626, "Alpha")
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
+    assert upright_runs(path) == [(False, "Rot"), (True, "Name11Alpha")], "the source must hold one rotated header and upright cells"
+    # WHEN the table page is rendered
+    code, receipt, markdown = service.run(path)
+    # THEN the rotated header keeps its table cell
+    assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
+        0, page_receipt("rotated-header.pdf", 1, 0), ["| Rot | Name |", "| --- | --- |", "| 11 | Alpha |"]), (
+        "the upright filter must not reach table cells")
+
+
+def test_rotated_header_reading_bottom_to_top_keeps_its_reading_order(tmp_path):
+    # GIVEN a two-column ruled table whose first header is set upward, reading bottom to top
+    path = tmp_path / "upward-header.pdf"
+    drawing = "".join(rule(80, y, 200) for y in (700, 640, 620))
+    drawing += "".join(rule(x, 620, 0.5, 80) for x in (80, 180, 280))
+    drawing += "BT /F1 10 Tf 0 1 -1 0 135 650 Tm (Rot) Tj ET\n" + text_op(185, 665, "Name")
+    drawing += text_op(85, 626, "11") + text_op(185, 626, "Alpha")
+    path.write_bytes(selfcheck.synthetic_pdf([drawing]))
+    assert upright_runs(path) == [(False, "Rot"), (True, "Name11Alpha")], "the source must hold one upward header and upright cells"
+    # WHEN the table page is rendered
+    code, receipt, markdown = service.run(path)
+    # THEN the upward header reads in source order, not reversed
+    assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
+        0, page_receipt("upward-header.pdf", 1, 0), ["| Rot | Name |", "| --- | --- |", "| 11 | Alpha |"]), (
+        "an upward header must not read reversed")

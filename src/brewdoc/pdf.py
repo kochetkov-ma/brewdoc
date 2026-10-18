@@ -36,6 +36,7 @@ MIN_RULE_COLUMNS = 4     # a rule cut into fewer pieces is an underline, not a c
 GRID_ROW_COLUMNS = 3     # a row filling this many columns is using the grid
 GRID_ROW_SHARE = 3       # and one row in this many must, or the band is prose beside a rule
 SUBSCRIPT = 0.75         # a char smaller than this share of its cell's body size sits off-baseline
+WORD_GAP = {"x_tolerance_ratio": 0.15}  # a glyph gap over 0.15 em splits words, even tight TeX gaps
 TABLE_CAPTION_RE = re.compile(r"^\s*table\s+\d+", re.I)
 PAGE_NUMBER_RE = re.compile(r"^(?:page\s+)?\d+(?:\s*(?:of|/)\s*\d+)?$", re.I)
 REPEATS_AS_HEAD = 3      # a first/last line this many pages share is furniture, not content
@@ -212,7 +213,7 @@ def _text_lines(page, band, tally: dict, margins: list[str]) -> list[str]:
 def _layout_block(page, band, tally: dict) -> list[str]:
     crop = _crop(page, min(line["x0"] for line in band) - 1, band[0]["top"] - 1,
                  max(line["x1"] for line in band) + 1, band[-1]["bottom"] + 1)
-    text = sanitise((crop or page).extract_text(layout=True) or "", tally, keep_layout=True)
+    text = sanitise((crop or page).extract_text(layout=True, **WORD_GAP) or "", tally, keep_layout=True)
     rows = [row for row in text.split("\n") if row.strip()]
     return ["```", *rows, "```"] if rows else []
 
@@ -273,7 +274,7 @@ def _text_region(page, crop, tally: dict, margins: list[str], wide_table: bool,
     """Render bands in column order while preserving the prepared crop's object exclusions."""
     # Bands first, then a gutter search inside each: a two-column half usually sits under a
     # full-width abstract or table, and a whole-page histogram sees the two mixed.
-    lines = sorted(crop.extract_text_lines(), key=lambda line: (line["top"], line["x0"]))
+    lines = sorted(crop.extract_text_lines(**WORD_GAP), key=lambda line: (line["top"], line["x0"]))
     if not lines:
         return []
     unit, blocks = space_unit(lines), []
@@ -386,7 +387,7 @@ def _table_grid(page, table):
         if derived and len(derived) >= len(xs):
             xs = derived
             table._brewdoc_body_grid = True
-    for word in page.extract_words(x_tolerance_ratio=0.15):
+    for word in page.extract_words(**WORD_GAP):
         if ys[0] <= (word["top"] + word["bottom"]) / 2 <= ys[-1]:
             if word["x0"] < xs[0] < word["x1"]:
                 xs[0] = word["x0"]
@@ -398,7 +399,7 @@ def _table_grid(page, table):
 
 def _body_columns(page, bbox, structural) -> list[float]:
     """Use repeated record anchors to retain close numeric fields and adjacent text stubs."""
-    words = [word for word in page.extract_words(x_tolerance_ratio=0.15)
+    words = [word for word in page.extract_words(**WORD_GAP)
              if bbox[1] <= (word["top"] + word["bottom"]) / 2 <= bbox[3]]
     if not words:
         return []
@@ -544,7 +545,7 @@ def _math_regions(page) -> list:
                        for char in ink)
         if ordinary >= 35 and ordinary >= len(ink) * 0.6:
             prose.append((line["x0"], line["top"], line["x1"], line["bottom"] + 2))
-    chars = [char for char in page.chars if char.get("upright", True) and char["text"].strip()
+    chars = [char for char in page.chars if char["upright"] and char["text"].strip()
              and not any(box[0] <= (char["x0"] + char["x1"]) / 2 <= box[2]
                          and box[1] <= (char["top"] + char["bottom"]) / 2 <= box[3] for box in prose)]
     if not chars:
@@ -722,7 +723,8 @@ def _fold_subscripts(source, box, text: str, chars=None) -> str:
     chars = [char for char in chars
              if x0 <= (char["x0"] + char["x1"]) / 2 < x1
              and top <= (char["top"] + char["bottom"]) / 2 < bottom]
-    ink = [char for char in chars if char["text"].strip()]
+    # A rotated glyph's size is its advance, not its font size.
+    ink = [char for char in chars if char["text"].strip() and char["upright"]]
     if not ink:
         return text
     body = max(char["size"] for char in ink)
@@ -812,7 +814,10 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
     crop = page.filter(lambda obj: obj["object_type"] != "char"
                        or (bbox[0] <= (obj["x0"] + obj["x1"]) / 2 < bbox[2]
                            and bbox[1] <= (obj["top"] + obj["bottom"]) / 2 < bbox[3]))
-    words = crop.extract_words(x_tolerance_ratio=0.2, return_chars=True)
+    # pdfplumber reads rotated glyphs top to bottom; a header set upward reads bottom to top.
+    upward = [char["matrix"][1] > 0 for char in crop.chars if not char["upright"]]
+    words = crop.extract_words(x_tolerance_ratio=0.2, return_chars=True,
+                               char_dir_rotated="btt" if upward and all(upward) else None)
     words = [word for word in words if bbox[0] <= (word["x0"] + word["x1"]) / 2 <= bbox[2]
              and bbox[1] <= (word["top"] + word["bottom"]) / 2 <= bbox[3]]
     if not words:
@@ -825,7 +830,7 @@ def _logical_rows(page, bbox, xs, table=None) -> list[list[str]]:
             bands.append([])
         bands[-1].append(word)
     def column_at(x):
-        return min(len(xs) - 2, sum(x >= boundary for boundary in xs[1:-1]))
+        return sum(x >= boundary for boundary in xs[1:-1])
 
     def body_band(band):
         """Separate populated numeric records from bold or oversized header baselines."""
@@ -1086,7 +1091,7 @@ def _local_caption(page, bbox):
     """Extend a narrow table through a unique adjacent caption beside independent prose."""
     if bbox[2] - bbox[0] >= WIDE_TABLE * page.width:
         return None
-    words = page.extract_words(x_tolerance_ratio=0.15)
+    words = page.extract_words(**WORD_GAP)
     if not words:
         return None
     height = statistics.median(word["bottom"] - word["top"] for word in words)
@@ -1104,7 +1109,7 @@ def _local_caption(page, bbox):
                     start["x0"] - height * 0.5)
     side = page.filter(lambda obj: obj["object_type"] != "char"
                        or (obj["x0"] + obj["x1"]) / 2 >= separator)
-    lines = sorted(side.extract_text_lines(), key=lambda line: (line["top"], line["x0"]))
+    lines = sorted(side.extract_text_lines(**WORD_GAP), key=lambda line: (line["top"], line["x0"]))
     caption = []
     for line in lines:
         if line["top"] < start["top"] - 1e-6:
@@ -1184,12 +1189,13 @@ def render_page(page, tally: dict) -> tuple[list[tuple], list[str]]:
         return _crop(filtered, *box)
 
     def text_region(box):
-        """Emit residual text from the prepared view without restoring excluded objects."""
+        """Emit residual upright text; rotated stamps and labels stay out of the reading order."""
         crop = crop_region(box)
-        if crop is not None:
-            count_chars(crop.chars)
-        return (_text_region(page, crop, tally, margins, False, columns)
-                if crop is not None and crop.chars else [])
+        if crop is None:
+            return []
+        crop = crop.filter(lambda obj: obj["object_type"] != "char" or obj["upright"])
+        count_chars(crop.chars)
+        return _text_region(page, crop, tally, margins, False, columns) if crop.chars else []
 
     def object_block(box, cells, kind):
         """Emit one table or math object and account for its source characters once."""
