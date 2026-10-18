@@ -52,19 +52,27 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Convert ODT, ODP and EML files offline.",
-    "Pass Markdown and text files through without changing their bytes.",
-    "Mixed PDFs now list pages without extracted text."
+    "Write clean Markdown by default: minimal escaping, images as ![alt](src), no form-control or list-item records and no page landmark chrome.",
+    "Add opt-in --body-only output.",
+    "Accept PDF, DOCX, XLSX and other supported documents through --url.",
+    "Decode legacy HTML charsets such as koi8-r and windows-1251, and request gzip responses.",
+    "Finish JavaScript capture when the page becomes quiet."
   ],
   "release_fixes": [
-    "Preserve workbook Unicode and full datetime values.",
-    "Avoid duplicated DOCX fallback textboxes.",
-    "Fix PDF caption order, table-cell alignment and split formula labels."
+    "Fix PDF word spacing in tightly kerned text, such as LaTeX output.",
+    "Keep rotated watermark text out of PDF prose.",
+    "Decode entities in HTML titles.",
+    "Fall back to the full page when --article finds no article, instead of refusing.",
+    "Follow URL redirects whose location contains raw spaces.",
+    "Report the real refusal stage and resource_url.",
+    "Try the next address before any request bytes are sent.",
+    "Keep a JavaScript capture when one sub-request fails."
   ],
   "release_pr": 61,
   "release_examples": [
-    "brewdoc report.odt --out report.md",
-    "brewdoc message.eml --out message.md"
+    "brewdoc --body-only paper.pdf --out paper.md",
+    "brewdoc --url https://arxiv.org/pdf/1706.03762 --out attention.md",
+    "brewdoc koi8r-page.html --out page.md"
   ],
   "releases": {
     "0.2.0": {
