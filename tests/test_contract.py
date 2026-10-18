@@ -1,7 +1,9 @@
 import copy
 import hashlib
+import html
 import importlib.metadata
 import inspect
+import io
 import json
 import os
 import re
@@ -194,6 +196,20 @@ def zones_book(path: Path) -> Path:
     return path
 
 
+def rezipped(path: Path, data: bytes, old: str, new: str) -> Path:
+    """Write ZIP `data` to `path` with `old` replaced by `new` inside every member."""
+    with zipfile.ZipFile(io.BytesIO(data)) as source, zipfile.ZipFile(path, "w") as package:
+        for name in source.namelist():
+            package.writestr(name, source.read(name).replace(old.encode(), new.encode()))
+    return path
+
+
+# Source text holding entity-shaped runs; ENTITY_SAFE is its one-pass body form on every route.
+ENTITY_TEXT = "AT&T &amp; &copy; &#45; &#x2d; <b> a > b"
+ENTITY_SAFE = "AT&T &amp;amp; &amp;copy; &amp;#45; &amp;#x2d; &lt;b> a > b"
+ENTITY_XML = html.escape(ENTITY_TEXT, quote=False)
+
+
 def test_public_api_is_exactly_the_package_exports():
     # GIVEN the package root
     # WHEN its declared exports are read
@@ -261,7 +277,8 @@ def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tm
                  ("out", inspect.Parameter.POSITIONAL_OR_KEYWORD, None),
                  ("sheets", inspect.Parameter.KEYWORD_ONLY, None),
                  ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None),
-                 ("article", inspect.Parameter.KEYWORD_ONLY, False))),
+                 ("article", inspect.Parameter.KEYWORD_ONLY, False),
+                 ("body_only", inspect.Parameter.KEYWORD_ONLY, False))),
         ("render_html", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                          ("article", inspect.Parameter.KEYWORD_ONLY, False))),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
@@ -573,8 +590,8 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
     usage = capsys.readouterr().out.partition("\n")[0]
     # THEN it exits 0 and usage lists exactly the documented options
     assert (raised.value.code, usage) == (
-        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
-           "[--self-check] [document]",
+        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--body-only] [--out OUT] "
+           "[--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]",
     ), "the CLI surface must expose repeatable sheet and artifact requests"
 
 
@@ -587,8 +604,8 @@ def test_cli_without_a_document_returns_usage_two_on_stdout(monkeypatch, capsys)
     captured = capsys.readouterr()
     # THEN usage is the entire stdout, stderr is empty and the return value is two
     assert (code, captured.out, captured.err) == (
-        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] "
-           "[--self-check] [document]\n", "",
+        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--body-only] [--out OUT] "
+           "[--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]\n", "",
     ), "an omitted document must keep the non-raising stdout usage contract"
 
 
@@ -689,23 +706,23 @@ def test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes(tmp_path, 
     ("name", "build", "fields", "body"),
     [
         pytest.param("one.pdf", lambda path: pdf(path, text_op(72, 700, "hello")),
-                     dict(ONE_PAGE, name="one\\.pdf", suffix=".pdf"), HELLO, id="pdf"),
+                     dict(ONE_PAGE, name="one.pdf", suffix=".pdf"), HELLO, id="pdf"),
         pytest.param(
             "partial.pdf", lambda path: pdf(path, text_op(72, 700, "kept body"),
                                             "0 0 0 rg 100 100 20 20 re f\n"),
-            dict(NOT_APPLICABLE, name="partial\\.pdf", suffix=".pdf", route="pdf", unit="page",
+            dict(NOT_APPLICABLE, name="partial.pdf", suffix=".pdf", route="pdf", unit="page",
                  count=2, keys="page/000001, page/000002", pages=2, sheets=0, chapters=0,
                  tables=0, text_regions=1, omissions=PDF_OMISSIONS
-                 + "\n- Page 2: no extractable text; vector drawing content present\\.",
+                 + "\n- Page 2: no extractable text; vector drawing content present.",
                  contents="- [Page 1](#brewdoc-page-000001)\n- [Page 2](#brewdoc-page-000002)"),
             '<a id="brewdoc-page-000001"></a>\n## Page 1\n\nkept body\n\n'
             '<a id="brewdoc-page-000002"></a>\n## Page 2\n', id="pdf-empty-page"),
         pytest.param(
             "zones.xlsx", zones_book,
-            dict(name="zones\\.xlsx", suffix=".xlsx", route="sheet", unit="sheet", count=1,
+            dict(name="zones.xlsx", suffix=".xlsx", route="sheet", unit="sheet", count=1,
                  keys="sheet/000001", pages=0, sheets=1, chapters=0, tables=1, text_regions=0,
                  formula="available", formula_count="0", vba="unavailable", vba_count="unknown",
-                 omissions="- cell formulas in Markdown content \\- only cached values are "
+                 omissions="- cell formulas in Markdown content - only cached values are "
                            "rendered\n- formatting, colours, comments and data validation\n"
                            "- charts and embedded images\n- readable VBA source modules",
                  contents='- [Sheet 1: "Zones"](#brewdoc-sheet-000001)'),
@@ -714,12 +731,12 @@ def test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes(tmp_path, 
             "| North | 12.5 | 2026-07-18 |\n| South | 9.0 |  |\n", id="xlsx-date-and-empty-cell"),
         pytest.param(
             "growth.docx", lambda path: docx(path, GROWTH_REGULATORS),
-            dict(NOT_APPLICABLE, name="growth\\.docx", suffix=".docx", route="doc",
+            dict(NOT_APPLICABLE, name="growth.docx", suffix=".docx", route="doc",
                  unit="chapter", count=1, keys="chapter/000001", pages=0, sheets=0, chapters=1,
                  tables=1, text_regions=1,
                  omissions="- images, charts and the text drawn inside them\n"
                            "- tracked changes, comments, footnotes, headers and footers\n"
-                           "- a table's own formatting \\- only its cells, row by row",
+                           "- a table's own formatting - only its cells, row by row",
                  contents='- [Chapter 1: "Growth regulators"](#brewdoc-chapter-000001)'),
             '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Growth regulators"\n\n'
             "first line\nsecond line\n\n| Dose table |  |  |\n| --- | --- | --- |\n"
@@ -740,11 +757,11 @@ def test_small_documents_match_the_whole_schema_two_contract(tmp_path, name, bui
 @pytest.mark.parametrize(
     ("suffix", "name", "shown"),
     [
-        pytest.param(".pdf", "doc\\.pdf", ".pdf", id="plain"),
-        pytest.param(".p&lt;df", "doc\\.p&amp;lt;df", ".p&amp;lt;df", id="html-entity"),
-        pytest.param(".p[x](y)", "doc\\.p\\[x\\]\\(y\\)", ".p\\[x\\]\\(y\\)",
+        pytest.param(".pdf", "doc.pdf", ".pdf", id="plain"),
+        pytest.param(".p&lt;df", "doc.p&amp;lt;df", ".p&amp;lt;df", id="html-entity"),
+        pytest.param(".p[x](y)", "doc.p\\[x\\](y)", ".p\\[x\\](y)",
                      id="markdown-link"),
-        pytest.param(".pdf\u00e9", "doc\\.pdf&#233;", ".pdf&#233;", id="non-ascii"),
+        pytest.param(".pdf\u00e9", "doc.pdf&#233;", ".pdf&#233;", id="non-ascii"),
     ],
 )
 def test_source_suffix_row_is_ascii_and_escaped_like_the_source_name(
@@ -797,14 +814,14 @@ def test_docx_literal_anchor_content_cannot_forge_receipt_unit_keys(tmp_path):
         '<a id="brewdoc-contents"></a>\n## Contents\n\n'
         '- [Chapter 1: "Actual"](#brewdoc-chapter-000001)\n\n'
         '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Actual"\n\n'
-        '&lt;span id="brewdoc-chapter-999999"&gt;span&lt;/span&gt; '
-        "&lt;div id=brewdoc-page-999999&gt;div&lt;/div&gt; "
-        '&lt;a name="brewdoc-sheet-999999"&gt;name&lt;/a&gt; '
-        '&lt;span id="brewdoc&#45;chapter-777777"&gt;entity&lt;/span&gt; '
-        '&lt;a name="&#98;rewdoc-sheet-777777"&gt;encoded&lt;/a&gt;\n\n'
-        '| &lt;span id="brewdoc-sheet-888888"&gt;table&lt;/span&gt; '
-        "&lt;a name=brewdoc-chapter-888888&gt;cell&lt;/a&gt; "
-        '&lt;div id="brewdoc&#45;page-666666"&gt;table-entity&lt;/div&gt; |\n| --- |\n',
+        '&lt;span id="brewdoc-chapter-999999">span&lt;/span> '
+        "&lt;div id=brewdoc-page-999999>div&lt;/div> "
+        '&lt;a name="brewdoc-sheet-999999">name&lt;/a> '
+        '&lt;span id="brewdoc&amp;#45;chapter-777777">entity&lt;/span> '
+        '&lt;a name="&amp;#98;rewdoc-sheet-777777">encoded&lt;/a>\n\n'
+        '| &lt;span id="brewdoc-sheet-888888">table&lt;/span> '
+        "&lt;a name=brewdoc-chapter-888888>cell&lt;/a> "
+        '&lt;div id="brewdoc&amp;#45;page-666666">table-entity&lt;/div> |\n| --- |\n',
     ), "source elements and id or name attributes must not forge contract anchors or unit keys"
 
 
@@ -826,7 +843,7 @@ def test_a_pipe_in_a_source_name_is_escaped_once_by_the_metadata_row():
     rows = common.markdown_table(
         [["Field", "Value"], ["Source name", '"%s"' % common._escape_markdown_text(name)]])
     # THEN the pipe keeps one backslash, so the row stays two cells wide on every platform
-    assert rows == ["| Field | Value |", "| --- | --- |", '| Source name | "a\\|b\\.pdf" |'], (
+    assert rows == ["| Field | Value |", "| --- | --- |", '| Source name | "a\\|b.pdf" |'], (
         "text escaping must leave the pipe to markdown_table, the sole place it is escaped")
 
 
@@ -840,8 +857,261 @@ def test_a_pipe_in_a_source_filename_is_escaped_once_not_twice(tmp_path):
     markdown, _tally = brewdoc.render_pdf(path)
     # THEN the metadata row keeps one backslash, so the name stays inside a two-cell row
     assert [line for line in markdown.splitlines() if line.startswith("| Source name |")] == [
-        '| Source name | "a\\|b\\.pdf" |'
+        '| Source name | "a\\|b.pdf" |'
     ], "a source name's pipe must be escaped once, not twice; twice splits the metadata table"
+
+
+@pytest.mark.parametrize(
+    ("text", "options", "expected"),
+    [
+        pytest.param('AT&T &copy; snake_case *x* [y] <z> "q" a > b # 1. C:\\d', {},
+                     'AT&T &amp;copy; snake_case \\*x\\* \\[y\\] &lt;z> "q" a > b # 1. C:\\\\d',
+                     id="design-mix"),
+        pytest.param('e.g. 3.5 - see "this" & that', {}, 'e.g. 3.5 - see "this" & that',
+                     id="plain-prose"),
+        pytest.param("Hello, world! (see: {a} ~~x~~ = 1 + 2; 50% #1 | ok)", {},
+                     "Hello, world! (see: {a} ~~x~~ = 1 + 2; 50% #1 | ok)", id="inert-punctuation"),
+        pytest.param("a `b` c", {}, "a \\`b\\` c", id="backtick"),
+        pytest.param("_lead trail_ a_b 1_2 __init__ tika-testWORD_various", {},
+                     "\\_lead trail\\_ a_b 1_2 \\_\\_init\\_\\_ tika-testWORD_various",
+                     id="underscore-intraword"),
+        pytest.param("&amp; &#45; &#x2D; &a_1; &; &#; & x &a-b;", {},
+                     "&amp;amp; &amp;#45; &amp;#x2D; &amp;a_1; &; &#; & x &a-b;", id="ampersand"),
+        pytest.param("<&lt;", {}, "&lt;&amp;lt;", id="one-pass"),
+        pytest.param("a\r\nb\tc", {}, "a  b c", id="line-breaks"),
+        pytest.param("\x00\x01\x0b\x1b\x7f", {}, "&#0;&#1;&#11;&#27;&#127;", id="controls"),
+        pytest.param("\x7f\x80\x85\x9f\xa0\u00e9", {"preserve_unicode": True},
+                     "&#127;&#128;&#133;&#159;\xa0\u00e9", id="c1-controls-with-unicode"),
+        pytest.param("caf\u00e9 &eacute;", {}, "caf&#233; &amp;eacute;", id="non-ascii"),
+        # An entity is punctuation to CommonMark flanking, so `&#233;_&#233;` pairs can open emphasis.
+        pytest.param("\u00e9_\u00e9 and caf\u00e9_x y_\u00e9", {},
+                     "&#233;\\_&#233; and caf&#233;\\_x y\\_&#233;", id="ascii-route-underscore"),
+        pytest.param("\u00e9_\u00e9 and caf\u00e9_x &\u00e9;", {"preserve_unicode": True},
+                     "\u00e9_\u00e9 and caf\u00e9_x &\u00e9;", id="unicode-underscore"),
+        pytest.param('say "hi"\tnow', {"quoted": True}, "say &quot;hi&quot; now", id="quoted"),
+        pytest.param('a\n\tb "c"', {"literal": True}, "a&#10;&#9;b &quot;c&quot;", id="literal"),
+        pytest.param("\r<&lt;", {"literal": True}, "&#13;&lt;&amp;lt;", id="literal-specials"),
+    ],
+)
+def test_the_markdown_escaper_marks_only_inline_syntax(text, options, expected):
+    # GIVEN source text in one of the escaper's plain, Unicode, quoted or literal modes
+    # WHEN it is escaped for an inline Markdown field
+    escaped = common._escape_markdown_text(text, **options)
+    # THEN only inline syntax, entity-shaped runs, quotes in quoted modes and controls change
+    assert escaped == expected, "the escaper must neutralise syntax and leave plain prose verbatim"
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        pytest.param("# Title", "\\# Title", id="atx-heading"),
+        pytest.param("> quote", "\\> quote", id="blockquote"),
+        pytest.param("- item", "\\- item", id="dash-item"),
+        pytest.param("+ item", "\\+ item", id="plus-item"),
+        pytest.param("* item", "\\* item", id="star-item"),
+        pytest.param("1. one", "1\\. one", id="ordered-dot"),
+        pytest.param("2) two", "2\\) two", id="ordered-paren"),
+        pytest.param("12.", "12\\.", id="ordered-bare"),
+        pytest.param("  - x", "\\- x", id="indented-dash"),
+        pytest.param("\t# tabbed", "\\# tabbed", id="tab-indent"),
+        pytest.param("    indented code", "indented code", id="four-space-indent"),
+        pytest.param("===", "\\===", id="setext-equals"),
+        pytest.param("---", "\\---", id="setext-dash"),
+        pytest.param("```", "\\`\\`\\`", id="backtick-fence"),
+        pytest.param("~~~ x", "\\~~~ x", id="tilde-fence"),
+        pytest.param("| a | b |", "\\| a | b |", id="leading-pipe"),
+        pytest.param(":-- | --:", "\\:-- | --:", id="delimiter-row"),
+        pytest.param(":-", "\\:-", id="pipeless-left-delimiter"),
+        pytest.param(":-:", "\\:-:", id="pipeless-center-delimiter"),
+        pytest.param("-:", "\\-:", id="pipeless-right-delimiter"),
+        pytest.param("1.5 kg", "1.5 kg", id="decimal"),
+        pytest.param(":-) smile", ":-) smile", id="colon-dash"),
+        pytest.param("a - b # c", "a - b # c", id="mid-line"),
+    ],
+)
+def test_a_source_line_cannot_open_a_markdown_block(line, expected):
+    # GIVEN one source-derived line that may begin with block syntax
+    assert line.splitlines() == [line], "line-start escaping applies to one line"
+    # WHEN it is inline-escaped and then line-start escaped, as markup routes compose them
+    escaped = common._escape_line_start(common._escape_markdown_text(line))
+    # THEN a block opener at its start is neutralised and plain lines stay verbatim
+    assert escaped == expected, "a source line must not open a heading, list, quote, fence or table"
+
+
+@pytest.mark.parametrize(
+    ("text", "options", "budget", "expected"),
+    [
+        pytest.param("_x_ a_b &amp; <", {}, 24, "\\_x\\_ a_b &amp;amp; &lt;", id="ascii-syntax"),
+        pytest.param("\x85", {"preserve_unicode": True}, 6, "&#133;", id="unicode-c1-control"),
+    ],
+)
+def test_the_escaper_budget_counts_the_minimal_escaped_size_exactly(text, options, budget, expected):
+    # GIVEN text whose minimal escaped form is exactly `budget` UTF-8 bytes
+    assert len(expected.encode("utf-8")) == budget, "the budget must equal the escaped size"
+    # WHEN it is escaped under a budget equal to that size
+    escaped = common._escape_markdown_text(text, **options, max_markdown_bytes=budget)
+    # THEN the prospective check admits exactly the minimal form
+    assert escaped == expected, "the budget must count only bytes the escaper writes"
+
+
+@pytest.mark.parametrize(
+    ("text", "options", "budget"),
+    [
+        pytest.param("_x_ a_b &amp; <", {}, 23, id="ascii-syntax"),
+        pytest.param("\x85", {"preserve_unicode": True}, 5, id="unicode-c1-control"),
+    ],
+)
+def test_the_escaper_budget_refuses_one_byte_below_the_escaped_size(text, options, budget):
+    # GIVEN text with a budget one byte under its escaped form
+    # WHEN it is escaped
+    with pytest.raises(brewdoc.BrewdocError) as raised:
+        common._escape_markdown_text(text, **options, max_markdown_bytes=budget)
+    # THEN the prospective size check refuses it before materializing
+    assert str(raised.value) == "Markdown byte limit exceeded: maximum %d" % budget, (
+        "an escaped field larger than its budget must be refused")
+
+
+@pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+def test_an_html_line_break_before_a_pipeless_delimiter_row_cannot_forge_a_table(tmp_path):
+    # GIVEN an HTML paragraph whose break puts a pipeless `:-` delimiter row under one cell
+    path = tmp_path / "forge.html"
+    path.write_text("<p>a<br>:-</p>", encoding="utf-8")
+    # WHEN only its body is rendered
+    code, _receipt, markdown = brewdoc.run(path, body_only=True)
+    # THEN the delimiter row is escaped, so GFM keeps one paragraph instead of a one-column table
+    assert (code, markdown) == (0, "a\n\\:-\n"), "a source line must not complete a GFM table header"
+
+
+def test_envelope_fields_are_inline_escaped_quoted_and_line_start_safe(tmp_path):
+    # GIVEN a chapter label, omissions and navigation labels carrying Markdown and HTML syntax
+    path = tmp_path / "notes_v1.2 (final).epub"
+    path.write_bytes(b"synthetic source identity")
+    label = 'Say "hi" & <b> e.g. 3.5 - x_y'
+    heading = 'Chapter 1: "Say &quot;hi&quot; & &lt;b> e.g. 3.5 - x_y"'
+    body = '<a id="brewdoc-chapter-000001"></a>\n## %s\n\nbody\n' % heading
+    expected = schema_two(
+        path, body, **NOT_APPLICABLE, name="notes_v1.2 (final).epub", suffix=".epub",
+        route="epub", unit="chapter", count=1, keys="chapter/000001", pages=0, sheets=0,
+        chapters=1, tables=0, text_regions=0,
+        omissions="- \\- dash\n- 1\\. one\n- \\# hash\n- plain - prose, e.g. 3.5.",
+        contents="- [%s](#brewdoc-chapter-000001)\n\n"
+                 '<a id="brewdoc-publication-navigation"></a>\n### Publication navigation\n\n'
+                 "- \\## Part\n  - [\\[x\\](#y)](#brewdoc-chapter-000001)" % heading)
+    # WHEN common assembly builds the envelope
+    rendered = common._assemble(
+        path, "epub", "chapter", 1, [(1, label, [("text", ["body"])])], zero_tally(),
+        not_carried=("- dash", "1. one", "# hash", "plain - prose, e.g. 3.5."),
+        preserve_unicode=True,
+        publication_navigation=((0, "## Part", None), (1, "[x](#y)", "brewdoc-chapter-000001")))
+    # THEN labels escape inline syntax and quotes, and line-leading items cannot open blocks
+    assert rendered == (expected, {**zero_tally(), "chapters": 1}, ("chapter/000001",), ()), (
+        "envelope text must be minimally escaped, quoted where quoted and safe at line start")
+
+
+@pytest.mark.skipif(
+    any(character in RESERVED_FILENAME_CHARS for character in '"<>'),
+    reason="this platform reserves quotes and angle brackets in filenames")
+def test_a_quoted_source_name_escapes_its_quotes_and_markup(tmp_path):
+    # GIVEN a one-page PDF whose name carries quotes, a tag and a link shape
+    path = pdf(tmp_path / 'say "hi" <b> [x](y).pdf', text_op(72, 700, "hello"))
+    name = "say &quot;hi&quot; &lt;b> \\[x\\](y).pdf"
+    # WHEN it is rendered through the public run path
+    code, _receipt, markdown = brewdoc.run(path)
+    # THEN the quoted title and Source name rows keep the value inside its quotes
+    assert (code, markdown) == (0, schema_two(path, HELLO, **ONE_PAGE, name=name, suffix=".pdf")), (
+        "a source name must not close its quotes or open a tag or link")
+
+
+def test_a_docx_heading_cannot_forge_a_contents_link_or_unit_anchor(tmp_path):
+    # GIVEN a Word heading shaped like a closing link target and a chapter anchor
+    forged = ('Real&quot;](#brewdoc-chapter-000009) '
+              '&lt;a id=&quot;brewdoc-chapter-000009&quot;&gt;&lt;/a&gt;')
+    path = docx(tmp_path / "forged.docx", HEADING % forged + "<w:p><w:r><w:t>b</w:t></w:r></w:p>")
+    heading = ('Chapter 1: "Real&quot;\\](#brewdoc-chapter-000009) '
+               '&lt;a id=&quot;brewdoc-chapter-000009&quot;>&lt;/a>"')
+    # WHEN the public run path renders and receipts it
+    code, receipt, markdown = brewdoc.run(path)
+    # THEN the label stays inside one contents link and one heading, with one unit key
+    assert (code, receipt["unit_keys"], markdown[markdown.index('<a id="brewdoc-contents"></a>'):]) == (
+        0, ["chapter/000001"],
+        '<a id="brewdoc-contents"></a>\n## Contents\n\n'
+        "- [%s](#brewdoc-chapter-000001)\n\n"
+        '<a id="brewdoc-chapter-000001"></a>\n## %s\n\nb\n' % (heading, heading),
+    ), "a source heading must not close its contents link or forge a chapter anchor"
+
+
+@pytest.mark.parametrize(
+    ("fence", "escaped"),
+    [
+        pytest.param("```", "\\```", id="backtick-fence"),
+        pytest.param("~~~~ x", "\\~~~~ x", id="tilde-fence-with-info"),
+    ],
+)
+def test_a_docx_fence_line_cannot_swallow_the_next_chapter_heading(tmp_path, fence, escaped):
+    # GIVEN two Word chapters whose first body paragraph is an unclosed fence opener
+    paragraph = "<w:p><w:r><w:t>%s</w:t></w:r></w:p>"
+    path = docx(tmp_path / "fence.docx", HEADING % "Intro" + paragraph % fence + paragraph % "First"
+                + HEADING % "Next" + paragraph % "Second")
+    # WHEN the public run path renders the full document
+    code, _receipt, markdown = brewdoc.run(path)
+    # THEN the fence run is escaped, so chapter 2's anchor and heading stay outside any code block
+    assert (code, markdown[markdown.index('<a id="brewdoc-chapter-000001"></a>'):]) == (
+        0, '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Intro"\n\n%s\n\nFirst\n\n'
+           '<a id="brewdoc-chapter-000002"></a>\n## Chapter 2: "Next"\n\nSecond\n' % escaped,
+    ), "raw-route source text must not open a code block over later generated headings"
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "expected"),
+    [
+        pytest.param("one.pdf", lambda path: pdf(path, text_op(72, 700, ENTITY_TEXT)),
+                     '<a id="brewdoc-page-000001"></a>\n## Page 1\n\n%s\n' % ENTITY_SAFE,
+                     id="pdf"),
+        pytest.param(
+            "one.docx", lambda path: docx(path, "<w:p><w:r><w:t>%s</w:t></w:r></w:p>"
+                                          "<w:tbl><w:tr>%s</w:tr></w:tbl>"
+                                          % (ENTITY_XML, CELL % ("", ENTITY_XML))),
+            '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\n%s\n\n| %s |\n| --- |\n'
+            % (ENTITY_SAFE, ENTITY_SAFE), id="docx-prose-and-cell"),
+        pytest.param(
+            "zones.xlsx", lambda path: rezipped(path, zones_book(path).read_bytes(), "North",
+                                                ENTITY_XML),
+            '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Zones"\n\n'
+            "| Zone | Area | Sown |\n| --- | --- | --- |\n"
+            "| %s | 12.5 | 2026-07-18 |\n| South | 9.0 |  |\n" % ENTITY_SAFE, id="xlsx-cell"),
+        pytest.param(
+            "one.pptx", lambda path: rezipped(path, selfcheck.synthetic_pptx(), "North field",
+                                              ENTITY_XML),
+            '<a id="brewdoc-slide-000001"></a>\n## Slide 1: "Harvest plan"\n\n%s\n' % ENTITY_SAFE,
+            id="pptx"),
+        pytest.param(
+            "one.odt", lambda path: rezipped(path, selfcheck._synthetic_odf("odt"),
+                                             "caf\u00e9 \u6771\u4eac", ENTITY_XML),
+            '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Title"\n\n%s\n' % ENTITY_SAFE,
+            id="odt"),
+        pytest.param(
+            "one.odp", lambda path: rezipped(path, selfcheck._synthetic_odf("odp"),
+                                             "caf\u00e9 \u6771\u4eac", ENTITY_XML),
+            '<a id="brewdoc-slide-000001"></a>\n## Slide 1: "Title"\n\n%s\n' % ENTITY_SAFE,
+            id="odp"),
+        pytest.param(
+            "one.html", lambda path: path.write_text("<p>%s</p>" % ENTITY_XML, encoding="utf-8"),
+            '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Untitled"\n\n%s\n' % ENTITY_SAFE,
+            id="html-markup-route-once",
+            marks=pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")),
+    ],
+)
+def test_entity_shaped_source_text_is_escaped_once_on_every_body_route(
+        tmp_path, name, build, expected):
+    # GIVEN one route's document whose body text holds entity-shaped runs, a tag and `>`
+    path = tmp_path / name
+    build(path)
+    assert sorted(tmp_path.iterdir()) == [path], "the route document must be the only input"
+    # WHEN the public run path renders it
+    code, _receipt, markdown = brewdoc.run(path)
+    # THEN each entity-shaped run is escaped exactly once, `<` is an entity and `>` stays literal
+    assert (code, markdown[markdown.index(expected.partition("\n")[0]):]) == (0, expected), (
+        "source text that looks like an entity must stay visible text, never decode or double-escape")
 
 
 def test_a_docx_main_part_is_resolved_through_its_package_relationship(tmp_path):
@@ -882,7 +1152,7 @@ def test_fixed_layout_block_keeps_source_angle_brackets_and_ampersands_literal(t
         '<a id="brewdoc-page-000001"></a>\n## Page 1\n\n```\n'
         "if d > 0:            a < b              x & y\n"
         "while c:             c > d              p & q\n"
-        "```\n\nprose a &lt; b & c &gt; d\n"
+        "```\n\nprose a &lt; b & c > d\n"
     ), "fenced code is literal Markdown, so HTML escaping there corrupts source text"
 
 

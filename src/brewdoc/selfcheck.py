@@ -393,7 +393,7 @@ def self_check() -> int:
             if rc == EXIT_OK:
                 want("HTML preserves Unicode prose and complete table cells",
                      chapter_lines(html_md, "Static HTML"),
-                     ["café 東京", "| Zone | Area |", "| --- | --- |", r"| North | 12\.5 |"])
+                     ["café 東京", "| Zone | Area |", "| --- | --- |", "| North | 12.5 |"])
                 want("HTML counts its chapter, table and prose",
                      (line["units"], line["tables"], line["text_regions"], line["unit_keys"]),
                      (1, 1, 1, ["chapter/000001"]))
@@ -419,7 +419,7 @@ def self_check() -> int:
         expected_tally.update(chapters=2, text_regions=2)
         want("EPUB preserves Unicode and its public wrapper matches the service",
              (render_epub(epub_path), chapter_lines(epub_md, "First"), chapter_lines(epub_md, "Second")),
-             ((epub_md, expected_tally), ["café 東京\u00a0"], [r"Back matter\."]))
+             ((epub_md, expected_tally), ["café 東京\u00a0"], ["Back matter."]))
         want("EPUB conversion is deterministic", run(epub_path), (rc, line, epub_md))
         epub_out = Path(tmp, "epub.md")
         written_rc, written_line, written_md = run(epub_path, out=epub_out)
@@ -457,7 +457,7 @@ def self_check() -> int:
 def chapter_lines(markdown: str, heading: str) -> list[str]:
     """Return content under a plain heading or any registered unit display label."""
     lines = markdown.splitlines()
-    label = ': "%s"' % _escape_markdown_text(heading)
+    label = ': "%s"' % _escape_markdown_text(heading, quoted=True)
     unit_headings = tuple("## %s " % kind.title() for kind in UNIT_COUNTERS)
     unit_anchor = r'<a id="brewdoc-(?:%s)-\d{6}"></a>' % "|".join(
         re.escape(kind) for kind in UNIT_COUNTERS)

@@ -39,9 +39,9 @@ def test_empty_docx_body_keeps_one_empty_chapter_and_exact_success_receipt(tmp_p
                  "a table's own formatting - only its cells, row by row"]
     expected = schema_two(
         path, '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n',
-        **NOT_APPLICABLE, name="empty\\.docx", suffix=".docx", route="doc", unit="chapter",
+        **NOT_APPLICABLE, name="empty.docx", suffix=".docx", route="doc", unit="chapter",
         count=1, keys="chapter/000001", pages=0, sheets=0, chapters=1, tables=0, text_regions=0,
-        omissions="\n".join("- " + item for item in omissions).replace(" - only", " \\- only"),
+        omissions="\n".join("- " + item for item in omissions),
         contents='- [Chapter 1: "Body"](#brewdoc-chapter-000001)')
     receipt = {"file_ok": True, "route": "doc", "source": "empty.docx", "out": str(out),
                "reason": "doc rendered: 1 chapters, 0 tables, 0 text regions, 0 column splits",

@@ -137,67 +137,97 @@ def test_html_fixture_is_explicitly_refused_on_an_unsupported_runtime(rel, tmp_p
 
 
 @pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
-@pytest.mark.parametrize("rel,sha256,reason", [
+@pytest.mark.parametrize("rel,sha256", [
     pytest.param("html/mdn-first-form-styled.html",
-                 "cd7c192dc6e230737064e053f92947a5159e82e72cd8740d2529c4f1a8abad06",
-                 "HTML article extraction refused: no eligible article or suitable main", id="form"),
+                 "cd7c192dc6e230737064e053f92947a5159e82e72cd8740d2529c4f1a8abad06", id="form"),
     pytest.param("html/apache-httpd-allowmethods.html",
-                 "3f12805108439e0008b6e1918416da2da7381ae04ec9c68f19a56e4b55ebcb56",
-                 "HTML article extraction refused: no eligible article or suitable main", id="unmarked-reference"),
-    pytest.param("html/mdn-flexbox0.html",
-                 "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5",
-                 "HTML article extraction refused: ambiguous articles", id="three-peer-articles"),
+                 "3f12805108439e0008b6e1918416da2da7381ae04ec9c68f19a56e4b55ebcb56", id="unmarked-reference"),
 ])
-def test_original_html_article_refusals_preserve_the_complete_receipt_and_destination(
-        tmp_path, rel, sha256, reason):
-    from test_html_article import refused_receipt
-
-    # GIVEN unchanged licensed original HTML and a preserved output destination
-    path, out = FIXTURES / rel, tmp_path / "preserved.md"
-    out.write_bytes(b"preserved")
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == sha256, "article corpus input must match provenance"
-    # WHEN article mode encounters an unsuitable original document
+def test_original_html_without_article_or_main_falls_back_to_the_default_document(tmp_path, rel, sha256):
+    # GIVEN licensed original HTML with no article or main, its pinned default run and a stale destination
+    path, out = FIXTURES / rel, tmp_path / "article.md"
+    out.write_bytes(b"stale")
+    default_rc, default_receipt, default_markdown = service.run(path)
+    assert (hashlib.sha256(path.read_bytes()).hexdigest(), snapshot(default_rc, default_receipt)) == (
+        sha256, RECEIPTS[rel]), "article corpus input and its default receipt must match provenance"
+    # WHEN article mode finds no candidate in the original document
     result = service.run(path, out, article=True)
-    # THEN fixed refusal semantics and transaction safety match the complete expected object
-    assert (result, out.read_bytes()) == ((1, refused_receipt(path, reason), ""), b"preserved"), (
-        "original forms, unmarked references and peer articles must refuse without fallback")
+    # THEN the default document is published and the receipt adds only out and the fallback signal
+    assert (result, out.read_bytes()) == (
+        (0, {**default_receipt, "out": str(out), "article_fallback": True}, default_markdown),
+        default_markdown.encode("utf-8"),
+    ), "original forms and unmarked references must fall back to the whole clean page"
+
+
+@pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+def test_original_mdn_peer_articles_render_in_order_without_the_page_header(tmp_path):
+    from test_html_article import article_document, article_receipt
+
+    # GIVEN the original licensed flexbox example: a page header and three peer articles
+    path, out = FIXTURES / "html/mdn-flexbox0.html", tmp_path / "article.md"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "ad4e1248e97f6c51431ce2c9e9d93b708aee91887eda4c26965f5ceeed3bdfd5"
+    ), "peer article corpus input must remain byte-identical to the licensed source"
+    prose = (
+        "Tacos actually microdosing, pour-over semiotics banjo chicharrones retro fanny pack portland "
+        "everyday carry vinyl typewriter. Tacos PBR&B pork belly, everyday carry ennui pickled sriracha "
+        "normcore hashtag polaroid single-origin coffee cold-pressed. PBR&B tattooed trust fund twee, "
+        "leggings salvia iPhone photo booth health goth gastropub hammock.\n"
+    )
+    content = (
+        "#### First article\n\n" + prose + "\n#### Second article\n\n" + prose
+        + "\n#### Third article\n\n" + prose + "\nCray food truck brunch, XOXO +1 keffiyeh pickled "
+        "chambray waistcoat ennui. Organic small batch paleo 8-bit. Intelligentsia umami wayfarers "
+        "pickled, asymmetrical kombucha letterpress kitsch leggings cold-pressed squid chartreuse put a "
+        "bird on it. Listicle pickled man bun cornhole heirloom art party.\n"
+    )
+    expected = article_document(path, content, 7, title="Flexbox 0 — starting code").replace(
+        "sample.html", "mdn-flexbox0.html")
+    # WHEN article mode selects every top-level article of the original page
+    result = service.run(path, out, article=True)
+    # THEN all three articles keep source order and the header outside them is not carried
+    assert (result, out.read_bytes()) == (
+        (0, article_receipt(path, out, 7), expected), expected.encode("utf-8")
+    ), "licensed peer articles must all render in DOM order with the article disclosure"
 
 
 @pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
 def test_original_mdn_structure_article_keeps_sections_and_excludes_page_chrome(tmp_path):
     from test_html_article import article_document, article_receipt
 
-    # GIVEN the original licensed structure example with article, navigation, aside and footer
+    # GIVEN the original licensed structure example: header, navigation, main with article and aside, footer
     path, out = FIXTURES / "html/mdn-document-structure.html", tmp_path / "article.md"
     assert hashlib.sha256(path.read_bytes()).hexdigest() == (
         "8623d0ff8d0696128844a2315d8c23840cf839d52fab09fcd06eabb3e5e966ec"
     ), "positive article corpus input must remain byte-identical to the licensed source"
     content = (
-        "#### Article heading\n\nLorem ipsum dolor sit amet, consectetur adipisicing elit\\. "
-        "Donec a diam lectus\\. Set sit amet ipsum mauris\\. Maecenas congue ligula as quam "
-        "viverra nec consectetur ant hendrerit\\. Donec et mollis dolor\\. Praesent et diam eget "
-        "libero egestas mattis sit amet vitae augue\\. Nam tincidunt congue enim, ut porta "
-        "lorem lacinia consectetur\\.\n\n##### Subsection\n\nDonec ut librero sed accu vehicula "
-        "ultricies a non tortor\\. Lorem ipsum dolor sit amet, consectetur adipisicing elit\\. "
-        "Aenean ut gravida lorem\\. Ut turpis felis, pulvinar a semper sed, adipiscing id dolor\\.\n\n"
-        "Pelientesque auctor nisi id magna consequat sagittis\\. Curabitur dapibus, enim sit amet "
-        "elit pharetra tincidunt feugiat nist imperdiet\\. Ut convallis libero in urna ultrices "
-        "accumsan\\. Donec sed odio eros\\.\n\n##### Another subsection\n\nDonec viverra mi quis "
-        "quam pulvinar at malesuada arcu rhoncus\\. Cum soclis natoque penatibus et manis dis "
-        "parturient montes, nascetur ridiculus mus\\. In rutrum accumsan ultricies\\. Mauris vitae "
-        "nisi at sem facilisis semper ac in est\\.\n\nVivamus fermentum semper porta\\. Nunc diam "
-        "velit, adipscing ut tristique vitae sagittis vel odio\\. Maecenas convallis ullamcorper "
-        "ultricied\\. Curabitur ornare, ligula semper consectetur sagittis, nisi diam iaculis "
-        "velit, is fringille sem nunc vet mi\\.\n"
+        "#### Article heading\n\nLorem ipsum dolor sit amet, consectetur adipisicing elit. "
+        "Donec a diam lectus. Set sit amet ipsum mauris. Maecenas congue ligula as quam "
+        "viverra nec consectetur ant hendrerit. Donec et mollis dolor. Praesent et diam eget "
+        "libero egestas mattis sit amet vitae augue. Nam tincidunt congue enim, ut porta "
+        "lorem lacinia consectetur.\n\n##### Subsection\n\nDonec ut librero sed accu vehicula "
+        "ultricies a non tortor. Lorem ipsum dolor sit amet, consectetur adipisicing elit. "
+        "Aenean ut gravida lorem. Ut turpis felis, pulvinar a semper sed, adipiscing id dolor.\n\n"
+        "Pelientesque auctor nisi id magna consequat sagittis. Curabitur dapibus, enim sit amet "
+        "elit pharetra tincidunt feugiat nist imperdiet. Ut convallis libero in urna ultrices "
+        "accumsan. Donec sed odio eros.\n\n##### Another subsection\n\nDonec viverra mi quis "
+        "quam pulvinar at malesuada arcu rhoncus. Cum soclis natoque penatibus et manis dis "
+        "parturient montes, nascetur ridiculus mus. In rutrum accumsan ultricies. Mauris vitae "
+        "nisi at sem facilisis semper ac in est.\n\nVivamus fermentum semper porta. Nunc diam "
+        "velit, adipscing ut tristique vitae sagittis vel odio. Maecenas convallis ullamcorper "
+        "ultricied. Curabitur ornare, ligula semper consectetur sagittis, nisi diam iaculis "
+        "velit, is fringille sem nunc vet mi.\n\n#### Related\n\n"
+        "- [Oh I do like to be beside the seaside](#)\n- [Oh I do like to be beside the sea](#)\n"
+        "- [Although in the North of England](#)\n- [It never stops raining](#)\n- [Oh well…](#)\n"
     )
-    expected = article_document(path, content, 8, title="My page title").replace(
-        "sample\\.html", "mdn\\-document\\-structure\\.html")
-    # WHEN article mode selects the original article subtree
+    expected = article_document(path, content, 14, title="My page title").replace(
+        "sample.html", "mdn-document-structure.html")
+    # WHEN article mode renders the whole main, which holds the article and an aside
     result = service.run(path, out, article=True)
-    # THEN exact source prose and headings survive with no navigation, search, aside or footer
+    # THEN article and in-main aside keep source order with no page header, navigation, search or footer
     assert (result, out.read_bytes()) == (
-        (0, article_receipt(path, out, 8), expected), expected.encode("utf-8")
-    ), "licensed positive article evidence must preserve every selected paragraph in source order"
+        (0, article_receipt(path, out, 14), expected), expected.encode("utf-8")
+    ), "licensed article evidence must render the whole main in source order and drop only page chrome"
 
 
 @pytest.mark.parametrize("rel", EPUB_FIXTURES)

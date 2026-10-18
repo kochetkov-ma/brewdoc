@@ -71,10 +71,9 @@ def expected_render(path):
     """Declare the full selected-sheet Markdown, including artifact inventory."""
     markdown = schema_two(
         path, CALC, formula="available", formula_count=4, vba="unavailable", vba_count="unknown",
-        name="book\\.xlsx", suffix=".xlsx", route="sheet", unit="sheet", count=1,
+        name="book.xlsx", suffix=".xlsx", route="sheet", unit="sheet", count=1,
         keys="sheet/000002", pages=0, sheets=1, chapters=0, tables=1, text_regions=0,
-        omissions="\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]).replace(
-            " - only", " \\- only"),
+        omissions="\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]),
         contents='- [Sheet 2: "Calc"](#brewdoc-sheet-000002)')
     markdown = markdown.replace("| Source unit count | 1 |", "| Source unit count | 3 |")
     artifact_table = (

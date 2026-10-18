@@ -11,7 +11,7 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from pathlib import Path
 
-from brewdoc.common import (BrewdocError, Rendered, Route, _assemble,
+from brewdoc.common import (BrewdocError, Rendered, Route, _assemble, _escape_line_start,
                             _escape_markdown_text, new_tally, reading)
 
 MAX_MESSAGE_NODES = 1_024
@@ -150,8 +150,8 @@ def _render_eml(path: Path, _sheets=None, *, _html_content=None) -> Rendered:
                 blocks.append(("block", ["```", *text.split("\n"), "```"]))
                 tally["text_regions"] += 1
         if attachments:
-            lines = ["Attachments:", *(
-                "- " + _escape_markdown_text(name, preserve_unicode=True) for name in attachments)]
+            lines = ["Attachments:", *("- " + _escape_line_start(_escape_markdown_text(
+                name, preserve_unicode=True)) for name in attachments)]
             blocks.append(("text", lines))
             tally["text_regions"] += 1
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, 1, [(1, label, blocks)], tally,
