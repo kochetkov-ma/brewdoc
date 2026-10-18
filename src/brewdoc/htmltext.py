@@ -1,15 +1,17 @@
-"""Static HTML adapter with strict UTF-8 input and literal Unicode text."""
+"""Static HTML adapter with WHATWG charset decoding and literal Unicode text."""
 
 from __future__ import annotations
 
+import codecs
+import functools
 import platform
 import re
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
-from brewdoc.common import (MARKDOWN_ESCAPES, BrewdocError, Rendered, Route, _assemble,
-                            new_tally, reading)
+from brewdoc.common import (BrewdocError, Rendered, Route, _ascii_integer, _assemble, _close_list_item,
+                            _emphasis, _escape_markdown_text, _merge_list, _ordered_marker,
+                            _source_lines, _url_target, new_tally, reading)
 
 _SUPPORTED_RUNTIME = platform.python_implementation() == "CPython" and (3, 12) <= sys.version_info < (3, 15)
 _PARSER_ERROR = ""
@@ -24,22 +26,29 @@ _EXCLUDED = frozenset({"head", "script", "style", "template", "object", "embed",
                        "audio", "video", "applet"})
 _BLOCKS = frozenset({"body", "address", "article", "aside", "div", "footer", "header", "main",
                     "nav", "p", "section", "figure", "figcaption", "dl", "dt", "dd", "hr",
-                    "legend", "summary"})
-_CONTROL_BOUNDARIES = frozenset({"form", "fieldset", "label", "select", "optgroup", "datalist",
-                                "progress", "meter", "details"})
-_CONTROL_TAGS = _CONTROL_BOUNDARIES | frozenset({"button", "input", "textarea", "output", "option"})
-_ARTICLE_CONTEXTS = _CONTROL_TAGS | frozenset({"nav", "aside", "header", "footer"})
+                    "legend", "summary", "form", "fieldset", "label", "details", "td", "th"})
+_CONTROLS = frozenset({"button", "input", "select", "option", "optgroup", "datalist", "textarea",
+                       "output", "progress", "meter"})
 ARTICLE_OMISSION = (
     "body content outside the selected article or main subtree; complete page coverage is not claimed"
 )
-_ARTICLE_NO_ROOT = "HTML article extraction refused: no eligible article or suitable main"
-_ARTICLE_MAINS = "HTML article extraction refused: ambiguous mains"
-_ARTICLE_ARTICLES = "HTML article extraction refused: ambiguous articles"
-_ARTICLE_EMPTY = "HTML article extraction refused: empty selected content"
-ARTICLE_REFUSALS = (_ARTICLE_NO_ROOT, _ARTICLE_MAINS, _ARTICLE_ARTICLES, _ARTICLE_EMPTY)
 _EMPHASIS = {"em": "*", "i": "*", "strong": "**", "b": "**"}
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+_BREAKS = _BLOCKS | _HEADINGS | {"ul", "ol", "li", "blockquote"}
+# A header-less, caption-less table with one of these in a cell is page layout, not data.
+_LAYOUT_BLOCKS = _HEADINGS | {"p", "div", "ul", "ol", "table", "blockquote", "pre"}
 _SPACE = re.compile(r"[ \t\r\n\f]+")
+_LANDMARKS = frozenset({"nav", "header", "footer", "aside"})
+_LANDMARK_ROLES = frozenset({"navigation", "banner", "contentinfo", "complementary"})
+# Concrete WAI-ARIA 1.2 roles; abstract roles are invalid in `role` and are skipped like unknown tokens.
+_ARIA_ROLES = frozenset("""
+    alert alertdialog application article banner blockquote button caption cell checkbox code columnheader
+    combobox complementary contentinfo definition deletion dialog directory document emphasis feed figure form
+    generic grid gridcell group heading img insertion link list listbox listitem log main marquee math menu
+    menubar menuitem menuitemcheckbox menuitemradio meter navigation none note option paragraph presentation
+    progressbar radio radiogroup region row rowgroup rowheader scrollbar search searchbox separator slider
+    spinbutton status strong subscript superscript switch tab table tablist tabpanel term textbox time timer
+    toolbar tooltip tree treegrid treeitem""".split())
 _TAG_NAME = re.compile(r"</?([A-Za-z][^\t\n\f\r />]*)")
 _ATTRIBUTE = re.compile(r"([^\s/=<>]+)(?:\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]+)))?")
 _INPUT_BYTE_LIMIT = 8 * 1048576
@@ -49,7 +58,6 @@ _ATTRIBUTE_BYTE_LIMIT = 1048576
 _VISIBLE_TEXT_BYTE_LIMIT = 32 * 1048576
 _TABLE_CELL_LIMIT = 100_000
 _MARKDOWN_BYTE_LIMIT = 64 * 1048576
-_LITERAL_ESCAPES = MARKDOWN_ESCAPES | {ord("\n"): "&#10;", ord("\t"): "&#9;", ord("\r"): "&#13;"}
 
 
 def _tag_end(prefix: str, start: int) -> int | None:
@@ -106,50 +114,149 @@ def _meta_attributes(prefix: str):
             position = end + 1
 
 
-def _decode_html(raw: bytes) -> str:
-    """Reject declared non-UTF-8 encodings before strict decoding, preserving raw hashes."""
-    payload = raw.removeprefix(b"\xef\xbb\xbf")
-    for source_attributes in _meta_attributes(payload[:1024].decode("latin1")):
-        attributes = [(item.group(1).lower(), next((value for value in item.groups()[1:]
-                                                   if value is not None), None))
-                      for item in _ATTRIBUTE.finditer(source_attributes)]
-        declarations = [value for key, value in attributes if key == "charset"]
-        if any(key == "http-equiv" and (value or "").strip().lower() == "content-type"
-               for key, value in attributes):
-            for key, value in attributes:
-                if key != "content":
-                    continue
-                for charset in re.finditer(r"(?:^|;)\s*charset\b([^;]*)", value or "", re.I):
-                    declared = re.fullmatch(r"\s*=\s*([^\s]+)\s*", charset.group(1))
-                    declarations.append(declared.group(1).strip("\"'") if declared else None)
-        if any(value is None or value.strip().lower() not in ("utf-8", "utf8")
-               for value in declarations):
-            raise BrewdocError("HTML charset must declare UTF-8 or UTF8")
+_BOMS = {b"\xef\xbb\xbf": "utf-8", b"\xfe\xff": "utf-16be", b"\xff\xfe": "utf-16le"}
+# WHATWG Encoding Standard labels; replacement and x-user-defined labels are absent, so they refuse.
+_ENCODINGS = {label: (name, codec) for name, codec, labels in (
+    ("UTF-8", "utf-8", "unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8"),
+    ("IBM866", "cp866", "866 cp866 csibm866 ibm866"),
+    ("ISO-8859-2", "iso8859_2", "csisolatin2 iso-8859-2 iso-ir-101 iso8859-2 iso88592 iso_8859-2 "
+     "iso_8859-2:1987 l2 latin2"),
+    ("ISO-8859-3", "iso8859_3", "csisolatin3 iso-8859-3 iso-ir-109 iso8859-3 iso88593 iso_8859-3 "
+     "iso_8859-3:1988 l3 latin3"),
+    ("ISO-8859-4", "iso8859_4", "csisolatin4 iso-8859-4 iso-ir-110 iso8859-4 iso88594 iso_8859-4 "
+     "iso_8859-4:1988 l4 latin4"),
+    ("ISO-8859-5", "iso8859_5", "csisolatincyrillic cyrillic iso-8859-5 iso-ir-144 iso8859-5 iso88595 "
+     "iso_8859-5 iso_8859-5:1988"),
+    ("ISO-8859-6", "iso8859_6", "arabic asmo-708 csiso88596e csiso88596i csisolatinarabic ecma-114 "
+     "iso-8859-6 iso-8859-6-e iso-8859-6-i iso-ir-127 iso8859-6 iso88596 iso_8859-6 iso_8859-6:1987"),
+    ("ISO-8859-7", "iso8859_7", "csisolatingreek ecma-118 elot_928 greek greek8 iso-8859-7 iso-ir-126 "
+     "iso8859-7 iso88597 iso_8859-7 iso_8859-7:1987 sun_eu_greek"),
+    ("ISO-8859-8", "iso8859_8", "csiso88598e csisolatinhebrew hebrew iso-8859-8 iso-8859-8-e iso-ir-138 "
+     "iso8859-8 iso88598 iso_8859-8 iso_8859-8:1988 visual"),
+    ("ISO-8859-8-I", "iso8859_8", "csiso88598i iso-8859-8-i logical"),
+    ("ISO-8859-10", "iso8859_10", "csisolatin6 iso-8859-10 iso-ir-157 iso8859-10 iso885910 l6 latin6"),
+    ("ISO-8859-13", "iso8859_13", "iso-8859-13 iso8859-13 iso885913"),
+    ("ISO-8859-14", "iso8859_14", "iso-8859-14 iso8859-14 iso885914"),
+    ("ISO-8859-15", "iso8859_15", "csisolatin9 iso-8859-15 iso8859-15 iso885915 iso_8859-15 l9"),
+    ("ISO-8859-16", "iso8859_16", "iso-8859-16"),
+    ("KOI8-R", "koi8_r", "cskoi8r koi koi8 koi8-r koi8_r"),
+    ("KOI8-U", "koi8_u", "koi8-ru koi8-u"),
+    ("macintosh", "mac_roman", "csmacintosh mac macintosh x-mac-roman"),
+    ("windows-874", "cp874", "dos-874 iso-8859-11 iso8859-11 iso885911 tis-620 windows-874"),
+    ("windows-1250", "cp1250", "cp1250 windows-1250 x-cp1250"),
+    ("windows-1251", "cp1251", "cp1251 windows-1251 x-cp1251"),
+    ("windows-1252", "cp1252", "ansi_x3.4-1968 ascii cp1252 cp819 csisolatin1 ibm819 iso-8859-1 "
+     "iso-ir-100 iso8859-1 iso88591 iso_8859-1 iso_8859-1:1987 l1 latin1 us-ascii windows-1252 x-cp1252"),
+    ("windows-1253", "cp1253", "cp1253 windows-1253 x-cp1253"),
+    ("windows-1254", "cp1254", "cp1254 csisolatin5 iso-8859-9 iso-ir-148 iso8859-9 iso88599 iso_8859-9 "
+     "iso_8859-9:1989 l5 latin5 windows-1254 x-cp1254"),
+    ("windows-1255", "cp1255", "cp1255 windows-1255 x-cp1255"),
+    ("windows-1256", "cp1256", "cp1256 windows-1256 x-cp1256"),
+    ("windows-1257", "cp1257", "cp1257 windows-1257 x-cp1257"),
+    ("windows-1258", "cp1258", "cp1258 windows-1258 x-cp1258"),
+    ("x-mac-cyrillic", "mac_cyrillic", "x-mac-cyrillic x-mac-ukrainian"),
+    ("GBK", "gb18030", "chinese csgb2312 csiso58gb231280 gb2312 gb_2312 gb_2312-80 gbk iso-ir-58 x-gbk"),
+    ("gb18030", "gb18030", "gb18030"),
+    ("Big5", "big5hkscs", "big5 big5-hkscs cn-big5 csbig5 x-x-big5"),
+    ("EUC-JP", "euc_jp", "cseucpkdfmtjapanese euc-jp x-euc-jp"),
+    ("ISO-2022-JP", "iso2022_jp", "csiso2022jp iso-2022-jp"),
+    ("Shift_JIS", "cp932", "csshiftjis ms932 ms_kanji shift-jis shift_jis sjis windows-31j x-sjis"),
+    ("EUC-KR", "cp949", "cseuckr csksc56011987 euc-kr iso-ir-149 korean ks_c_5601-1987 ks_c_5601-1989 "
+     "ksc5601 ksc_5601 windows-949"),
+    ("UTF-16BE", "utf-16-be", "unicodefffe utf-16be"),
+    ("UTF-16LE", "utf-16-le", "csunicode iso-10646-ucs-2 ucs-2 unicode unicodefeff utf-16 utf-16le"),
+) for label in labels.split()}
+_STRICT_CODECS = frozenset({"utf-8", "utf-16-be", "utf-16-le", "gb18030", "big5hkscs", "euc_jp",
+                            "iso2022_jp", "cp932", "cp949"})
+
+
+def _gb18030_euro(error: UnicodeDecodeError) -> tuple[str, int]:
+    """Decode a lead byte 0x80 as U+20AC and re-read what follows, as WHATWG does; other errors refuse."""
+    if error.object[error.start] != 0x80:
+        raise error
+    return "\u20ac", error.start + 1
+
+
+codecs.register_error("brewdoc.gb18030-euro", _gb18030_euro)
+# 20 two-byte codes Python's 2005 tables decode to Private Use Area, plus WHATWG's swap of
+# A8 BC and 81 35 F4 37; Python decodes these 21 characters from no other bytes.
+_WHATWG_GB18030 = dict(zip(
+    "\ue5e5\ue78d\ue78e\ue78f\ue790\ue791\ue792\ue793\ue794\ue795\ue796\ue7c7"
+    "\ue81e\ue826\ue82b\ue82c\ue832\ue843\ue854\ue864\u1e3f",
+    "\u3000\ufe10\ufe12\ufe11\ufe13\ufe14\ufe15\ufe16\ufe17\ufe18\ufe19\u1e3f"
+    "\u9fb4\u9fb5\u9fb6\u9fb7\u9fb8\u9fb9\u9fba\u9fbb\ue7c7"))
+_GB18030_PRIVATE_USE = re.compile("[%s]" % "".join(_WHATWG_GB18030))
+
+
+def _codec(label: str) -> tuple[str, str]:
+    """Resolve a WHATWG label to (encoding name, Python codec); refusals never echo the label."""
+    label = label.strip("\t\n\f\r ")
+    if len(label) > 1 and label[0] == label[-1] and label[0] in "\"'":
+        label = label[1:-1]
+    if (found := _ENCODINGS.get(label.lower())) is None:
+        raise BrewdocError("HTML charset declaration refused")
+    return found
+
+
+@functools.cache
+def _single_byte_table(codec: str) -> str:
+    """Map undefined bytes 0x80-0x9F to U+0080+n and higher ones to U+FFFD, like WHATWG indexes."""
+    decoded = bytes(range(256)).decode(codec, "replace")
+    return "".join(chr(byte) if character == "\ufffd" and 0x80 <= byte < 0xA0 else character
+                   for byte, character in enumerate(decoded))
+
+
+def _decode_bytes(raw: bytes, label: str | None) -> str:
+    """Decode by BOM, then `label`, then strict UTF-8; single-byte encodings never fail."""
+    for bom, bom_label in _BOMS.items():
+        if raw.startswith(bom):
+            raw, label = raw[len(bom):], bom_label
+            break
+    name, codec = _codec("utf-8" if label is None else label)
+    if codec not in _STRICT_CODECS:
+        return codecs.charmap_decode(raw, "strict", _single_byte_table(codec))[0]
     try:
-        return payload.decode("utf-8")
+        if codec == "gb18030":
+            return _GB18030_PRIVATE_USE.sub(lambda match: _WHATWG_GB18030[match.group()],
+                                            raw.decode(codec, "brewdoc.gb18030-euro"))
+        return raw.decode(codec)
     except UnicodeDecodeError as exc:
-        raise BrewdocError("HTML UTF-8 decoding failed: %s" % exc) from exc
+        if codec == "utf-8":
+            raise BrewdocError("HTML UTF-8 decoding failed: %s" % exc) from exc
+        raise BrewdocError("HTML %s encoding refused: invalid bytes" % name) from exc
 
 
-def _escape(text: str) -> str:
-    """Escape source syntax without folding or replacing meaningful Unicode."""
-    return text.translate(MARKDOWN_ESCAPES)
+def _meta_charset(source_attributes: str) -> str | None:
+    """Return one meta's declared label, "" for a valueless declaration, or None if it declares none."""
+    attributes = {}
+    for item in _ATTRIBUTE.finditer(source_attributes):
+        value = next((value for value in item.groups()[1:] if value is not None), "")
+        attributes.setdefault(item.group(1).lower(), value)
+    if "charset" in attributes:
+        return attributes["charset"]
+    if attributes.get("http-equiv", "").strip().lower() != "content-type":
+        return None
+    charset = re.search(r"(?:^|;)\s*charset\b([^;]*)", attributes.get("content", ""), re.I)
+    if charset is None:
+        return None
+    declared = re.fullmatch(r"\s*=\s*([^\s]+)\s*", charset.group(1))
+    return declared.group(1) if declared else ""
 
 
-def _close_emphasis(parts: list[str], marker: str) -> None:
-    """Keep trailing word separation outside a generated emphasis delimiter."""
-    whitespace = []
-    while parts:
-        trimmed = parts[-1].rstrip()
-        if len(trimmed) == len(parts[-1]):
-            break
-        whitespace.append(parts[-1][len(trimmed):])
-        if trimmed:
-            parts[-1] = trimmed
-            break
-        parts.pop()
-    parts.append(marker)
-    parts.extend(reversed(whitespace))
+def _decode_html(raw: bytes, header_charset: str | None = None) -> str:
+    """Decode by BOM, then header label, then first declaring meta in 1024 bytes, then UTF-8."""
+    label = header_charset
+    if label is None and not raw.startswith(tuple(_BOMS)):
+        label = next((declared for attributes in _meta_attributes(raw[:1024].decode("latin1"))
+                      if (declared := _meta_charset(attributes)) is not None), None)
+        if label is not None and _codec(label)[0] in ("UTF-16BE", "UTF-16LE"):
+            label = "utf-8"
+    return _decode_bytes(raw, label)
+
+
+def _node_text(node) -> str:
+    """Escape one text node with collapsed whitespace, keeping meaningful Unicode."""
+    return _escape_markdown_text(_SPACE.sub(" ", node.text()), preserve_unicode=True)
 
 
 def _hidden(node) -> bool:
@@ -178,6 +285,11 @@ def _hidden(node) -> bool:
             effective[name] = (value, important)
     return (effective.get("display", ("", False))[0] == "none"
             or effective.get("visibility", ("", False))[0] == "hidden")
+
+
+def _dropped(node) -> bool:
+    """Leave hidden subtrees and form control subtrees, values included, out of the output."""
+    return node.tag in _CONTROLS or _hidden(node)
 
 
 def _children(node) -> list:
@@ -216,8 +328,7 @@ def _validate_html(parser) -> None:
             depth += 1
         if depth > _DEPTH_LIMIT:
             raise BrewdocError("HTML depth limit exceeded: %d" % _DEPTH_LIMIT)
-        excluded = excluded or _hidden(node) or (tag == "input" and (
-            attributes.get("type") or "").strip().lower() == "hidden")
+        excluded = excluded or _hidden(node)
         pending.extend((child, depth, excluded) for child in reversed(_children(node)))
 
 
@@ -230,7 +341,7 @@ def _literal_text(node) -> str:
             parts.append(current.text())
         elif current.tag == "br":
             parts.append("\n")
-        elif current.tag != "-comment" and not _hidden(current):
+        elif current.tag != "-comment" and not _dropped(current):
             pending.extend(reversed(_children(current)))
     return "".join(parts)
 
@@ -256,39 +367,25 @@ def _literal_links(node) -> list[str]:
     records, pending = [], [node]
     while pending:
         current = pending.pop()
-        if current.tag in ("-text", "-comment") or _hidden(current):
+        if current.tag in ("-text", "-comment") or _dropped(current):
             continue
         if current.tag == "a":
             target = _target(current.attributes.get("href"))[1]
             if target is not None and (label := _literal_text(current)):
-                records.append('[Link target](%s); text="%s"' % (
-                    quote(target, safe="/:#?&=@%+;,"), _escape_literal(label)))
+                label = _escape_markdown_text(label, preserve_unicode=True, literal=True)
+                records.append('[Link target](%s); text="%s"' % (_url_target(target), label))
         pending.extend(reversed(_children(current)))
     return records
 
 
 def _image(node) -> str:
-    """Emit source-declared image metadata with an inert destination."""
-    attributes = node.attributes
-    kind, target = _target(attributes.get("src"))
-    return 'Image: alt="%s"; title="%s"; source=%s; target="%s"' % (
-        _escape(attributes.get("alt") or "none"), _escape(attributes.get("title") or "none"),
-        kind, _escape(target) if target is not None else "omitted")
-
-
-def _escape_literal(text: str) -> str:
-    """Preserve literal whitespace in quoted metadata without activating source entities."""
-    return text.translate(_LITERAL_ESCAPES)
-
-
-def _quoted(attributes: dict, name: str) -> str:
-    """Distinguish absent strings from supplied empty strings in source records."""
-    return '"%s"' % _escape_literal(attributes[name] or "") if name in attributes else "unspecified"
-
-
-def _declared(attributes: dict, name: str) -> str:
-    """Record boolean attribute presence without interpreting its supplied value."""
-    return "true" if name in attributes else "false"
+    """Render an image with alt text and an inert destination; without alt text, nothing."""
+    alt = _SPACE.sub(" ", node.attributes.get("alt") or "").strip()
+    if not alt:
+        return ""
+    target = _target(node.attributes.get("src"))[1]
+    return "![%s](%s)" % (_escape_markdown_text(alt, preserve_unicode=True),
+                          "" if target is None else _url_target(target))
 
 
 def _ancestors(node):
@@ -299,113 +396,57 @@ def _ancestors(node):
         parent = parent.parent
 
 
-def _role_button(node) -> bool:
-    """Recognize the renderer's exact source-declared button role."""
-    return (node.attributes.get("role") or "").strip().lower() == "button"
+def _role(node) -> str:
+    """Return the first ARIA role token, case-folded; a role attribute with no known token is "other"."""
+    tokens = _SPACE.split((node.attributes.get("role") or "").lower())
+    return next((token for token in tokens if token in _ARIA_ROLES), "other" if any(tokens) else "")
 
 
-def _control(node, leaving: bool = False) -> tuple[list[str], bool]:
-    """Return fixed source records and whether those records consume descendant text."""
-    tag, attributes = node.tag, node.attributes
-    if tag == "label":
-        if leaving and ("id" in attributes or "for" in attributes):
-            return ["Label: id=%s; for=%s" % (_quoted(attributes, "id"), _quoted(attributes, "for"))], False
-        return [], False
-    if leaving:
-        return [], False
-    role_button = _role_button(node)
-    if tag not in _CONTROL_TAGS and not role_button:
-        return [], False
-    kind = (attributes.get("type") or "").strip().lower()
-    if tag == "input" and kind == "hidden":
-        return [], True
-    sensitive = tag == "input" and kind in ("password", "file")
-    declared_value = '"redacted"' if sensitive and "value" in attributes else _quoted(attributes, "value")
-    disabled = "true" if any(parent.tag == "fieldset" and "disabled" in parent.attributes
-                              for parent in _ancestors(node)) else "false"
-    fields, consumes = [], False
-    if tag == "button" or role_button or (
-            tag == "input" and kind in ("button", "submit", "reset")):
-        if tag == "input":
-            visible = "" if sensitive else attributes.get("value") or ""
-        else:
-            visible = _SPACE.sub(" ", _literal_text(node)).strip()
-        label = visible or attributes.get("aria-label") or attributes.get("title") or "Unlabelled"
-        fields = [("label", '"%s"' % _escape_literal(label)),
-                  ("aria_label", _quoted(attributes, "aria-label"))]
-        fields.extend((name, _quoted(attributes, name)) for name in ("title", "role", "type", "id", "name"))
-        fields.append(("value", declared_value))
-        fields.extend((("declared_disabled", _declared(attributes, "disabled")),
-                       ("aria_disabled", _quoted(attributes, "aria-disabled")), ("fieldset_disabled", disabled)))
-        fields.extend((name, _quoted(attributes, name))
-                      for name in ("formaction", "formmethod", "formenctype", "formtarget"))
-        fields.append(("formnovalidate", _declared(attributes, "formnovalidate")))
-        label, consumes = "Button", True
-    elif tag == "input":
-        fields = [(name, _quoted(attributes, name)) for name in ("type", "id", "name")]
-        fields.append(("value", declared_value))
-        if kind in ("checkbox", "radio"):
-            fields.append(("declared_checked", _declared(attributes, "checked")))
-            fields.append(("required", _declared(attributes, "required")))
-            fields.extend((("declared_disabled", _declared(attributes, "disabled")), ("fieldset_disabled", disabled)))
-        else:
-            fields.append(("placeholder", _quoted(attributes, "placeholder")))
-            fields.extend((name, _declared(attributes, name)) for name in ("readonly", "required"))
-            fields.extend((("declared_disabled", _declared(attributes, "disabled")), ("fieldset_disabled", disabled)))
-            fields.extend((name, _quoted(attributes, name)) for name in (
-                "min", "max", "step", "pattern", "minlength", "maxlength", "size"))
-            fields.append(("multiple", _declared(attributes, "multiple")))
-            fields.extend((name, _quoted(attributes, name)) for name in ("accept", "autocomplete", "list"))
-            if kind == "image":
-                fields.extend((name, _quoted(attributes, name))
-                              for name in ("formaction", "formmethod", "formenctype", "formtarget"))
-                fields.append(("formnovalidate", _declared(attributes, "formnovalidate")))
-        label, consumes = "Input", True
-    elif tag == "textarea":
-        fields = [(name, _quoted(attributes, name)) for name in ("id", "name", "placeholder")]
-        fields.extend((name, _declared(attributes, name)) for name in ("readonly", "required"))
-        fields.extend((("declared_disabled", _declared(attributes, "disabled")), ("fieldset_disabled", disabled),
-                       ("text", '"%s"' % _escape_literal(_literal_text(node)))))
-        label, consumes = "Textarea", True
-    elif tag == "output":
-        fields = [(name, _quoted(attributes, name)) for name in ("id", "name", "for")]
-        fields.append(("text", '"%s"' % _escape_literal(_literal_text(node))))
-        label, consumes = "Output", True
-    elif tag == "option":
-        group = next((parent for parent in _ancestors(node) if parent.tag == "optgroup"), None)
-        fields = [("text", '"%s"' % _escape_literal(_SPACE.sub(" ", _literal_text(node)).strip())),
-                  ("value", _quoted(attributes, "value")),
-                  ("declared_selected", _declared(attributes, "selected")),
-                  ("declared_disabled", _declared(attributes, "disabled")),
-                  ("group", _quoted(group.attributes, "label") if group is not None else "unspecified")]
-        label, consumes = "Option", True
-    elif tag == "select":
-        fields = [(name, _quoted(attributes, name)) for name in ("id", "name")]
-        fields.extend((name, _declared(attributes, name)) for name in ("multiple", "required"))
-        fields.extend((("declared_disabled", _declared(attributes, "disabled")), ("fieldset_disabled", disabled)))
-        label = "Select"
-    elif tag == "fieldset":
-        fields = [(name, _quoted(attributes, name)) for name in ("id", "name")]
-        fields.append(("declared_disabled", _declared(attributes, "disabled")))
-        label = "Fieldset"
-    elif tag == "optgroup":
-        fields = [("label", _quoted(attributes, "label")), ("declared_disabled", _declared(attributes, "disabled"))]
-        label = "Optgroup"
-    elif tag == "details":
-        fields = [("id", _quoted(attributes, "id")), ("declared_open", _declared(attributes, "open"))]
-        label = "Details"
-    elif tag in ("form", "datalist", "progress", "meter"):
-        names = {"form": ("action", "method", "id", "name"), "datalist": ("id",),
-                 "progress": ("id", "value", "max"),
-                 "meter": ("id", "value", "min", "max", "low", "high", "optimum")}[tag]
-        fields = [(name, _quoted(attributes, name)) for name in names]
-        label = tag.title()
-    else:
-        return [], False
-    records = [label + ": " + "; ".join("%s=%s" % pair for pair in fields)]
-    if tag == "input" and kind == "image":
-        records.append(_image(node))
-    return records, consumes
+def _holds(node, match) -> bool:
+    """Report whether an included descendant element satisfies `match`."""
+    pending = _children(node)
+    while pending:
+        current = pending.pop()
+        if current.tag in ("-text", "-comment") or _dropped(current):
+            continue
+        if match(current):
+            return True
+        pending.extend(_children(current))
+    return False
+
+
+def _landmark_contents(node, memo: dict) -> int:
+    """Flag included descendants (1: a main, 2: an `h1`); `memo` keeps visited subtrees by node `mem_id`.
+    Node keys would compare serialized HTML on every hit."""
+    pending = [(node, None)]
+    while pending:
+        current, children = pending.pop()
+        if children is not None:
+            flags = 0
+            for child in children:
+                flags |= (memo[child.mem_id] | (child.tag == "main" or _role(child) == "main")
+                          | (child.tag == "h1") << 1)
+            memo[current.mem_id] = flags
+        elif current.mem_id not in memo:
+            children = [child for child in _children(current)
+                        if child.tag not in ("-text", "-comment") and not _dropped(child)]
+            pending.append((current, children))
+            pending.extend((child, None) for child in children)
+    return memo[node.mem_id]
+
+
+def _page_landmark(node, memo: dict) -> bool:
+    """Recognize page chrome: a landmark outside sectioning or main content that holds no main.
+    `header`/`footer` are scoped by any sectioning ancestor; a banner holding an `h1` is kept."""
+    role = _role(node)
+    if role not in ("", *_LANDMARK_ROLES) or not role and node.tag not in _LANDMARKS:
+        return False
+    scopes = ("article", "aside", "main", "nav", "section") if node.tag in ("header", "footer") else (
+        "article", "main")
+    if any(parent.tag in scopes or _role(parent) == "main" for parent in _ancestors(node)):
+        return False
+    banner = role == "banner" or not role and node.tag == "header"
+    return not _landmark_contents(node, memo) & (3 if banner else 1)
 
 
 def _span(node, name: str, remaining_rows: int) -> int:
@@ -462,103 +503,110 @@ def _table_layout(table) -> tuple[int, int, list[tuple], list]:
     return height, width, origins, captions
 
 
-def _cell_text(cell, tables: dict) -> str:
+def _context(node) -> dict:
+    """Describe a link or emphasis wrapper; a missing or unsafe link target writes no brackets."""
+    if node.tag in _EMPHASIS:
+        marker = _EMPHASIS[node.tag]
+        return {"opening": (marker, True), "closing": (marker, False), "active": False, "text": False,
+                "fallback": False, "target": None}
+    target = _target(node.attributes.get("href"))[1]
+    target = None if target is None else _url_target(target)
+    return {"opening": "" if target is None else ("[", True),
+            "closing": "" if target is None else ("](%s)" % target, False),
+            "active": False, "text": False, "fallback": False, "target": target}
+
+
+def _open(contexts: list[dict], parts: list) -> None:
+    """Open pending wrappers at the first content they enclose, so empty ones write nothing."""
+    for context in contexts:
+        if not context["active"]:
+            parts.append(context["opening"])
+            context["active"] = True
+        context["text"] = True
+
+
+def _cell_text(cell, tables: dict, landmarks: dict) -> str:
     """Render included cell data iteratively, keeping nested tables at their source position."""
-    parts, links, emphasis, pending = [], [], [], [(cell, False)]
+    parts, contexts, pending = [], [], [(cell, False)]
     while pending:
         node, leaving = pending.pop()
         tag = node.tag
         if tag == "-text":
-            text = _escape(_SPACE.sub(" ", node.text()))
-            first = next((frame for frame in emphasis if frame["first"]), None)
-            if first is not None:
-                trimmed = text.lstrip()
-                leading = text[:len(text) - len(trimmed)]
-                if leading:
-                    index = first["start"]
-                    parts.insert(index, leading)
-                    for frame in emphasis:
-                        if frame["start"] >= index:
-                            frame["start"] += 1
-                    text = trimmed
-                if text:
-                    for frame in emphasis:
-                        frame["first"] = False
-            parts.append(text)
+            inline = [_node_text(node)]
+        elif tag == "-comment" or (not leaving and (_dropped(node) or _page_landmark(node, landmarks))):
             continue
-        if tag == "-comment" or (not leaving and _hidden(node)):
+        elif tag == "table":
+            inline = [" %s " % tables[node.mem_id].pop("nested")]
+        elif tag in ("code", "pre"):
+            inline = ['Code: text="%s"' % _escape_markdown_text(_literal_text(node), preserve_unicode=True,
+                                                               literal=True),
+                      *(" " + record for record in _literal_links(node))]
+        elif tag == "img":
+            inline = [" %s " % image] if (image := _image(node)) else []
+        else:
+            inline = None
+        if inline is not None:
+            if "".join(inline).strip():
+                _open(contexts, parts)
+            parts.extend(inline)
             continue
-        records, consumes = _control(node, leaving)
-        if records:
-            parts.extend(" " + record + " " for record in records)
-        if consumes:
-            continue
-        if tag == "table":
-            parts.append(" " + tables[node]["nested"] + " ")
-            continue
-        if tag in ("code", "pre"):
-            parts.append('Code: text="%s"' % _escape_literal(_literal_text(node)))
-            parts.extend(" " + record for record in _literal_links(node))
-            continue
-        if tag == "img":
-            parts.append(" " + _image(node) + " ")
-            continue
-        if (tag == "br" or tag in _BLOCKS or tag in _CONTROL_BOUNDARIES
-                or tag in ("ul", "ol", "li", "blockquote") or tag in _HEADINGS):
+        if tag == "br" or tag in _BREAKS:
             parts.append(" ")
-        if tag in _EMPHASIS and _literal_text(node).strip():
-            if leaving:
-                emphasis.pop()
-                _close_emphasis(parts, _EMPHASIS[tag])
-            else:
-                emphasis.append({"start": len(parts), "first": True})
-                parts.append(_EMPHASIS[tag])
-        if tag == "a":
-            if leaving:
-                target = links.pop()
-                if target is not None:
-                    parts.append("](%s)" % quote(target, safe="/:#?&=@%+;,"))
-            else:
-                target = _target(node.attributes.get("href"))[1]
-                links.append(target)
-                if target is not None:
-                    parts.append("[")
+        if tag in _EMPHASIS or tag == "a":
+            if not leaving:
+                contexts.append(_context(node))
+            elif (context := contexts.pop())["active"]:
+                parts.append(context["closing"])
         if not leaving:
             pending.append((node, True))
             pending.extend((child, False) for child in reversed(_children(node)))
-    return "".join(parts).strip()
+    return _emphasis(parts).strip()
 
 
-def _table_layouts(body) -> dict:
-    """Validate the complete body's table expansion before materializing any cells."""
-    layouts, pending, expanded = {}, [body], 0
+def _table_layouts(body, starts: set) -> dict:
+    """Validate the complete body's table expansion before materializing any cells; note each enclosing
+    table and whether a walk from `body` or a `starts` node `mem_id` crosses only layout tables to reach it."""
+    layouts, pending, expanded = {}, [(body, None, True)], 0
     while pending:
-        node = pending.pop()
+        node, outer, reached = pending.pop()
         if node.tag in ("-text", "-comment") or _hidden(node):
             continue
+        reached = reached or node.mem_id in starts
         if node.tag == "table":
-            layout = _table_layout(node)
-            expanded += layout[0] * layout[1]
+            height, width, origins, captions = _table_layout(node)
+            expanded += height * width
             if expanded > _TABLE_CELL_LIMIT:
                 raise BrewdocError("HTML table cells limit exceeded: %d" % _TABLE_CELL_LIMIT)
-            layouts[node] = layout
-        pending.extend(reversed(_children(node)))
+            layout = not captions and all(cell.tag == "td" for cell, *_ in origins) and any(
+                _holds(cell, lambda child: child.tag in _LAYOUT_BLOCKS) for cell, *_ in origins)
+            layouts[node] = (height, width, origins, captions, outer, layout, reached)
+            outer, reached = node.mem_id, reached and layout
+        pending.extend((child, outer, reached) for child in reversed(_children(node)))
     return layouts
 
 
-def _prepare_tables(layouts: dict) -> dict:
-    """Materialize selected nested records from the deepest validated table outward."""
-    tables = {}
-    for table, (height, width, origins, caption_nodes) in reversed(layouts.items()):
-        captions = [caption for node in caption_nodes if (caption := _cell_text(node, tables))]
-        cells = [(row, column, rowspan, colspan, _cell_text(cell, tables))
+def _prepare_tables(layouts: dict, landmarks: dict) -> dict:
+    """Materialize only reachable grids and the nested records their cells read, deepest table first.
+    Keyed by node `mem_id` (node keys compare serialized HTML); the one cell holding a record pops it."""
+    used, tables = set(), {}
+    for table, (*_, outer, layout, reached) in layouts.items():
+        if reached and not layout or outer in used:
+            used.add(table.mem_id)
+    for table, (height, width, origins, caption_nodes, outer, layout, reached) in reversed(layouts.items()):
+        tables[table.mem_id] = record = {"layout": layout}
+        if table.mem_id not in used:
+            continue
+        captions = [caption for node in caption_nodes if (caption := _cell_text(node, tables, landmarks))]
+        cells = [(row, column, rowspan, colspan, _cell_text(cell, tables, landmarks))
                  for cell, row, column, rowspan, colspan in origins]
-        records = ["Caption: " + caption for caption in captions]
-        records.extend('row=%d; column=%d; rowspan=%d; colspan=%d; text="%s"'
-                       % (row + 1, column + 1, rowspan, colspan, text.replace('"', "&quot;"))
-                       for row, column, rowspan, colspan, text in cells)
-        tables[table] = {"rows": height, "columns": width, "cells": cells, "captions": captions,
-                         "nested": "Nested table: " + "; ".join(records) if records else ""}
+        if reached and not layout:
+            record.update(rows=height, columns=width, cells=cells, captions=captions)
+        if outer in used:
+            records = ["Caption: " + caption for caption in captions]
+            records.extend('row=%d; column=%d; rowspan=%d; colspan=%d; text="%s"'
+                           % (row + 1, column + 1, rowspan, colspan, text.replace('"', "&quot;"))
+                           for row, column, rowspan, colspan, text in cells)
+            record["nested"] = "Nested table: " + "; ".join(records) if records else ""
     return tables
 
 
@@ -570,282 +618,136 @@ def _table_rows(table: dict) -> list[list[str]]:
     return rows
 
 
-def _scoped_items(body, tables: dict) -> set:
-    """Find items and ancestors whose standalone child blocks need explicit boundaries."""
-    scoped, ancestors, pending = set(), [], [(body, False)]
-    while pending:
-        node, leaving = pending.pop()
-        tag = node.tag
-        if tag in ("-text", "-comment") or (not leaving and _hidden(node)):
-            continue
-        if leaving:
-            if _control(node, True)[0]:
-                scoped.update(ancestors)
-            if tag == "li":
-                ancestors.pop()
-            continue
-        if tag == "li":
-            ancestors.append(node)
-        records, consumes = _control(node)
-        standalone = bool(records) or tag == "img"
-        if tag in ("pre", "code"):
-            standalone = bool(_literal_text(node))
-        elif tag == "blockquote":
-            standalone = bool(_literal_text(node).strip())
-        elif tag == "table":
-            standalone = bool(tables[node]["columns"] or tables[node]["captions"])
-        if standalone:
-            scoped.update(ancestors)
-        if consumes or tag in ("pre", "code", "table", "img"):
-            continue
-        pending.append((node, True))
-        pending.extend((child, False) for child in reversed(_children(node)))
-    return scoped
-
-
-def _html_blocks(body, tally: dict, tables: dict) -> list[tuple]:
+def _html_blocks(body, tally: dict, tables: dict, landmarks: dict) -> list[tuple]:
     """Walk the recovered body in DOM order without recursive Python calls."""
-    blocks, fragments, lists, items, contexts, quotes = [], [], [], [], [], []
-    heading, last_list = "", False
-    scoped = _scoped_items(body, tables)
-
-    def append_text(text: str) -> None:
-        """Open generated contexts only when a segment contains meaningful source text."""
-        if text.strip():
-            if any(context["emphasis"] and not context["active"] for context in contexts):
-                trimmed = text.lstrip()
-                fragments.append(text[:len(text) - len(trimmed)])
-                text = trimmed
-            for context in contexts:
-                if not context["active"]:
-                    fragments.append(context["opening"])
-                    context["active"] = True
-                context["text"] = True
-        fragments.append(text)
+    blocks, fragments, lists, scopes, contexts = [], [], [], [], []
+    heading, prefix = "", ""
 
     def flush() -> None:
-        """Emit one semantic region, preserving list grouping and source-derived context."""
-        nonlocal last_list
+        """Emit one semantic region under the current quote and list item prefix."""
         for context in reversed(contexts):
             if context["active"]:
-                if context["emphasis"]:
-                    _close_emphasis(fragments, context["closing"])
-                else:
-                    fragments.append(context["closing"])
+                fragments.append(context["closing"])
                 context["active"] = False
-        text = "".join(fragments).strip()
+        text = _emphasis(fragments).strip()
         fragments.clear()
-        if not text:
-            return
-        lines = text.split("\n")
-        if heading:
-            lines[0] = ("#" * (int(heading[1]) + 2) + " " + lines[0] if heading < "h5"
-                        else "**Heading %s: %s**" % (heading[1], lines[0]))
-        plain = bool(items) and not items[-1]["scoped"]
-        first = plain and not items[-1]["emitted"]
-        if plain:
-            prefix = items[-1]["prefix"]
-            continuation = " " * len(prefix)
-            lines = [(prefix if first else continuation) + lines[0],
-                     *(continuation + line for line in lines[1:])]
-            items[-1]["emitted"] = True
-        tally["text_regions"] += 1
-        if first and last_list:
-            blocks[-1][1].extend(lines)
-        else:
-            blocks.append(("text", lines))
-        last_list = plain
+        if text:
+            tally["text_regions"] += 1
+            blocks.append(("text", _source_lines(text, int(heading[1]) if heading else None), prefix))
 
     pending = [(body, False)]
     while pending:
         node, leaving = pending.pop()
         tag = node.tag
         if tag == "-text":
-            append_text(_escape(_SPACE.sub(" ", node.text())))
+            text = _node_text(node)
+            if text.strip():
+                _open(contexts, fragments)
+            fragments.append(text)
             continue
-        if tag == "-comment" or (not leaving and _hidden(node)):
+        if tag == "-comment" or (not leaving and (_dropped(node) or _page_landmark(node, landmarks))):
             continue
         if leaving:
-            if tag in _CONTROL_BOUNDARIES:
-                flush()
-                records, _consumes = _control(node, True)
-                for record in records:
-                    blocks.append(("text", [record]))
-                    tally["text_regions"] += 1
-                last_list = False
-            elif tag in _EMPHASIS or tag == "a":
+            if tag in _EMPHASIS or tag == "a":
                 context = contexts.pop()
                 if context["active"]:
-                    if context["emphasis"]:
-                        _close_emphasis(fragments, context["closing"])
-                    else:
-                        fragments.append(context["closing"])
+                    fragments.append(context["closing"])
                 if tag == "a" and context["fallback"] and not context["text"] and context["target"] is not None:
                     flush()
-                    blocks.append(("text", ["[Link target](%s)" % context["target"]]))
+                    blocks.append(("text", ["[Link target](%s)" % context["target"]], prefix))
                     tally["text_regions"] += 1
-                    last_list = False
-            elif tag == "li":
+            elif tag in ("li", "blockquote"):
                 flush()
-                item = items.pop()
-                if item["scoped"]:
-                    if len(blocks) == item["start"] + 1:
-                        del blocks[item["start"]:]
-                    else:
-                        blocks.append(("text", ["End list item (level %d)." % item["level"]]))
-                    last_list = False
+                prefix, marker, first = scopes.pop()
+                if tag == "li":
+                    _close_list_item(blocks, marker, first, prefix)
+                else:
+                    blocks.append(("end", None, prefix))
             elif tag in ("ul", "ol"):
                 flush()
-                lists.pop()
-            elif tag == "blockquote":
-                flush()
-                start = quotes.pop()
-                if len(blocks) == start + 1:
-                    del blocks[start:]
-                else:
-                    blocks.append(("text", ["End quote (level %d)." % (len(quotes) + 1)]))
-                last_list = False
+                _merge_list(blocks, lists.pop()[3], scopes[-1][2] if scopes else 0)
             elif tag in _HEADINGS:
                 flush()
                 heading = ""
             elif tag in _BLOCKS:
                 flush()
             continue
-        records, consumes = _control(node)
-        if consumes and not records:
-            continue
-        if records or tag in _CONTROL_BOUNDARIES:
+        if tag == "table" and not (table := tables[node.mem_id])["layout"]:
             flush()
-            for record in records:
-                blocks.append(("text", [record]))
-                tally["text_regions"] += 1
-            last_list = False
-        if consumes:
-            continue
-        if tag == "table":
-            flush()
-            table = tables[node]
             for caption in table["captions"]:
-                blocks.append(("text", ["Caption: " + caption]))
+                blocks.append(("text", ["Caption: " + caption], prefix))
                 tally["text_regions"] += 1
             if table["columns"]:
-                blocks.append(("table", _table_rows(table)))
+                blocks.append(("table", _table_rows(table), prefix))
                 tally["tables"] += 1
-            last_list = False
             continue
         if tag in ("pre", "code"):
             flush()
             literal = _literal_text(node)
             if literal:
-                blocks.append(("block", ["```", *literal.split("\n"), "```"]))
+                blocks.append(("block", ["```", *literal.split("\n"), "```"], prefix))
                 tally["text_regions"] += 1
-                last_list = False
                 for context in contexts:
                     context["fallback"] = True
                 for record in _literal_links(node):
-                    blocks.append(("text", [record]))
+                    blocks.append(("text", [record], prefix))
                     tally["text_regions"] += 1
             continue
         if tag == "img":
-            flush()
-            blocks.append(("text", [_image(node)]))
-            tally["text_regions"] += 1
-            last_list = False
-            for context in contexts:
-                context["fallback"] = True
+            if image := _image(node):
+                flush()
+                blocks.append(("text", [image], prefix))
+                tally["text_regions"] += 1
+                for context in contexts:
+                    context["fallback"] = True
             continue
         if tag == "br":
-            append_text("\n")
+            fragments.append("\n")
             continue
-        if tag in _BLOCKS or tag in ("ul", "ol", "li", "blockquote") or tag in _HEADINGS:
+        if tag in _BREAKS:
             flush()
         if tag in ("ul", "ol"):
-            try:
-                start = int(node.attributes.get("start") or "1")
-            except ValueError:
-                start = 1
-            lists.append([tag, start])
+            step = -1 if "reversed" in node.attributes else 1
+            items = 1 if step == 1 else sum(
+                child.tag == "li" and not (_dropped(child) or _page_landmark(child, landmarks))
+                for child in _children(node))
+            lists.append([tag, _ascii_integer(node.attributes.get("start"), items), step, len(blocks)])
         elif tag == "li":
-            marker = "%d." % lists[-1][1] if lists and lists[-1][0] == "ol" else "-"
+            ordered = lists and lists[-1][0] == "ol"
+            if ordered:
+                lists[-1][1] = _ascii_integer(node.attributes.get("value"), lists[-1][1])
+            marker = _ordered_marker(lists[-1][1]) if ordered else "- "
             if lists:
-                lists[-1][1] += 1
-            level = max(1, len(lists))
-            base = next((item["level"] for item in reversed(items) if item["scoped"]), 0)
-            item = {"level": level, "scoped": node in scoped, "start": len(blocks), "emitted": False,
-                    "prefix": "    " * max(0, level - base - 1) + marker + " "}
-            items.append(item)
-            if item["scoped"]:
-                blocks.append(("text", ['List item (level %d, marker "%s"):' % (level, marker)]))
-                last_list = False
+                lists[-1][1] += lists[-1][2]
+            scopes.append((prefix, marker, len(blocks)))
+            prefix += " " * len(marker)
         elif tag == "blockquote":
-            quotes.append(len(blocks))
-            blocks.append(("text", ["Quote (level %d):" % len(quotes)]))
-            last_list = False
+            scopes.append((prefix, "", len(blocks)))
+            prefix += "> "
         elif tag in _HEADINGS:
             heading = tag
         elif tag in _EMPHASIS or tag == "a":
-            target = _target(node.attributes.get("href"))[1] if tag == "a" else None
-            target = quote(target, safe="/:#?&=@%+;,") if target is not None else None
-            opening = "[" if target is not None else _EMPHASIS.get(tag, "")
-            closing = "](%s)" % target if target is not None else opening
-            contexts.append({"opening": opening, "closing": closing, "active": False,
-                             "text": False, "fallback": False, "target": target, "emphasis": tag in _EMPHASIS})
+            contexts.append(_context(node))
         pending.append((node, True))
         pending.extend((child, False) for child in reversed(_children(node)))
     flush()
     return blocks
 
 
-def _suitable_main(main) -> bool:
-    """Require one visible nonempty h1, independent prose and no visible form."""
-    headings, prose, pending = 0, False, [(main, False)]
+def _article_roots(body, landmarks: dict) -> list:
+    """Select visible top-level mains outside articles, else visible top-level articles."""
+    mains, articles, pending = [], [], [body]
     while pending:
-        node, excluded_prose = pending.pop()
-        tag = node.tag
-        if tag == "-text":
-            prose = prose or (not excluded_prose and bool(node.text().strip()))
+        node = pending.pop()
+        if node.tag in ("-text", "-comment") or _hidden(node) or _page_landmark(node, landmarks):
             continue
-        if tag == "-comment" or _hidden(node):
-            continue
-        if tag == "form":
-            return False
-        if tag == "h1" and _literal_text(node).strip():
-            headings += 1
-        excluded_prose = (excluded_prose or tag in _HEADINGS or tag in _CONTROL_TAGS
-                          or tag in ("nav", "table") or _role_button(node))
-        pending.extend((child, excluded_prose) for child in reversed(_children(node)))
-    return headings == 1 and prose
-
-
-def _article_root(body):
-    """Select one explicit visible article or a suitable main without page fallback."""
-    if any(_hidden(parent) for parent in _ancestors(body)):
-        raise BrewdocError(_ARTICLE_NO_ROOT)
-    mains, articles, pending = [], [], [(body, False)]
-    while pending:
-        node, inside_article = pending.pop()
-        tag = node.tag
-        if (tag in ("-text", "-comment") or _hidden(node) or tag in _ARTICLE_CONTEXTS
-                or _role_button(node)):
-            continue
-        if tag == "main" and not inside_article:
+        if node.tag == "main" or _role(node) == "main":
             mains.append(node)
-        if tag == "article":
-            if not inside_article:
-                articles.append(node)
-            inside_article = True
-        pending.extend((child, inside_article) for child in reversed(_children(node)))
-    if len(mains) > 1:
-        raise BrewdocError(_ARTICLE_MAINS)
-    if mains:
-        articles = [node for node in articles if mains[0] in _ancestors(node)]
-    if len(articles) > 1:
-        raise BrewdocError(_ARTICLE_ARTICLES)
-    if articles:
-        return articles[0]
-    if mains and _suitable_main(mains[0]):
-        return mains[0]
-    raise BrewdocError(_ARTICLE_NO_ROOT)
+        elif node.tag == "article":
+            articles.append(node)
+        else:
+            pending.extend(reversed(_children(node)))
+    return mains or articles
 
 
 def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> tuple[str, list]:
@@ -858,25 +760,25 @@ def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> t
         raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
     parser = LexborHTMLParser(decoded_text)
     _validate_html(parser)
-    layouts = _table_layouts(parser.body)
-    root = _article_root(parser.body) if article else parser.body
-    if article:
-        layouts = {node: layout for node, layout in layouts.items() if root in _ancestors(node)}
-    tables = _prepare_tables(layouts)
+    body = parser.body
+    landmarks = {}
+    visible = not any(_hidden(parent) for parent in _ancestors(body))
+    roots = _article_roots(body, landmarks) if article and visible else []
+    tables = _prepare_tables(_table_layouts(body, {root.mem_id for root in roots}), landmarks)
     title = next((label for node in parser.head.css("title")
                   if (label := _SPACE.sub(" ", node.text()).strip())), "Untitled")
-    blocks = _html_blocks(root, tally, tables)
-    if article and not blocks:
-        raise BrewdocError(_ARTICLE_EMPTY)
+    counts = tally["text_regions"], tally["tables"]
+    blocks = [block for root in roots for block in _html_blocks(root, tally, tables, landmarks)]
+    if article and counts == (tally["text_regions"], tally["tables"]):
+        tally["article_fallback"] = True
+        blocks = []
+    if visible and not blocks:
+        blocks = _html_blocks(body, tally, tables, landmarks)
     return title, blocks
 
 
 def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered:
     """Render one static chapter, or explicitly refuse an unavailable HTML prerequisite."""
-    if not _SUPPORTED_RUNTIME:
-        raise BrewdocError("HTML requires CPython 3.12-3.14")
-    if LexborHTMLParser is None:
-        raise BrewdocError("HTML parser unavailable: selectolax 0.4.13: %s" % _PARSER_ERROR)
     tally = new_tally()
     with reading(path, "HTML"):
         with path.open("rb") as source:
@@ -884,8 +786,10 @@ def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered
         if len(raw) > _INPUT_BYTE_LIMIT:
             raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
         title, blocks = _html_content(_decode_html(raw), tally, article=article)
+    selected = article and "article_fallback" not in tally
     rendered = _assemble(path, ROUTE.name, ROUTE.unit_kind, 1, [(1, title, blocks)], tally,
-                         not_carried=ROUTE.not_carried + ((ARTICLE_OMISSION,) if article else ()))
+                         not_carried=ROUTE.not_carried + ((ARTICLE_OMISSION,) if selected else ()),
+                         preserve_unicode=True)
     if len(rendered[0].encode("utf-8")) > _MARKDOWN_BYTE_LIMIT:
         raise BrewdocError("HTML Markdown byte limit exceeded: %d" % _MARKDOWN_BYTE_LIMIT)
     return rendered
@@ -897,9 +801,11 @@ ROUTE = Route("html", "chapter", (".html",), _render_html,
                "active media and embeds",
                "inline code layout outside tables: rendered as fenced blocks",
                "inline code monospace inside table cells",
-               "hidden inputs and supplied password or file values"))
+               "form controls and their values",
+               "images without alt text",
+               "navigation, header, footer and aside landmarks outside main or article content"))
 
 
 def render_html(path, *, article: bool = False) -> tuple[str, dict]:
-    """Return Markdown and tally for static HTML, optionally selecting an article or suitable main."""
+    """Return Markdown and tally for static HTML, optionally keeping only visible main or article content."""
     return _render_html(Path(path), article=article)[:2]

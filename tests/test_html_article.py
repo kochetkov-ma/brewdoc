@@ -1,4 +1,4 @@
-"""Article mode selects one explicit subtree and preserves conversion boundaries."""
+"""Article mode selects visible main or article subtrees, else falls back to the whole page."""
 
 import hashlib
 import inspect
@@ -15,10 +15,6 @@ from test_html import HTML_OMISSIONS, expected_document, expected_receipt, suppo
 ARTICLE_OMISSION = (
     "body content outside the selected article or main subtree; complete page coverage is not claimed"
 )
-NO_ROOT = "HTML article extraction refused: no eligible article or suitable main"
-MAINS = "HTML article extraction refused: ambiguous mains"
-ARTICLES = "HTML article extraction refused: ambiguous articles"
-EMPTY = "HTML article extraction refused: empty selected content"
 
 
 def refused_receipt(path, reason):
@@ -45,6 +41,12 @@ def article_receipt(path, out, regions, *, tables=0):
                 not_carried=[*HTML_OMISSIONS, ARTICLE_OMISSION])
 
 
+def fallback_receipt(path, out, regions, *, tables=0):
+    """Add the single whole-page fallback signal to the default receipt."""
+    return dict(expected_receipt(path, out, regions, tables=tables), out=out and str(out),
+                article_fallback=True)
+
+
 @supported_html
 def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
     # GIVEN one explicit article between unrelated visible page paragraphs
@@ -66,8 +68,8 @@ def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
     pytest.param('<main><h1>Title</h1><p>Prose</p></main><p>Outside</p>',
                  "### Title\n\nProse\n", 2, 0, id="suitable-main"),
     pytest.param('<main><p>Outside</p><section><custom-story><article><p>Kept</p>'
-                 '</article></custom-story></section></main>', "Kept\n", 1, 0,
-                 id="ordinary-and-custom-wrappers"),
+                 '</article></custom-story></section></main>', "Outside\n\nKept\n", 2, 0,
+                 id="main-with-wrapped-article-renders-whole"),
     pytest.param('<article><p>Outside main</p></article><main><article><p>Scoped</p>'
                  '</article></main>', "Scoped\n", 1, 0, id="main-limits-search-scope"),
     pytest.param('<article><p>Before</p><main><p>Inside main</p></main><p>After</p></article>',
@@ -84,11 +86,10 @@ def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
     pytest.param('<nav><article><p>Navigation</p></article></nav><aside><main><p>Side</p>'
                  '</main></aside><header><article><p>Header</p></article></header>'
                  '<footer><article><p>Footer</p></article></footer><form><article><p>Form</p>'
-                 '</article></form><article><p>Visible</p></article>', "Visible\n", 1, 0,
-                 id="candidate-context-exclusions"),
+                 '</article></form><article><p>Visible</p></article>', "Side\n", 1, 0,
+                 id="main-in-aside-is-the-only-root"),
     pytest.param('<article><img alt="café 東京" src="pic.png"></article>',
-                 'Image: alt="café 東京"; title="none"; source=relative; target="pic\\.png"\n',
-                 1, 0, id="image-only-article"),
+                 '![café 東京](pic.png)\n', 1, 0, id="image-only-article"),
     pytest.param('<article><table><caption>Values</caption><tr><th>Kind</th><th>Dose</th>'
                  '</tr><tr><td>A</td><td>2</td></tr></table></article>',
                  'Caption: Values\n\n| Kind | Dose |\n| --- | --- |\n| A | 2 |\n',
@@ -96,7 +97,7 @@ def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
     pytest.param('<article><h1>Heading</h1><p>By Maksim <time>2026-10-13</time></p>'
                  '<p><a href="/facts">café 東京</a></p><nav><p>Inside navigation</p></nav>'
                  '<p>Comment body</p></article>',
-                 '### Heading\n\nBy Maksim 2026\\-10\\-13\n\n[café 東京](/facts)\n\n'
+                 '### Heading\n\nBy Maksim 2026-10-13\n\n[café 東京](/facts)\n\n'
                  'Inside navigation\n\nComment body\n', 5, 0, id="visible-metadata-links-and-descendants"),
     pytest.param('<main><h1>Title</h1><h1 hidden>Hidden heading</h1><p>Prose</p>'
                  '<form hidden><input></form></main>', "### Title\n\nProse\n", 2, 0,
@@ -106,15 +107,73 @@ def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
     pytest.param('<main><h1>Title</h1>Plain prose</main>', "### Title\n\nPlain prose\n", 2, 0,
                  id="bare-main-prose"),
     pytest.param('<div role="button"><article><p>Control label</p></article></div>'
-                 '<article><p>Visible</p></article>', "Visible\n", 1, 0,
-                 id="role-button-candidate-excluded"),
+                 '<article><p>Visible</p></article>', "Control label\n\nVisible\n", 2, 0,
+                 id="role-button-no-longer-excludes-candidate"),
+    pytest.param('<div role="main"><p>R</p></div><p>Out</p>', "R\n", 1, 0, id="role-main"),
+    pytest.param('<div role="MAIN landmark"><p>R</p></div><p>Out</p>', "R\n", 1, 0,
+                 id="role-main-first-token-ascii-lowercased"),
+    pytest.param('<main><p>No heading</p></main>', "No heading\n", 1, 0, id="main-without-h1"),
+    pytest.param('<main><h1> </h1><p>Prose</p></main>', "Prose\n", 1, 0, id="main-with-blank-h1"),
+    pytest.param('<main><h1>One</h1><h1>Two</h1><p>Prose</p></main>',
+                 "### One\n\n### Two\n\nProse\n", 3, 0, id="main-with-two-h1"),
+    pytest.param('<main><h1>Title</h1><nav><p>Only navigation</p></nav></main>',
+                 "### Title\n\nOnly navigation\n", 2, 0, id="main-with-only-navigation"),
+    pytest.param('<main><h1>Title</h1><table><tr><td>Only table</td></tr></table></main>',
+                 "### Title\n\n| Only table |\n| --- |\n", 1, 1, id="main-with-only-table"),
+    pytest.param('<main><h1>Title</h1><input value="Only control"></main>', "### Title\n", 1, 0,
+                 id="main-with-only-control"),
+    pytest.param('<main><h1>Title</h1><p>Prose</p><form></form></main>', "### Title\n\nProse\n",
+                 2, 0, id="main-with-visible-empty-form"),
+    pytest.param('<main><h1>Title</h1><div role="button">Only control label</div></main>',
+                 "### Title\n\nOnly control label\n", 2, 0, id="main-with-role-button-prose"),
+    pytest.param('<div role="button"><article><p>Control label</p></article></div>',
+                 "Control label\n", 1, 0, id="role-button-only-candidate"),
+    pytest.param('<main><article><p>One</p></article></main><main></main>', "One\n", 1, 0,
+                 id="empty-peer-main"),
+    pytest.param('<main><article><p>One</p></article></main><main><article><p>Two</p>'
+                 '</article></main>', "One\n\nTwo\n", 2, 0, id="articles-across-two-mains"),
+    pytest.param('<main><p>A</p></main><main><p>B</p></main>', "A\n\nB\n", 2, 0,
+                 id="two-mains-without-articles"),
+    pytest.param('<main></main><main><p>B</p></main>', "B\n", 1, 0, id="empty-then-filled-main"),
+    pytest.param('<main><p>A</p></main><p>Out</p><div role="main"><p>B</p></div>', "A\n\nB\n", 2, 0,
+                 id="main-and-role-main-in-order"),
+    pytest.param('<article><p>One</p></article><article><p>Two</p></article>', "One\n\nTwo\n", 2, 0,
+                 id="peer-articles"),
+    pytest.param('<main><p>Intro</p><article><p>One</p></article><article><p>Two</p></article>'
+                 '</main>', "Intro\n\nOne\n\nTwo\n", 3, 0, id="main-with-peer-articles-renders-whole"),
+    pytest.param('<main><p>Intro</p><article><p>Art</p></article><p>B</p></main>',
+                 "Intro\n\nArt\n\nB\n", 3, 0, id="main-with-article-and-trailing-prose-renders-whole"),
+    pytest.param('<div role="xyz main"><p>M</p></div><p>Out</p>', "M\n", 1, 0,
+                 id="role-main-after-unknown-token"),
+    pytest.param('<nav><main><p>InNav</p></main></nav><p>Out</p>', "InNav\n", 1, 0,
+                 id="main-inside-landmark-is-selected"),
+    pytest.param('<aside><main><p>Side</p></main></aside><p>Body</p>', "Side\n", 1, 0,
+                 id="main-inside-aside-is-selected"),
+    pytest.param('<article><p>One</p></article><article></article>', "One\n", 1, 0,
+                 id="empty-peer-article"),
+    pytest.param('<article hidden><p>H</p></article><article><p>V</p></article>', "V\n", 1, 0,
+                 id="hidden-peer-article-skipped"),
+    pytest.param('<form><article><p>F</p></article></form><article><p>V</p></article>',
+                 "F\n\nV\n", 2, 0, id="form-wrapped-article-kept"),
+    pytest.param('<article><table><tr><td>A</td></tr></table></article><table><tr><td>Out</td>'
+                 '</tr></table><article><table><tr><td>B</td></tr></table></article>',
+                 "| A |\n| --- |\n\n| B |\n| --- |\n", 0, 2, id="tables-only-inside-selected-roots"),
+    pytest.param('<nav role="main"><p>N</p></nav><p>Out</p>', "N\n", 1, 0,
+                 id="explicit-main-role-wins-over-nav-tag"),
+    pytest.param('<article><p>Out</p></article><article role="main"><p>In</p></article>', "In\n", 1, 0,
+                 id="article-with-main-role-is-a-main"),
+    pytest.param('<main><p>A</p><main><p>B</p></main><p>C</p></main><p>Out</p>', "A\n\nB\n\nC\n", 3, 0,
+                 id="nested-main-renders-once-inside-outer"),
+    pytest.param('<article><p>A</p></article><article><p hidden>H</p><p>&nbsp;</p><table></table>'
+                 '</article><article><p>B</p></article>', "A\n\nB\n", 2, 0,
+                 id="empty-middle-root-adds-no-blocks-or-counts"),
 ])
 def test_article_selection_preserves_exact_supported_descendants(tmp_path, source, content, regions, tables):
     # GIVEN explicit document structure with independent retained-content expectations
     path = tmp_path / "sample.html"
     path.write_text(source, encoding="utf-8")
     assert path.read_text(encoding="utf-8") == source, "selection input must retain its exact source"
-    # WHEN article mode selects one root and renders its descendants
+    # WHEN article mode selects every visible root and renders its descendants in order
     result = brewdoc.run(path, article=True)
     # THEN source order, Unicode, metadata and counters match the full expected envelope
     assert result == (0, article_receipt(path, None, regions, tables=tables),
@@ -122,57 +181,83 @@ def test_article_selection_preserves_exact_supported_descendants(tmp_path, sourc
         "article selection must retain exactly the supported selected descendants")
 
 
-REFUSALS = [
-    pytest.param('<p>Unmarked prose</p>', NO_ROOT, id="unmarked-page"),
-    pytest.param('<main><p>No heading</p></main>', NO_ROOT, id="main-needs-h1"),
-    pytest.param('<main><h1> </h1><p>Prose</p></main>', NO_ROOT, id="empty-main-heading"),
-    pytest.param('<main><h1>One</h1><h1>Two</h1><p>Prose</p></main>', NO_ROOT, id="two-main-headings"),
-    pytest.param('<main><h1>Title</h1><nav><p>Only navigation</p></nav></main>', NO_ROOT,
-                 id="navigation-is-not-main-prose"),
-    pytest.param('<main><h1>Title</h1><table><tr><td>Only table</td></tr></table></main>',
-                 NO_ROOT, id="table-is-not-main-prose"),
-    pytest.param('<main><h1>Title</h1><input value="Only control"></main>', NO_ROOT,
-                 id="control-is-not-main-prose"),
-    pytest.param('<main><h1>Title</h1><p>Prose</p><form></form></main>', NO_ROOT,
-                 id="visible-empty-form-disqualifies-main"),
-    pytest.param('<main><article><p>One</p></article></main><main></main>', MAINS,
-                 id="empty-peer-main-is-ambiguous"),
-    pytest.param('<main><article><p>One</p></article></main><main><article><p>Two</p>'
-                 '</article></main>', MAINS, id="two-mains"),
-    pytest.param('<article><p>One</p></article><article><p>Two</p></article>', ARTICLES,
-                 id="peer-articles"),
-    pytest.param('<article><p>One</p></article><article></article>', ARTICLES,
-                 id="empty-peer-article-is-ambiguous"),
-    pytest.param('<article></article>', EMPTY, id="empty-selected-article"),
-    pytest.param('<article><p hidden>Hidden</p><script>ignored</script></article>', EMPTY,
+@supported_html
+@pytest.mark.parametrize("source,content,regions,tables", [
+    pytest.param('<p>Unmarked prose</p>', "Unmarked prose\n", 1, 0, id="unmarked-page"),
+    pytest.param('<nav><p>Menu</p></nav><p>Unmarked</p><button>Go</button><footer><p>Foot</p>'
+                 '</footer>', "Unmarked\n", 1, 0, id="clean-profile-drops-landmarks-and-controls"),
+    pytest.param('<p>Lead</p><table><tr><td>A</td></tr></table>', "Lead\n\n| A |\n| --- |\n", 1, 1,
+                 id="whole-body-tables"),
+    pytest.param('<article hidden><p>H</p></article><p>Out</p>', "Out\n", 1, 0,
+                 id="hidden-only-article"),
+    pytest.param('<main hidden><p>H</p></main><p>Out</p>', "Out\n", 1, 0, id="hidden-only-main"),
+    pytest.param('<article><p hidden>H</p></article><p>Out</p>', "Out\n", 1, 0,
+                 id="empty-attempt-adds-no-counts"),
+    pytest.param('<main></main><p>Out</p>', "Out\n", 1, 0, id="empty-main"),
+    pytest.param('<main></main><main></main>', "", 0, 0, id="two-empty-mains"),
+    pytest.param('<article></article>', "", 0, 0, id="empty-selected-article"),
+    pytest.param('<article><p hidden>Hidden</p><script>ignored</script></article>', "", 0, 0,
                  id="selected-article-renders-empty"),
-    pytest.param('<nav><article><p>Only navigation article</p></article></nav>', NO_ROOT,
-                 id="excluded-only-candidate"),
-    pytest.param('<html hidden><body><article><p>Secret</p></article></body></html>', NO_ROOT,
+    pytest.param('<nav><article><p>Only navigation article</p></article></nav>', "", 0, 0,
+                 id="landmark-only-candidate"),
+    pytest.param('<header><article><p>Head</p></article></header><p>Body</p>', "Body\n", 1, 0,
+                 id="header-candidate-skipped"),
+    pytest.param('<div role="navigation"><article><p>N</p></article></div><p>Body</p>', "Body\n", 1, 0,
+                 id="aria-landmark-candidate-skipped"),
+    pytest.param('<html hidden><body><article><p>Secret</p></article></body></html>', "", 0, 0,
                  id="hidden-html-ancestor"),
-    pytest.param('<html><body hidden><article><p>Secret</p></article></body></html>', NO_ROOT,
-                 id="hidden-body-ancestor"),
-    pytest.param('<div role="button"><article><p>Control label</p></article></div>', NO_ROOT,
-                 id="role-button-only-candidate"),
-    pytest.param('<main><h1>Title</h1><div role="button">Only control label</div></main>', NO_ROOT,
-                 id="role-button-is-not-main-prose"),
-]
+    pytest.param('<html><body hidden><article><p>Secret</p></article></body></html>', "", 0, 0,
+                 id="hidden-body"),
+    pytest.param('<main><blockquote> </blockquote></main><p>Out</p>', "Out\n", 1, 0,
+                 id="empty-quote-root-falls-back"),
+    pytest.param('<article><blockquote><p hidden>x</p></blockquote></article><p>Out</p>', "Out\n", 1, 0,
+                 id="hidden-only-quote-root-falls-back"),
+    pytest.param('<main><ul><li></li></ul></main><p>Out</p>', "-\n\nOut\n", 1, 0,
+                 id="empty-item-root-falls-back"),
+])
+def test_article_fallback_renders_clean_whole_body_with_one_receipt_signal(
+        tmp_path, source, content, regions, tables):
+    # GIVEN a page without a visible nonempty candidate and an existing output file
+    path, out = tmp_path / "sample.html", tmp_path / "replaced.md"
+    path.write_text(source, encoding="utf-8")
+    out.write_bytes(b"replaced output\n")
+    assert out.read_bytes() == b"replaced output\n", "the fallback destination must start populated"
+    # WHEN article mode finds nothing to select
+    result = brewdoc.run(path, out, article=True)
+    # THEN the default clean document is published; the receipt adds only article_fallback
+    expected = expected_document(path, content, regions, tables=tables)
+    assert (result, out.read_bytes()) == (
+        (0, fallback_receipt(path, out, regions, tables=tables), expected), expected.encode("utf-8")
+    ), "article fallback must equal the default run except for the article_fallback receipt key"
 
 
 @supported_html
-@pytest.mark.parametrize("source,reason", REFUSALS)
-def test_article_refusals_preserve_the_destination_and_complete_failure_receipt(tmp_path, source, reason):
-    # GIVEN unsuitable or ambiguous content and an existing output file
-    path, out = tmp_path / "sample.html", tmp_path / "preserved.md"
-    path.write_text(source, encoding="utf-8")
-    out.write_bytes(b"preserved output\n")
-    assert out.read_bytes() == b"preserved output\n", "the refusal sentinel must start intact"
-    # WHEN article mode attempts selection without a full-page fallback
-    result = brewdoc.run(path, out, article=True)
-    # THEN the fixed reason, zero-unit envelope and destination are exact
-    assert (result, out.read_bytes()) == (
-        (1, refused_receipt(path, reason), ""), b"preserved output\n"
-    ), "article refusal must preserve its exact safe reason and existing output"
+def test_render_html_article_fallback_exposes_the_tally_signal(tmp_path):
+    # GIVEN an unmarked page
+    path = tmp_path / "sample.html"
+    path.write_text('<p>Unmarked</p>', encoding="utf-8")
+    assert path.is_file() is True, "the unmarked source must exist"
+    # WHEN the public renderer falls back in article mode
+    rendered = brewdoc.render_html(path, article=True)
+    # THEN Markdown is the default document and the tally carries the fallback key
+    assert rendered == (expected_document(path, "Unmarked\n", 1),
+                        dict(zero_tally(), chapters=1, text_regions=1, article_fallback=True)), (
+        "render_html must expose the same fallback signal that run reports")
+
+
+@supported_html
+@pytest.mark.parametrize("html_attribute", ['hidden', 'aria-hidden="true"', 'style="display:none"'])
+def test_default_mode_renders_nothing_under_a_hidden_body_ancestor(tmp_path, html_attribute):
+    # GIVEN visible body prose under a hidden html element
+    path = tmp_path / "sample.html"
+    path.write_text('<html %s><body><p>Secret</p></body></html>' % html_attribute, encoding="utf-8")
+    assert path.is_file() is True, "the hidden-ancestor source must exist"
+    # WHEN default mode converts the page
+    result = brewdoc.run(path)
+    # THEN no body content is carried and the receipt has no fallback key
+    assert result == (0, dict(expected_receipt(path, None, 0), out=None),
+                      expected_document(path, "", 0)), (
+        "a hidden ancestor of body must hide the whole body in default mode")
 
 
 @supported_html
@@ -222,7 +307,7 @@ def test_public_article_arguments_are_keyword_only_and_render_html_agrees_with_r
 ])
 def test_complete_body_resource_limits_apply_before_article_selection(
         tmp_path, monkeypatch, outside, depth_limit, reason):
-    # GIVEN two ambiguous articles and resource overflow elsewhere in the complete body
+    # GIVEN two peer articles and resource overflow elsewhere in the complete body
     path, out = tmp_path / "sample.html", tmp_path / "preserved.md"
     path.write_text('<article><p>One</p></article><article><p>Two</p></article>' + outside,
                     encoding="utf-8")
@@ -230,7 +315,7 @@ def test_complete_body_resource_limits_apply_before_article_selection(
     monkeypatch.setattr(htmltext, "_TABLE_CELL_LIMIT", 1)
     monkeypatch.setattr(htmltext, "_DEPTH_LIMIT", depth_limit)
     assert out.read_bytes() == b"preserved", "resource refusal output must start intact"
-    # WHEN article extraction validates the complete source before resolving ambiguity
+    # WHEN article extraction validates the complete source before selecting roots
     result = brewdoc.run(path, out, article=True)
     # THEN complete-tree and complete-body budgets take priority over article selection
     assert (result, out.read_bytes()) == ((1, refused_receipt(path, reason), ""), b"preserved"), (
@@ -252,22 +337,34 @@ def test_article_self_check_combination_returns_usage_without_running_check(monk
         "article and self-check must be refused as a usage error")
 
 
+SELECTED, FALLBACK = (article_document, article_receipt), (expected_document, fallback_receipt)
+UNSELECTABLE_OR_PEER_PAGES = [
+    pytest.param('<p>Unmarked prose</p>', "Unmarked prose\n", 1, FALLBACK, id="no-candidate-fallback"),
+    pytest.param('<main></main><main></main>', "", 0, FALLBACK, id="empty-mains-fallback"),
+    pytest.param('<article><p>One</p></article><article></article>', "One\n", 1, SELECTED,
+                 id="peer-articles-selected"),
+    pytest.param('<article></article>', "", 0, FALLBACK, id="empty-selected-fallback"),
+]
+
+
 @supported_html
-@pytest.mark.parametrize("source,reason", REFUSALS)
-def test_local_article_cli_prints_only_safe_refusal_and_preserves_output(tmp_path, capsys, source, reason):
-    # GIVEN unsuitable HTML and an existing destination
-    path, out = tmp_path / "sample.html", tmp_path / "preserved.md"
+@pytest.mark.parametrize("source,content,regions,builders", UNSELECTABLE_OR_PEER_PAGES)
+def test_local_article_cli_publishes_selected_or_fallback_output_without_refusing(
+        tmp_path, capsys, source, content, regions, builders):
+    # GIVEN HTML without a nonempty candidate, or with peer articles, and an existing destination
+    path, out = tmp_path / "sample.html", tmp_path / "replaced.md"
     path.write_text(source, encoding="utf-8")
-    out.write_bytes(b"preserved")
-    assert out.read_bytes() == b"preserved", "CLI sentinel must start intact"
+    out.write_bytes(b"replaced")
+    assert out.read_bytes() == b"replaced", "CLI destination must start populated"
     # WHEN local CLI conversion requests article extraction
     code = cli.main([str(path), "--article", "--out", str(out)])
     captured = capsys.readouterr()
-    # THEN stdout is exactly one complete refusal receipt with empty stderr
+    # THEN stdout is one success receipt, the fallback key appears only on fallback
+    document, receipt = builders
     assert (code, captured.out, captured.err, out.read_bytes()) == (
-        1, json.dumps(refused_receipt(path, reason), ensure_ascii=True, sort_keys=True) + "\n",
-        "", b"preserved",
-    ), "article CLI refusals must use the normal transactional output contract"
+        0, json.dumps(receipt(path, out, regions), ensure_ascii=True, sort_keys=True) + "\n", "",
+        document(path, content, regions).encode("utf-8"),
+    ), "article CLI must publish selected or fallback output instead of refusing"
 
 
 @supported_html
@@ -357,7 +454,7 @@ def frozen_url(monkeypatch, source, render_js):
         """Record one successful guarded acquisition at the external I/O seam."""
         calls.append(url)
         budget["accepted_requests"] += 1
-        return {"final_url": url, "body": body, "entity": body, "headers": (),
+        return {"final_url": url, "body": body, "entity": body, "headers": (("Content-Type", "text/html"),),
                 "body_sha256": hashlib.sha256(body).hexdigest(),
                 "entity_sha256": hashlib.sha256(body).hexdigest()}
 
@@ -384,7 +481,7 @@ def url_acquisition(body, snapshot, render_js):
                 "dom_name": "linkedom", "dom_version": "0.18.13"}, "capture_status": "partial",
                "errors": [{"category": "script", "resource_url": None}], "error_count": 1,
                "pending": {"requests": 0, "timers": 0, "modules": 0, "promises": 0, "jobs": False},
-               "unsupported_resources": UNIX_RESOURCES, "soft_window_seconds": 30.0,
+               "unsupported_resources": UNIX_RESOURCES, "soft_window_seconds": 12.0,
                "soft_window_origin": "request"},
     }
     return dict(mode[render_js], requested_url=URL, final_url=URL, effective_base_url=URL,
@@ -412,8 +509,7 @@ def test_url_article_and_default_modes_preserve_complete_frozen_receipts_and_has
                True: {"content": "Kept\n", "regions": 1}}[article]
     document = {False: expected_document, True: article_document}[article](path, **options)
     name = "url-%s.html" % hashlib.sha256(URL.encode()).hexdigest()[:16]
-    escaped = name.replace("-", "\\-").replace(".", "\\.")
-    document = document.replace("sample\\.html", escaped)
+    document = document.replace("sample.html", name)
     expected = {False: expected_receipt, True: article_receipt}[article](path, None, options["regions"])
     expected.update(source=URL, out=None, receipt_schema="brewdoc.receipt/2",
                     acquisition=url_acquisition(body, snapshot, render_js))
@@ -427,30 +523,28 @@ def test_url_article_and_default_modes_preserve_complete_frozen_receipts_and_has
 
 @supported_html
 @pytest.mark.parametrize("render_js", [False, True], ids=["static", "frozen-js"])
-@pytest.mark.parametrize("source,reason", [
-    pytest.param('<p>No candidate</p>', NO_ROOT, id="no-root"),
-    pytest.param('<main></main><main></main>', MAINS, id="ambiguous-mains"),
-    pytest.param('<article><p>One</p></article><article></article>', ARTICLES, id="ambiguous-articles"),
-    pytest.param('<article></article>', EMPTY, id="empty-selected"),
-])
-def test_url_article_cli_retains_safe_selection_reason_and_existing_destination(
-        tmp_path, monkeypatch, capsys, render_js, source, reason):
-    # GIVEN a frozen unsuitable page and an existing output destination
-    out = tmp_path / "preserved.md"
-    out.write_bytes(b"preserved")
+@pytest.mark.parametrize("source,content,regions,builders", UNSELECTABLE_OR_PEER_PAGES)
+def test_url_article_cli_publishes_selected_or_fallback_output_with_complete_acquisition(
+        tmp_path, monkeypatch, capsys, render_js, source, content, regions, builders):
+    # GIVEN a frozen page without a nonempty candidate, or with peer articles, and an existing destination
+    out = tmp_path / "replaced.md"
+    out.write_bytes(b"replaced")
     snapshot = ('<html><head></head><body>' + source + '</body></html>').encode("utf-8")
     body, calls = frozen_url(monkeypatch, source, render_js)
     path = tmp_path / "sample.html"
-    expected = refused_receipt(path, reason)
-    acquisition = dict(url_acquisition(body, snapshot, render_js), capture_status="refused",
-                       refusal_stage="conversion")
-    expected.update(source=URL, receipt_schema="brewdoc.receipt/2", acquisition=acquisition)
+    path.write_bytes(snapshot)
+    name = "url-%s.html" % hashlib.sha256(URL.encode()).hexdigest()[:16]
+    document, receipt = builders
+    document = document(path, content, regions).replace("sample.html", name)
+    expected = dict(receipt(path, out, regions), source=URL,
+                    receipt_schema="brewdoc.receipt/2", acquisition=url_acquisition(body, snapshot, render_js))
     arguments = ["--url", URL, "--article", "--out", str(out)] + ["--render-js"] * render_js
-    assert (calls, out.read_bytes()) == ([], b"preserved"), "URL refusal must start without output changes"
-    # WHEN static or frozen JS CLI conversion attempts article selection
+    assert (calls, out.read_bytes()) == ([], b"replaced"), "URL conversion must start without requests"
+    # WHEN static or frozen JS CLI conversion requests article selection
     code = cli.main(arguments)
     captured = capsys.readouterr()
-    # THEN the exact safe reason survives URL sanitization and no Markdown is published
+    # THEN the success receipt keeps URL provenance and the snapshot document is published
     assert (code, captured.out, captured.err, calls, out.read_bytes()) == (
-        1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", [URL], b"preserved"
-    ), "URL article refusal must retain the safe reason, complete acquisition and transaction"
+        0, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", [URL],
+        document.encode("utf-8"),
+    ), "URL article mode must publish selected or fallback output with exact acquisition evidence"
