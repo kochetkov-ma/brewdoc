@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from brewdoc.common import (RECEIPT_SCHEMA, BrewdocError, Route,
+from brewdoc.common import (MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route, _body_only,
                             _ZipBudget, _markdown_encoding, new_tally)
 from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.eml import ROUTE as EML_ROUTE
@@ -40,6 +40,8 @@ ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE, HTML_
                     EPUB_ROUTE, TEXT_ROUTE, EML_ROUTE, ODT_ROUTE, ODP_ROUTE)
 SUFFIXES = " ".join(sorted(ROUTES))
 NO_ROUTE = Route("none", "none", (), None, ())
+HTML_ONLY = "--article is an HTML-only option"
+WORKBOOK_ONLY = "--sheet and --artifact are workbook-only options"
 
 
 def _route(path: Path) -> Route:
@@ -57,7 +59,7 @@ def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = N
           out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
           selected_sheets=None) -> dict:
     """Copy loss counters into a receipt; success adds Markdown schema, unit keys and artifacts.
-    Include selected sheets only on success when a selection was supplied."""
+    Selected sheets and the article fallback flag appear only on success when present."""
     tally = tally or new_tally()
     line = {"file_ok": file_ok, "route": route.name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
@@ -72,6 +74,8 @@ def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = N
                      "unit_keys": list(unit_keys)})
         if selected_sheets is not None:
             line["selected_sheets"] = list(selected_sheets)
+        if "article_fallback" in tally:
+            line["article_fallback"] = True
     return line
 
 
@@ -90,8 +94,10 @@ def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...
     return tuple(pairs)
 
 
-def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = False) -> tuple[int, dict, str]:
-    """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where."""
+def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = False,
+        body_only: bool = False) -> tuple[int, dict, str]:
+    """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where.
+    Body-only derives its Markdown from the full rendering, so limits and receipts stay the same."""
     path = Path(path)
     route = _route(path)
     if route.name == "html" and article:
@@ -103,11 +109,11 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
         if article and route.name != "html":
-            raise BrewdocError("--article is an HTML-only option")
+            raise BrewdocError(HTML_ONLY)
         sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
         if route.name != "sheet" and (sheets is not None or pairs):
-            raise BrewdocError("--sheet and --artifact are workbook-only options")
+            raise BrewdocError(WORKBOOK_ONLY)
         targets = _output_targets(path, out, pairs)
         zip_budget = _ZipBudget() if route.name == "sheet" else None
         if route.name == "sheet":
@@ -117,6 +123,10 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
         else:
             rendered = route.render(path, sheets, article=True) if article else route.render(path, sheets)
         markdown, tally, unit_keys, references = rendered
+        if "article_fallback" in tally:
+            route = HTML_ROUTE
+        if body_only and route.markdown_schema == MARKDOWN_SCHEMA:
+            markdown = _body_only(markdown, unit_keys)
         keys = tuple(key for key, _target, _shown in pairs)
         listed = {item.key for item in references}
         unknown = [key for key in keys if key not in listed]

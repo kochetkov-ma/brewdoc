@@ -1,3 +1,4 @@
+import importlib
 import itertools
 import json
 import os
@@ -8,9 +9,14 @@ from pathlib import Path
 import pytest
 
 import brewdoc
+from brewdoc import common, selfcheck
 from brewdoc.cli import main
 
-from test_spreadsheets import FORMULA_KEYS, formula_book, refused
+from test_contract import HEADING, docx, pdf, rezipped, text_op
+from test_epub import CONTAINER, write_epub, xhtml
+from test_fixtures import HTML_SUPPORTED
+from test_presentations import base_parts, paragraph, pptx, shape, slide
+from test_spreadsheets import CALC_TABLE, FORMULA_KEYS, formula_book, refused, zero_sheet_book
 
 
 def tree_state(root: Path) -> dict:
@@ -350,3 +356,358 @@ def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path,
     assert (code, tree_state(first_parent), tree_state(second_parent)) == (
         0, {"book.md": (markdown.encode("ascii"), created_mode)}, {},
     ), "publish must use the real parent captured before staging"
+
+
+HTML_ONLY = pytest.mark.skipif(not HTML_SUPPORTED, reason="HTML requires CPython 3.12-3.14")
+PARAGRAPH = "<w:p><w:r><w:t>%s</w:t></w:r></w:p>"
+ENVELOPE = ('# "doc.pdf"\n\n<a id="brewdoc-contents"></a>\n## Contents\n\n'
+            "- [Page 1](#brewdoc-page-000001)\n- [Page 2](#brewdoc-page-000002)\n\n")
+FIRST, SECOND = '<a id="brewdoc-page-000001"></a>', '<a id="brewdoc-page-000002"></a>'
+PAGES = ("page/000001", "page/000002")
+PAGE_TWO = SECOND + "\n## Page 2\n\nworld\n"
+EPUB_FENCED = ('<p id="f">First <a href="#f">self</a> <a href="c2.xhtml">next</a></p>'
+               '<pre>&lt;a id="brewdoc-chapter-000002"&gt;&lt;/a&gt;\n## Chapter 2: "Two"</pre>')
+HTML_PAGE = '<title>Page</title><p>Body café</p><pre>&lt;a id="brewdoc-chapter-000001"&gt;&lt;/a&gt;</pre>'
+NOTE = '# Title\n\n<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "x"\n'
+ARTICLE_MARKDOWN = (
+    '# "page.html"\n\n<a id="brewdoc-metadata"></a>\n## Metadata\n\n| Field | Value |\n| --- | --- |\n'
+    "| Markdown schema | brewdoc.markdown/2 |\n| Source name | \"page.html\" |\n| Source suffix | .html |\n"
+    "| Source bytes | 63 |\n"
+    "| Source SHA-256 | 065b98e8cf6b4873df3ba86a35fb73b46138e1529473351266891687ae293500 |\n"
+    "| Route | html |\n| Unit kind | chapter |\n| Source unit count | 1 |\n| Rendered unit count | 1 |\n"
+    "| Ordered selection keys | chapter/000001 |\n| Rendered body bytes | 63 |\n"
+    "| Rendered body SHA-256 | 7ea188a9e0c9959d7bac56a121c1be840d676c321347612e7b4d796fe58b7bb3 |\n"
+    "| Pages | 0 |\n| Sheets | 0 |\n| Chapters | 1 |\n| Tables | 0 |\n| Text regions | 1 |\n"
+    "| Column splits | 0 |\n| Broken ligature words | 0 |\n| Dropped control chars | 0 |\n"
+    "| Dropped soft hyphens | 0 |\n| Dropped nbsp | 0 |\n| Dropped pua glyphs | 0 |\n"
+    "| Dropped cid survivors | 0 |\n| Dropped ligatures | 0 |\n| Dropped running heads | 0 |\n"
+    "| Dropped page numbers | 0 |\n| Dropped non ascii replaced | 0 |\n"
+    "| Formula capability | not applicable |\n| Selected formula count | not applicable |\n"
+    "| VBA project capability | not applicable |\n| VBA project count | not applicable |\n"
+    "| VBA source module capability | not applicable |\n| VBA source module count | not applicable |\n\n"
+    "## Artifacts\n\nNone.\n\n## Known omissions\n\n"
+    "- dynamic browser content, scripts and stylesheets\n"
+    "- graphical SVG content, canvas pixels and MathML semantics\n- active media and embeds\n"
+    "- inline code layout outside tables: rendered as fenced blocks\n- inline code monospace inside table cells\n"
+    "- form controls and their values\n- images without alt text\n"
+    "- navigation, header, footer and aside landmarks outside main or article content\n"
+    "- body content outside the selected article or main subtree; complete page coverage is not claimed\n\n"
+    '<a id="brewdoc-contents"></a>\n## Contents\n\n- [Chapter 1: "Page"](#brewdoc-chapter-000001)\n\n'
+    '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Page"\n\nKept\n'
+)
+
+
+def epub(path: Path, *chapters: str) -> Path:
+    """Write an EPUB 3 whose spine and navigation list chapters c1, c2, ... in order."""
+    ids = ["c%d" % number for number in range(1, len(chapters) + 1)]
+    package = ('<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+               '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Book</dc:title>'
+               '<dc:identifier id="id">urn:synthetic</dc:identifier><dc:language>en</dc:language>'
+               '</metadata><manifest>%s<item id="nav" href="nav.xhtml" '
+               'media-type="application/xhtml+xml" properties="nav"/></manifest><spine>%s</spine>'
+               '</package>' % ("".join('<item id="%s" href="%s.xhtml" media-type="application/'
+                                       'xhtml+xml"/>' % (item, item) for item in ids),
+                               "".join('<itemref idref="%s"/>' % item for item in ids)))
+    nav = ('<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+           '<head><title>TOC</title></head><body><nav epub:type="toc"><ol>%s</ol></nav></body></html>'
+           % "".join('<li><a href="%s.xhtml">%s</a></li>' % (item, item.upper()) for item in ids))
+    return write_epub(path, {
+        "mimetype": "application/epub+zip", "META-INF/container.xml": CONTAINER,
+        "OPS/book.opf": package, "OPS/nav.xhtml": nav,
+        **{"OPS/%s.xhtml" % item: xhtml(body) for item, body in zip(ids, chapters)},
+    })
+
+
+def written(path: Path, text: str) -> Path:
+    """Write UTF-8 `text` to `path` and return it."""
+    path.write_bytes(text.encode("utf-8"))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("markdown", "unit_keys", "expected"),
+    [
+        pytest.param(ENVELOPE, (), "", id="no-units"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\nhello\n", PAGES[:1], "hello\n", id="one-unit"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n", PAGES[:1], "", id="one-empty-unit"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n## Not a unit\n", PAGES[:1],
+                     "## Not a unit\n", id="one-unit-keeps-source-heading"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\nhello\n\n" + PAGE_TWO, PAGES,
+                     "## Page 1\n\nhello\n\n## Page 2\n\nworld\n", id="two-units"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n```text\n" + SECOND + "\n```\n\n" + PAGE_TWO,
+                     PAGES, "## Page 1\n\n```text\n" + SECOND + "\n```\n\n## Page 2\n\nworld\n",
+                     id="backtick-fence-with-info"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n~~~\n" + SECOND + "\n~~~\n\n" + PAGE_TWO,
+                     PAGES, "## Page 1\n\n~~~\n" + SECOND + "\n~~~\n\n## Page 2\n\nworld\n",
+                     id="tilde-fence"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n````\n```\n" + SECOND + "\n````\n\n" + PAGE_TWO,
+                     PAGES, "## Page 1\n\n````\n```\n" + SECOND + "\n````\n\n## Page 2\n\nworld\n",
+                     id="shorter-run-does-not-close"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n```\n~~~\n" + SECOND + "\n```\n\n" + PAGE_TWO,
+                     PAGES, "## Page 1\n\n```\n~~~\n" + SECOND + "\n```\n\n## Page 2\n\nworld\n",
+                     id="other-character-does-not-close"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n   ```\n" + SECOND + "\n   ```\t \n\n" + PAGE_TWO,
+                     PAGES, "## Page 1\n\n   ```\n" + SECOND + "\n   ```\t \n\n## Page 2\n\nworld\n",
+                     id="indented-fence-and-padded-close"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n    ```\n" + PAGE_TWO, PAGES,
+                     "## Page 1\n\n    ```\n## Page 2\n\nworld\n", id="four-space-indent-is-no-fence"),
+        pytest.param(ENVELOPE + FIRST + "\n## Page 1\n\n```a`b\n" + PAGE_TWO, PAGES,
+                     "## Page 1\n\n```a`b\n## Page 2\n\nworld\n", id="backtick-info-is-no-fence"),
+        pytest.param('<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "x"\n\n'
+                     '<a id="brewdoc-chapter-000001-fragment-000001"></a>\nText\n', ("chapter/000001",),
+                     '<a id="brewdoc-chapter-000001-fragment-000001"></a>\nText\n',
+                     id="fragment-anchor-stays"),
+    ],
+)
+def test_body_only_helper_strips_the_envelope_and_unit_anchors_outside_fences(
+        markdown, unit_keys, expected):
+    # GIVEN a schema 2 document shape and its ordered unit keys
+    # WHEN only the body is derived from it
+    body = common._body_only(markdown, unit_keys)
+    # THEN envelope and unit anchors go, fenced lines stay, one heading only for several units
+    assert body == expected, "body-only must remove generated navigation and keep source lines verbatim"
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "options", "body"),
+    [
+        pytest.param("one.pdf", lambda path: pdf(path, text_op(72, 700, "hello")), {}, "hello\n",
+                     id="pdf-one-page"),
+        pytest.param("two.pdf", lambda path: pdf(path, text_op(72, 700, "hello"), text_op(72, 700, "world")),
+                     {}, "## Page 1\n\nhello\n\n## Page 2\n\nworld\n", id="pdf-two-pages"),
+        pytest.param("one.docx", lambda path: docx(path, PARAGRAPH % "Plain words"), {}, "Plain words\n",
+                     id="docx-one-chapter"),
+        pytest.param("two.docx", lambda path: docx(path, HEADING % "Intro" + PARAGRAPH % "First"
+                                                   + HEADING % "Next" + PARAGRAPH % "Second"), {},
+                     '## Chapter 1: "Intro"\n\nFirst\n\n## Chapter 2: "Next"\n\nSecond\n',
+                     id="docx-two-chapters"),
+        pytest.param("book.xlsx", formula_book, {"sheets": ["Calc"]}, CALC_TABLE,
+                     id="xlsx-one-selected-sheet"),
+        pytest.param("book.xlsx", formula_book, {},
+                     '## Sheet 1: "Inputs"\n\n| 1.0 |\n| --- |\n| 2.0 |\n| 3.0 |\n\n'
+                     '## Sheet 2: "Calc"\n\n' + CALC_TABLE + '\n## Sheet 3: "Empty"\n',
+                     id="xlsx-three-sheets"),
+        pytest.param("empty.xlsm", zero_sheet_book, {}, "", id="xlsm-no-sheets"),
+        pytest.param("page.html", lambda path: written(path, HTML_PAGE), {},
+                     'Body café\n\n```\n<a id="brewdoc-chapter-000001"></a>\n```\n',
+                     id="html-one-chapter", marks=HTML_ONLY),
+        pytest.param("one.epub", lambda path: epub(path, "<p>Only text</p>"), {}, "Only text\n",
+                     id="epub-one-chapter"),
+        pytest.param("two.epub", lambda path: epub(path, EPUB_FENCED, "<p>Second</p>"), {},
+                     '## Chapter 1: "C1"\n\n<a id="brewdoc-chapter-000001-fragment-000001"></a>\n'
+                     "First [self](#brewdoc-chapter-000001-fragment-000001) [next](#brewdoc-chapter-000002)"
+                     '\n\n```\n<a id="brewdoc-chapter-000002"></a>\n## Chapter 2: "Two"\n```\n\n'
+                     '## Chapter 2: "C2"\n\nSecond\n', id="epub-two-chapters"),
+        pytest.param("note.md", lambda path: written(path, NOTE), {}, NOTE, id="markdown-pass-through"),
+        pytest.param("note.txt", lambda path: written(path, NOTE), {}, NOTE, id="text-pass-through"),
+    ],
+)
+def test_body_only_run_returns_the_default_receipt_and_only_the_body(tmp_path, name, build, options, body):
+    # GIVEN a single- or multi-unit document and its default successful run
+    path = build(tmp_path / name)
+    code, receipt, _markdown = brewdoc.run(path, **options)
+    assert (code, receipt["file_ok"]) == (0, True), "the default run must succeed first"
+    # WHEN the same document is rendered body-only
+    result = brewdoc.run(path, **options, body_only=True)
+    # THEN the receipt is unchanged and Markdown keeps only the unit body
+    assert result == (0, receipt, body), "body-only must change only the Markdown, never the receipt"
+
+
+def two_slides(path: Path, first: str) -> Path:
+    """Write a two-slide PPTX whose untitled slides hold `first` and `two`."""
+    parts = base_parts([("rId1", "slides/one.xml", False), ("rId2", "slides/two.xml", False)])
+    parts["deck/slides/one.xml"] = slide(shape("Body", paragraph(first)))
+    parts["deck/slides/two.xml"] = slide(shape("Body", paragraph("two")))
+    return pptx(path, parts)
+
+
+ODF_TEXT = "caf\u00e9 \u6771\u4eac"
+ODT_NEXT = '</text:p><text:p>First</text:p><text:h text:outline-level="1">Next</text:h><text:p>Second'
+ODP_NEXT = ("</text:p></draw:text-box></draw:frame></draw:page><draw:page draw:name=\"Two\">"
+            "<draw:frame><draw:text-box><text:p>two")
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "body"),
+    [
+        pytest.param("fence.docx", lambda path: docx(path, HEADING % "Intro" + PARAGRAPH % "```"
+                                                     + PARAGRAPH % "First" + HEADING % "Next"
+                                                     + PARAGRAPH % "Second"),
+                     '## Chapter 1: "Intro"\n\n\\```\n\nFirst\n\n## Chapter 2: "Next"\n\nSecond\n',
+                     id="docx-backticks"),
+        pytest.param("fence.pptx", lambda path: two_slides(path, "```"),
+                     '## Slide 1: "Untitled"\n\n\\```\n\n## Slide 2: "Untitled"\n\ntwo\n',
+                     id="pptx-backticks"),
+        pytest.param("fence.odt", lambda path: rezipped(path, selfcheck._synthetic_odf("odt"), ODF_TEXT,
+                                                        "~~~" + ODT_NEXT),
+                     '## Chapter 1: "Title"\n\n\\~~~\n\nFirst\n\n## Chapter 2: "Next"\n\nSecond\n',
+                     id="odt-tildes"),
+        pytest.param("fence.odp", lambda path: rezipped(path, selfcheck._synthetic_odf("odp"), ODF_TEXT,
+                                                        "````" + ODP_NEXT),
+                     '## Slide 1: "Title"\n\n\\````\n\n## Slide 2: "Two"\n\ntwo\n',
+                     id="odp-long-backticks"),
+        pytest.param("fence.pdf", lambda path: pdf(path, text_op(72, 700, "~~~") + text_op(72, 680, "hello"),
+                                                   text_op(72, 700, "world")),
+                     "## Page 1\n\n\\~~~\nhello\n\n## Page 2\n\nworld\n", id="pdf-tildes"),
+    ],
+)
+def test_body_only_drops_later_unit_anchors_after_a_raw_route_fence_line(tmp_path, name, build, body):
+    # GIVEN a two-unit raw-route document whose first unit holds an unclosed fence opener
+    path = build(tmp_path / name)
+    # WHEN only its body is rendered
+    code, _receipt, markdown = brewdoc.run(path, body_only=True)
+    # THEN the fence run is escaped, so no fence hides the second unit anchor from body-only
+    assert (code, markdown) == (0, body), "source text must not keep a unit anchor in body-only output"
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "options"),
+    [
+        pytest.param("absent.pdf", lambda path: path, {}, id="missing-file"),
+        pytest.param("data.bin", lambda path: written(path, "data"), {}, id="unsupported-suffix"),
+        pytest.param("broken.docx", lambda path: written(path, "not a zip"), {}, id="unreadable-docx"),
+        pytest.param("doc.pdf", lambda path: pdf(path, text_op(72, 700, "hello")), {"article": True},
+                     id="article-on-pdf"),
+        pytest.param("doc.pdf", lambda path: pdf(path, text_op(72, 700, "hello")), {"sheets": ["A"]},
+                     id="sheet-on-pdf"),
+        pytest.param("book.xlsx", formula_book, {"sheets": ["Missing"]}, id="unknown-sheet"),
+    ],
+)
+def test_body_only_refuses_exactly_like_the_default_run(tmp_path, name, build, options):
+    # GIVEN a refused request, an existing output and the default refusal
+    path = build(tmp_path / name)
+    out = tmp_path / "kept.md"
+    out.write_bytes(b"existing output\n")
+    before = tree_state(tmp_path)
+    default = brewdoc.run(path, out, **options)
+    assert (default[0], default[2], tree_state(tmp_path)) == (1, "", before), (
+        "the default request must refuse without writing")
+    # WHEN the same request asks for body-only output
+    result = brewdoc.run(path, out, **options, body_only=True)
+    # THEN the refusal receipt is identical and nothing is written
+    assert (result, tree_state(tmp_path)) == (default, before), "body-only must not change a refusal"
+
+
+def test_body_only_keeps_the_full_document_output_limit(tmp_path, monkeypatch):
+    # GIVEN a two-chapter EPUB whose Markdown limit is one byte under its full document
+    path = epub(tmp_path / "two.epub", "<p>First</p>", "<p>Second</p>")
+    out = tmp_path / "kept.md"
+    out.write_bytes(b"existing output\n")
+    size = len(brewdoc.run(path)[2].encode("utf-8"))
+    monkeypatch.setitem(importlib.import_module("brewdoc.epub").LIMITS, "markdown_bytes", size - 1)
+    default = brewdoc.run(path, out)
+    assert (default[0], default[2], out.read_bytes()) == (1, "", b"existing output\n"), (
+        "one byte under the full document must refuse the default run")
+    # WHEN the much smaller body-only output is requested
+    result = brewdoc.run(path, out, body_only=True)
+    # THEN it refuses with the identical receipt and keeps the earlier output
+    assert (result, out.read_bytes()) == (default, b"existing output\n"), (
+        "limits apply to the full rendering, so body-only must not relax them")
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "body"),
+    [
+        pytest.param("two.pdf", lambda path: pdf(path, text_op(72, 700, "hello"), text_op(72, 700, "world")),
+                     "## Page 1\n\nhello\n\n## Page 2\n\nworld\n", id="pdf-two-pages"),
+        pytest.param("page.html", lambda path: written(path, HTML_PAGE),
+                     'Body café\n\n```\n<a id="brewdoc-chapter-000001"></a>\n```\n',
+                     id="html-one-chapter", marks=HTML_ONLY),
+    ],
+)
+def test_cli_body_only_prints_the_default_receipt_then_the_body(tmp_path, capsys, name, build, body):
+    # GIVEN a document and the receipt line of its default CLI run
+    path = build(tmp_path / name)
+    code = main([str(path)])
+    receipt = capsys.readouterr().out.partition("\n")[0]
+    assert (code, json.loads(receipt)["file_ok"]) == (0, True), "the default CLI run must succeed"
+    # WHEN the CLI is asked for body-only output on stdout
+    code = main([str(path), "--body-only"])
+    # THEN stdout is the same receipt line followed by the body
+    assert (code, capsys.readouterr().out) == (0, receipt + "\n" + body), (
+        "--body-only must change only the Markdown after the receipt line")
+
+
+@pytest.mark.parametrize(
+    ("name", "build", "body"),
+    [
+        pytest.param("two.pdf", lambda path: pdf(path, text_op(72, 700, "hello"), text_op(72, 700, "world")),
+                     b"## Page 1\n\nhello\n\n## Page 2\n\nworld\n", id="pdf-ascii"),
+        pytest.param("page.html", lambda path: written(path, HTML_PAGE),
+                     'Body café\n\n```\n<a id="brewdoc-chapter-000001"></a>\n```\n'.encode("utf-8"),
+                     id="html-utf8", marks=HTML_ONLY),
+    ],
+)
+def test_cli_body_only_out_writes_body_bytes_in_the_route_encoding(tmp_path, capsys, name, build, body):
+    # GIVEN a document and the stdout of its default CLI run into one output file
+    path = build(tmp_path / name)
+    out = tmp_path / "out.md"
+    code = main([str(path), "--out", str(out)])
+    receipt = capsys.readouterr().out
+    assert (code, json.loads(receipt)["out"]) == (0, str(out)), "the default --out run must succeed"
+    # WHEN the CLI writes body-only output to the same file
+    code = main([str(path), "--body-only", "--out", str(out)])
+    # THEN stdout is the same receipt and the file holds only the encoded body
+    assert (code, capsys.readouterr().out, out.read_bytes()) == (0, receipt, body), (
+        "--body-only --out must keep the receipt and write the body in the route encoding")
+
+
+def test_cli_refuses_body_only_with_self_check(monkeypatch, capsys):
+    # GIVEN a wide, colourless terminal, so argparse prints usage on one plain line
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("PYTHON_COLORS", "0")
+    # WHEN body-only is combined with the self-check
+    with pytest.raises(SystemExit) as raised:
+        main(["--self-check", "--body-only"])
+    captured = capsys.readouterr()
+    # THEN argparse exits 2 with usage and the exact conflict on stderr
+    assert (raised.value.code, captured.out, captured.err) == (
+        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] "
+               "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] "
+               "[document]\nbrewdoc: error: --body-only cannot be combined with --self-check\n",
+    ), "--body-only has no meaning for the self-check and must be a usage error"
+
+
+def test_cli_reports_the_article_conflict_first_with_body_only_and_self_check(monkeypatch, capsys):
+    # GIVEN a wide, colourless terminal, so argparse prints usage on one plain line
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("PYTHON_COLORS", "0")
+    # WHEN article and body-only are both combined with the self-check
+    with pytest.raises(SystemExit) as raised:
+        main(["--article", "--body-only", "--self-check"])
+    captured = capsys.readouterr()
+    # THEN the earlier article conflict is the one reported
+    assert (raised.value.code, captured.out, captured.err) == (
+        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] "
+               "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] "
+               "[document]\nbrewdoc: error: --article cannot be combined with --self-check\n",
+    ), "conflicts must be reported in their existing order"
+
+
+@HTML_ONLY
+def test_body_only_composes_with_article_selection(tmp_path):
+    # GIVEN an HTML page with prose outside its article and the default article run
+    path = written(tmp_path / "page.html", "<title>Page</title><p>Outside</p><article><p>Kept</p></article>")
+    code, receipt, markdown = brewdoc.run(path, article=True)
+    assert (code, markdown) == (0, ARTICLE_MARKDOWN), "the article run must drop prose outside the article"
+    # WHEN the article is rendered body-only
+    result = brewdoc.run(path, article=True, body_only=True)
+    # THEN the article receipt is unchanged and only the selected body remains
+    assert result == (0, receipt, "Kept\n"), "body-only must derive the body from the article output"
+
+
+@HTML_ONLY
+def test_url_body_only_keeps_the_url_receipt_and_prints_the_body(monkeypatch, capsys):
+    # GIVEN a static HTML page answered by the guarded request boundary and its default URL run
+    html = "<title>Page</title><p>Body café</p>".encode("utf-8")
+    monkeypatch.setattr(importlib.import_module("brewdoc.htmlurl"), "_request", lambda url, *args, **options: {
+        "status": 200, "headers": (("Content-Type", "text/html; charset=utf-8"),),
+        "entity": html, "body": html})
+    code = main(["--url", "https://example.com/page"])
+    receipt = capsys.readouterr().out.partition("\n")[0]
+    assert (code, json.loads(receipt)["route"]) == (0, "html"), "the default URL run must succeed"
+    # WHEN the same URL is requested body-only
+    code = main(["--url", "https://example.com/page", "--body-only"])
+    # THEN the URL receipt is unchanged and only the body follows it
+    assert (code, capsys.readouterr().out) == (0, receipt + "\nBody café\n"), (
+        "--url must pass --body-only through to the local conversion")
