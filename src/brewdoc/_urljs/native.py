@@ -170,7 +170,7 @@ class Context:
         self.lib.JS_SetHostPromiseRejectionTracker(self.runtime, self.callbacks[1], None)
         self.lib.JS_SetPromiseHook(self.runtime, self.callbacks[5], None)
         self.lib.JS_SetModuleLoaderFunc2(self.runtime, self.callbacks[2], self.callbacks[3], self.callbacks[4], None)
-        self.deadline = time.monotonic() + 0.250
+        self.deadline = time.thread_time() + 0.250
         prototype = b'InternalError.prototype'
         self.handles['_nativeInternalError'] = self.lib.JS_Eval(self.context, prototype, len(prototype), b'bootstrap', 0)
 
@@ -228,9 +228,9 @@ class Context:
         return 0
 
     def _interrupt(self, runtime, opaque):
-        """Interrupt an invocation or its active loading/recovery phase budget."""
-        now = time.monotonic()
-        self.interrupted = now >= self.deadline or self._active_deadline is not None and now >= self._active_deadline
+        """Interrupt on owning-thread CPU budget or wall-clock loading/recovery deadline."""
+        self.interrupted = time.thread_time() >= self.deadline or (
+            self._active_deadline is not None and time.monotonic() >= self._active_deadline)
         return int(self.interrupted)
 
     def _rejection(self, context, promise, reason, handled, opaque):
@@ -279,14 +279,14 @@ class Context:
             return None
 
     def _load(self, context, name, opaque, attributes):
-        """Compile host-supplied sources while excluding host wait from CPU time."""
+        """Compile host-supplied sources; CPU time spent in the host fetch is not charged to JS."""
         try:
             url = name.decode('utf-8')
-            started = time.monotonic()
+            started = time.thread_time()
             try:
                 source = self.fetch_module(url)
             finally:
-                self.deadline += time.monotonic() - started
+                self.deadline += time.thread_time() - started
             final_url = url
             if isinstance(source, tuple):
                 source, final_url = source
@@ -339,12 +339,11 @@ class Context:
         if threading.get_ident() != self.thread:
             raise NativeError('native context requires its owning thread')
         self._check_limits()
-        now = time.monotonic()
         self._active_deadline = self.recovery_deadline if recovery else self.loading_deadline
-        if self._active_deadline is not None and now >= self._active_deadline:
+        if self._active_deadline is not None and time.monotonic() >= self._active_deadline:
             self.interrupted = True
             raise NativeError('execution deadline exceeded', timing=True)
-        self.deadline = now + 0.250
+        self.deadline = time.thread_time() + 0.250
         self.interrupted = False
 
     def _string(self, value):

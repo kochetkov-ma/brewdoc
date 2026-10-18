@@ -129,11 +129,11 @@ def test_installed_article_probe_checks_api_cli_success_and_preserved_refusal(tm
     console = Path(sysconfig.get_path("scripts")) / ("brewdoc.exe" if os.name == "nt" else "brewdoc")
     # WHEN the article consumer probe runs
     actual = verification.probe_article(str(console))
-    # THEN API and all console consumers agree, and refusal preserves existing output
-    assert ([row["exit"] for row in actual["cli"]], actual["refusal"]["reason"],
-            (tmp_path / "article.md").read_bytes()) == (
-        [0, 0, 1], "HTML article extraction refused: no eligible article or suitable main", b"existing output\n"), \
-        "installed article mode must exercise success, output placement and refusal preservation"
+    # THEN API and console agree on selection, body-only, fallback and output-preserving refusal
+    assert ([row["exit"] for row in actual["cli"]], actual["fallback"]["article_fallback"],
+            actual["refusal"]["reason"], (tmp_path / "article.md").read_bytes()) == (
+        [0, 0, 0, 0, 1], True, "--article is an HTML-only option", b"existing output\n"), \
+        "installed article mode must exercise selection, body-only, fallback and refusal preservation"
 
 
 def test_runtime_preparation_copies_the_built_pair_without_changing_root_smoke(tmp_path, monkeypatch):
@@ -502,4 +502,4 @@ def test_epub_probe_accepts_the_real_wrapper_full_tally_and_reviewed_bytes(tmp_p
     actual = verification.probe_epub(path, brewdoc.run(path), accepted, console)
     # THEN the verifier accepts the complete tally and all three console output modes
     assert (actual["wrapper_tally"], len(actual["cli"]), actual["markdown_utf8_bytes"]) == (
-        expected_tally, 3, 1930), "strict package verification must accept the real wrapper without dropping slides"
+        expected_tally, 3, 1949), "strict package verification must accept the real wrapper without dropping slides"

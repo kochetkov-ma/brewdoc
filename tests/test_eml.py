@@ -59,7 +59,7 @@ def _refusal(path, reason):
 
 def _markdown(path, content, regions, label="Untitled"):
     """Build the public envelope from literal expected content, never adapter helpers."""
-    name = path.name.replace("-", "\\-").replace(".", "\\.")
+    name = path.name
     body = '<a id="brewdoc-chapter-000001"></a>\n' + f'## Chapter 1: "{label}"\n'
     body += content
     rows = [
@@ -79,7 +79,7 @@ def _markdown(path, content, regions, label="Untitled"):
         ("VBA source module count", "not applicable"),
     ]
     metadata = "\n".join(f"| {key} | {value} |" for key, value in rows)
-    omissions = "\n".join("- " + item.replace("-", "\\-") for item in OMISSIONS)
+    omissions = "\n".join("- " + item for item in OMISSIONS)
     return (
         f'# "{name}"\n\n<a id="brewdoc-metadata"></a>\n## Metadata\n\n'
         '| Field | Value |\n| --- | --- |\n' + metadata
@@ -163,10 +163,10 @@ def test_eml_repeated_headers_keep_fixed_name_order_and_source_spelling(tmp_path
             [str(value) for value in message.get_all("To")], str(message["Subject"])) == (
         ["first@example.test", "second@example.test"], ["first@example.test", ""], "café",
     ), "source must retain repeated identities and an empty To"
-    content = ("\nFrom: first@example\\.test\nFrom: second@example\\.test\n"
-               "To: first@example\\.test\nTo: \nCc: copy@example\\.test\n"
-               "Date: Fri, 11 Jul 2003 21:00:37 \\-0700\nSubject: café\n"
-               "Message\\-ID: &lt;id@example\\.test&gt;\n\n```\nhello\n```\n")
+    content = ("\nFrom: first@example.test\nFrom: second@example.test\n"
+               "To: first@example.test\nTo: \nCc: copy@example.test\n"
+               "Date: Fri, 11 Jul 2003 21:00:37 -0700\nSubject: café\n"
+               "Message-ID: &lt;id@example.test>\n\n```\nhello\n```\n")
 
     # WHEN only the supplied public header subset is rendered
     conversion = run(source)
@@ -204,7 +204,7 @@ def test_eml_attachment_inventory_uses_names_without_decoding_payloads(tmp_path,
 
     monkeypatch.setattr(EmailMessage, "get_payload", selected_payload_only)
     content = ("\n```\nplain first\n```\n\nAttachments:\n"
-               "- \\.\\./café\\.png\n- \\[unnamed attachment\\]\n- mail\\.eml\n")
+               "- ../café.png\n- \\[unnamed attachment\\]\n- mail.eml\n")
 
     # WHEN conversion inventories declared attachment metadata
     conversion = run(source)
@@ -295,15 +295,64 @@ def test_eml_html_scripts_are_omitted_and_external_image_stays_inert(tmp_path, m
 
     monkeypatch.setattr(socket, "create_connection", refuse_network)
     monkeypatch.setattr(urllib.request, "urlopen", refuse_network)
-    content = ('\n東京\n\nImage: alt="photo"; title="none"; source=external; '
-               'target="https://example\\.test/image\\.png"\n')
+    content = '\n東京\n\n![photo](https://example.test/image.png)\n'
 
     # WHEN the existing static HTML body renderer handles the message
     conversion = run(source)
 
-    # THEN script content disappears and the URL remains literal metadata
+    # THEN script content disappears and the image becomes an unfetched Markdown image
     assert conversion == (0, _receipt(source, 2), _markdown(source, content, 2)), (
         "HTML EML must retain static rendering semantics without fetching its image"
+    )
+
+
+@pytest.mark.parametrize("payload,content,regions", [
+    pytest.param('<nav><p>Nav</p></nav><header><p>Head</p></header><main><p>Main</p></main>'
+                 '<aside><p>Aside</p></aside><footer><p>Footer</p></footer>',
+                 "\nMain\n", 1, id="landmark-tags-dropped"),
+    pytest.param('<div role="navigation"><p>N</p></div><div role="Banner extra"><p>B</p></div>'
+                 '<div role="contentinfo"><p>C</p></div><div role="complementary"><p>A</p></div>'
+                 '<p>Body</p>', "\nBody\n", 1, id="landmark-roles-dropped"),
+    pytest.param('<article><header><p>By</p></header><nav><p>TOC</p></nav><p>Text</p></article>',
+                 "\nBy\n\nTOC\n\nText\n", 3, id="landmarks-inside-article-kept"),
+    pytest.param('<form><label for="e">Email</label><input id="e" value="x"><button>Send</button>'
+                 '<select><option>A</option></select><textarea>t</textarea></form>',
+                 "\nEmail\n", 1, id="form-controls-dropped"),
+    pytest.param('<img src="x.png"><img alt=" " src="y.png"><img src="pic" alt="A &amp; B" title="t">'
+                 '<p>T</p>', "\n![A & B](pic)\n\nT\n", 2, id="images-without-alt-dropped"),
+    pytest.param('<ul><li>a</li><li>b<ul><li>c</li></ul></li><li>d</li></ul>',
+                 "\n- a\n- b\n  - c\n- d\n", 4, id="plain-nested-list"),
+    pytest.param('<blockquote><p>q</p><blockquote><p>inner</p></blockquote></blockquote>',
+                 "\n> q\n>\n> > inner\n", 2, id="quote-prefixes"),
+    pytest.param('<p>AT&amp;T &amp;copy; snake_case *x* [y] &lt;z&gt; "q" a &gt; b # 1. C:\\d</p>'
+                 '<p>- dash</p>',
+                 '\nAT&T &amp;copy; snake_case \\*x\\* \\[y\\] &lt;z> "q" a > b # 1. C:\\\\d\n\n'
+                 '\\- dash\n', 2, id="minimal-escaping"),
+    pytest.param('<blockquote><p>Spring, <br> Or the bees \t<br>end</p></blockquote>'
+                 '<p>One <br>Two</p>',
+                 "\n> Spring,\n> Or the bees\n> end\n\nOne\nTwo\n", 2,
+                 id="line-breaks-leave-no-trailing-blanks"),
+    pytest.param('<p>Q&amp;</p><p>a&amp;<span>amp;</span></p>',
+                 "\nQ&\n\na&amp;amp;\n", 2, id="node-final-ampersand-escaped-only-when-joining"),
+    pytest.param('<p>Hi!<a href="https://x.test/t">x</a></p>', "\nHi\\![x](https://x.test/t)\n", 1,
+                 id="bang-before-link-escaped"),
+])
+def test_eml_html_body_uses_the_clean_html_profile(tmp_path, payload, content, regions):
+    # GIVEN HTML-only mail whose body carries one clean-profile feature
+    raw = b"Content-Type: text/html; charset=utf-8\n\n" + payload.encode("utf-8")
+    source = tmp_path / "source.eml"
+    source.write_bytes(raw)
+    selected = BytesParser(policy=policy.default).parsebytes(raw).get_body()
+    assert (selected.get_content_type(), selected.get_payload(decode=True)) == (
+        "text/html", payload.encode("utf-8"),
+    ), "the selected body must be the exact HTML payload"
+
+    # WHEN the EML route renders the body through the shared HTML content renderer
+    conversion = run(source)
+
+    # THEN landmarks, controls, images, lists, quotes and escaping follow the HTML clean rules
+    assert conversion == (0, _receipt(source, regions), _markdown(source, content, regions)), (
+        "EML HTML bodies must render exactly as the clean static HTML profile"
     )
 
 
@@ -369,10 +418,10 @@ def test_eml_groupwise_attached_message_defect_keeps_valid_primary_body(tmp_path
         b"test", ["MissingHeaderBodySeparatorDefect"], '"Novell GroupWise" <$$$.$$$.$$$>',
     ), "fixture identity and attached-child defect must match the documented source constraint"
     out = tmp_path / "output.md"
-    content = ("\nFrom: &quot;Novell GroupWise&quot; &lt;$$$\\.$$$\\.$$$&gt;\n"
-               "Date: Thu, 27 Jun 2013 13:29:57 \\+0200\nSubject: test333\n"
-               "Message\\-ID: &lt;51CC3E55020000000000000F@$$$&gt;\n"
-               "\n```\ntest\n```\n\nAttachments:\n- test\\.eml\n- Neues Textdokument\\.txt\n")
+    content = ('\nFrom: "Novell GroupWise" &lt;$$$.$$$.$$$>\n'
+               "Date: Thu, 27 Jun 2013 13:29:57 +0200\nSubject: test333\n"
+               "Message-ID: &lt;51CC3E55020000000000000F@$$$>\n"
+               "\n```\ntest\n```\n\nAttachments:\n- test.eml\n- Neues Textdokument.txt\n")
 
     # WHEN only primary content and attachment metadata are converted
     conversion = run(source, out)
@@ -398,7 +447,7 @@ def test_eml_named_inline_text_remains_a_native_body_candidate(tmp_path):
     assert (selected.get_payload(decode=True), selected.get_filename()) == (
         b"named body", "café.txt",
     ), "filename alone must not remove an inline text body candidate"
-    content = "\n```\nnamed body\n```\n\nAttachments:\n- café\\.txt\n"
+    content = "\n```\nnamed body\n```\n\nAttachments:\n- café.txt\n"
 
     # WHEN native body selection and metadata inventory share that part
     conversion = run(source)
@@ -766,7 +815,7 @@ def test_eml_ignored_attachment_content_type_defect_keeps_valid_primary_body(tmp
             attached.get_filename(), [type(defect).__name__ for defect in attached["Content-Type"].defects]) == (
         [], b"plain first", "attachment", "opaque.bin", ["InvalidHeaderDefect"],
     ), "the malformed MIME declaration must belong only to intentionally omitted attachment data"
-    content = "\n```\nplain first\n```\n\nAttachments:\n- opaque\\.bin\n"
+    content = "\n```\nplain first\n```\n\nAttachments:\n- opaque.bin\n"
 
     # WHEN conversion carries the primary body and declared attachment name
     conversion = run(source)

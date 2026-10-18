@@ -140,8 +140,8 @@
  },
  "epub/epubcheck-minimal.epub": {
   "accepted_output": {
-   "markdown_sha256": "2d9347ede4475376b676c54edcded45d0c84c1eadbcdc8a49fc17bc4b68ab401",
-   "markdown_utf8_bytes": 1930,
+   "markdown_sha256": "6a73472d45e05534c5b0e7d0219ea1873fe4268242104a508c2cfd8c505cf785",
+   "markdown_utf8_bytes": 1949,
    "normalization": "receipt.out=null; Markdown bytes unchanged",
    "receipt": {
     "artifacts": [],
@@ -163,7 +163,7 @@
     "not_carried": [
      "CSS, layout, pagination and font rendering",
      "scripts, forms and active media",
-     "image pixels and graphical SVG content",
+     "image pixels, images without alt text and graphical SVG content",
      "unsupported SVG and MathML semantics",
      "navigation semantics beyond declared TOC hierarchy"
     ],
@@ -200,8 +200,8 @@
  },
  "epub/standardebooks-herland.epub": {
   "accepted_output": {
-   "markdown_sha256": "758157239847cc7f0ebe52a0c916f79d51fc328e7006d5d02d177d1dcd92283c",
-   "markdown_utf8_bytes": 321313,
+   "markdown_sha256": "3eba52207d5fb604dcd29c478e1cc3945ceee93485b154877398b0111655dc04",
+   "markdown_utf8_bytes": 317606,
    "normalization": "receipt.out=null; Markdown bytes unchanged",
    "receipt": {
     "artifacts": [],
@@ -223,17 +223,17 @@
     "not_carried": [
      "CSS, layout, pagination and font rendering",
      "scripts, forms and active media",
-     "image pixels and graphical SVG content",
+     "image pixels, images without alt text and graphical SVG content",
      "unsupported SVG and MathML semantics",
      "navigation semantics beyond declared TOC hierarchy"
     ],
     "out": null,
-    "reason": "epub rendered: 16 chapters, 0 tables, 1429 text regions, 0 column splits",
+    "reason": "epub rendered: 16 chapters, 0 tables, 1428 text regions, 0 column splits",
     "receipt_schema": "brewdoc.receipt/1",
     "route": "epub",
     "source": "standardebooks-herland.epub",
     "tables": 0,
-    "text_regions": 1429,
+    "text_regions": 1428,
     "unit_keys": [
      "chapter/000001",
      "chapter/000002",
@@ -266,7 +266,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "epub",
   "tables": 0,
-  "text_regions": 1429,
+  "text_regions": 1428,
   "unit_keys": [
    "chapter/000001",
    "chapter/000002",
@@ -296,7 +296,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "html",
   "tables": 2,
-  "text_regions": 46,
+  "text_regions": 43,
   "unit_keys": [
    "chapter/000001"
   ],
@@ -311,7 +311,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "html",
   "tables": 0,
-  "text_regions": 23,
+  "text_regions": 15,
   "unit_keys": [
    "chapter/000001"
   ],
@@ -326,7 +326,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "html",
   "tables": 0,
-  "text_regions": 11,
+  "text_regions": 3,
   "unit_keys": [
    "chapter/000001"
   ],
@@ -667,7 +667,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
   "tables": 8,
-  "text_regions": 77,
+  "text_regions": 80,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -732,7 +732,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
   "tables": 2,
-  "text_regions": 79,
+  "text_regions": 73,
   "unit_keys": [
    "page/000001",
    "page/000002",
@@ -792,7 +792,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "pdf",
   "tables": 1,
-  "text_regions": 1,
+  "text_regions": 0,
   "unit_keys": [
    "page/000001"
   ],

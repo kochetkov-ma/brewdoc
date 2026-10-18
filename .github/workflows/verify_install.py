@@ -472,43 +472,56 @@ def probe_smoke(checkout: Path, console: str) -> dict:
 
 
 def probe_article(console: str) -> dict:
-    """Check installed article API/CLI selection and refusal without licensed inputs."""
+    """Check installed article selection, fallback, body-only and non-HTML refusal."""
     import brewdoc
 
     source = Path.cwd() / "article.html"
     source.write_text('<html><head><title>Document title</title></head><body>'
-                      '<nav>outside navigation</nav><article><h1>Selected heading</h1>'
+                      '<nav>outside navigation</nav><p>outside paragraph</p><article><h1>Selected heading</h1>'
                       '<p>Retained café fact.</p></article><footer>outside footer</footer></body></html>',
                       encoding="utf-8")
     default = brewdoc.run(source)
     actual = brewdoc.run(source, article=True)
     code, receipt, markdown = actual
     omission = "body content outside the selected article or main subtree; complete page coverage is not claimed"
+    chapter = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Document title"\n\n'
+    body = "### Selected heading\n\nRetained café fact.\n"
     if ((code, receipt["file_ok"], receipt["route"], receipt["not_carried"][-1]) != (0, True, "html", omission)
-            or not markdown.endswith('<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Document title"\n\n'
-                                     '### Selected heading\n\nRetained café fact\\.\n')
-            or "outside navigation" in markdown or "outside footer" in markdown
-            or omission not in markdown or "outside navigation" not in default[2]
+            or "article_fallback" in receipt or not markdown.endswith(chapter + body)
+            or not default[2].endswith(chapter + "outside paragraph\n\n" + body) or omission in default[2]
             or brewdoc.run(source, article=False) != default or brewdoc.render_html(source, article=True)[0] != markdown):
-        raise ValueError("Installed article selection or default preservation changed")
+        raise ValueError("Installed article selection or default landmark drop changed")
     cli = [check_cli(subprocess.run([console, str(source), "--article"], capture_output=True, timeout=120), actual)]
     out = Path.cwd() / "article.md"
     expected = (code, {**receipt, "out": str(out)}, markdown)
     cli.append(check_cli(subprocess.run([console, str(source), "--article", "--out", str(out)],
                                         capture_output=True, timeout=120), expected, out))
+    body_only = brewdoc.run(source, article=True, body_only=True)
+    if body_only != (code, receipt, body):
+        raise ValueError("Installed article body-only output changed")
+    cli.append(check_cli(subprocess.run([console, str(source), "--article", "--body-only"],
+                                        capture_output=True, timeout=120), body_only))
     source.write_text('<html><body><p>Unmarked page</p></body></html>', encoding="utf-8")
+    plain = brewdoc.run(source)
+    fallback = brewdoc.run(source, article=True)
+    if fallback != (0, {**plain[1], "article_fallback": True}, plain[2]):
+        raise ValueError("Installed article fallback differs from the default page")
+    cli.append(check_cli(subprocess.run([console, str(source), "--article"], capture_output=True, timeout=120),
+                         fallback))
+    text = Path.cwd() / "article.txt"
+    text.write_text("Plain text\n", encoding="utf-8")
     sentinel = b"existing output\n"
     out.write_bytes(sentinel)
-    refused = brewdoc.run(source, out=out, article=True)
+    refused = brewdoc.run(text, out=out, article=True)
     if ((refused[0], refused[1]["file_ok"], refused[1]["reason"], refused[2], out.read_bytes()) !=
-            (1, False, "HTML article extraction refused: no eligible article or suitable main", "", sentinel)):
-        raise ValueError("Installed article refusal changed existing output")
-    cli.append(check_cli(subprocess.run([console, str(source), "--article", "--out", str(out)],
+            (1, False, "--article is an HTML-only option", "", sentinel)):
+        raise ValueError("Installed non-HTML article refusal changed existing output")
+    cli.append(check_cli(subprocess.run([console, str(text), "--article", "--out", str(out)],
                                         capture_output=True, timeout=120), refused))
     if out.read_bytes() != sentinel:
         raise ValueError("Installed article console refusal changed existing output")
     return {"receipt": receipt, "markdown_sha256": hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
-            "refusal": refused[1], "preserved_output_sha256": digest(out), "cli": cli}
+            "fallback": fallback[1], "refusal": refused[1], "preserved_output_sha256": digest(out), "cli": cli}
 
 
 def probe(checkout: Path, bundle: Path, render_js: bool = False, *, smoke: bool = False,

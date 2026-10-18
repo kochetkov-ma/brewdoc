@@ -13,6 +13,7 @@ import zipfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 from xml.parsers import expat
 
 MARKDOWN_SCHEMA = "brewdoc.markdown/2"
@@ -401,12 +402,26 @@ def _drop_furniture(lines: list[str], heads: set[str], numbers: set[str],
     return kept
 
 
-# Punctuation gets a backslash, HTML specials and controls an entity; non-ASCII follows in encode.
-# No pipe here: outside a table it is literal, and inside one `markdown_table` escapes it.
-MARKDOWN_ESCAPES = str.maketrans({
-    **{character: "\\" + character for character in "\\`*_{}[]()#+-.!"},
-    **{chr(code): "&#%d;" % code for code in (*range(32), 127)},
-    "\r": " ", "\n": " ", "\t": " ", "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})
+# Only syntax a source string could activate; `markdown_table` alone escapes a pipe.
+# `_` stays literal between two letters or digits, where CommonMark cannot open emphasis.
+_ENTITY = r"&(?=#?[0-9A-Za-z_]+;)"
+_INLINE = r'[\\`*\[\]<"\x00-\x1f\x7f%s]|' + _ENTITY + r"|(?<![^\W_])_|_(?![^\W_])"
+_ASCII_INLINE = re.compile(_INLINE % "", re.ASCII)
+_UNICODE_INLINE = re.compile(_INLINE % r"\x80-\x9f")
+_ENTITY_RE = re.compile(_ENTITY)
+_ENTITY_TAIL = re.compile(r"#?[0-9A-Za-z_]*")
+_LITERAL_ESCAPES = {**{chr(code): "&#%d;" % code for code in (*range(32), *range(127, 160))},
+                    **{character: "\\" + character for character in "\\`*[]_"},
+                    "<": "&lt;", "&": "&amp;", '"': "&quot;"}
+_QUOTED_ESCAPES = _LITERAL_ESCAPES | dict.fromkeys("\r\n\t", " ")
+_PLAIN_ESCAPES = _QUOTED_ESCAPES | {'"': '"'}
+_BLOCK_OPENER = re.compile(r"[#>+|-]|=+[ \t]*\Z|~~~|:-+:?(?:[ \t]*\|[ \t]*:?-+:?)*[ \t]*\|?[ \t]*\Z")
+_RAW_FENCE = re.compile(r"\A( {0,3})(?=```|~~~)")
+_ORDERED_MARKER = re.compile(r"\A([0-9]+)(?=[.)](?:[ \t]|\Z))")
+
+
+# Routes whose adapters escape their own source text; raw-route bodies are escaped by `_assemble`.
+_MARKUP_ROUTES = ("html", "epub", "eml")
 
 
 def _markdown_encoding(route: str) -> str:
@@ -446,19 +461,233 @@ def _join_markdown_lines(lines: list[str], maximum: int | None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _escape_markdown_text(text: str, *, preserve_unicode: bool = False,
-                          max_markdown_bytes: int | None = None) -> str:
-    """Escape syntax; preserve Unicode only when the caller opts in."""
+def _escape_markdown_text(text: str, *, preserve_unicode: bool = False, quoted: bool = False,
+                          literal: bool = False, max_markdown_bytes: int | None = None) -> str:
+    """Escape inline syntax only; quoted and literal fields also escape `"`.
+    Literal fields keep CR, LF and TAB as character references; other modes turn them into spaces."""
     text = str(text)
+    table = _LITERAL_ESCAPES if literal else _QUOTED_ESCAPES if quoted else _PLAIN_ESCAPES
+    pattern = _UNICODE_INLINE if preserve_unicode else _ASCII_INLINE
     if max_markdown_bytes is not None:
-        size = 0
-        for character in text:
-            escaped = MARKDOWN_ESCAPES.get(ord(character), character)
-            size += (_markdown_bytes(escaped) if preserve_unicode else
-                     len(escaped.encode("ascii", "xmlcharrefreplace")))
-            _check_markdown_size(size, max_markdown_bytes)
-    escaped = text.translate(MARKDOWN_ESCAPES)
+        size = (_markdown_bytes(text) if preserve_unicode else
+                len(text) + sum(len(str(ord(character))) + 2 for character in text if character > "\x7f"))
+        size += sum(len(table[match.group()]) - _markdown_bytes(match.group())
+                    for match in pattern.finditer(text))
+        _check_markdown_size(size, max_markdown_bytes)
+    escaped = pattern.sub(lambda match: table[match.group()], text)
     return escaped if preserve_unicode else escaped.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+
+def _escape_line_start(line: str) -> str:
+    """Drop leading blanks so an inline-escaped source line cannot open a Markdown block."""
+    line = line.lstrip(" \t")
+    return "\\" + line if _BLOCK_OPENER.match(line) else _ORDERED_MARKER.sub(r"\1\\", line)
+
+
+def _escape_heading_end(text: str) -> str:
+    """Keep a trailing source `#` run from closing a generated ATX heading."""
+    return re.sub(r"(\A|[ \t])(#+[ \t]*)\Z", r"\1\\\2", text)
+
+
+def _source_lines(text: str, level: int | None = None) -> list[str]:
+    """Escape line starts, drop blanks before breaks; heading level 1-4 is ATX, 5-6 bold."""
+    first, *rest = re.sub(r"[ \t]+\n", "\n", text).split("\n")
+    first = (_escape_line_start(first) if level is None else "**Heading %d: %s**" % (level, first)
+             if level > 4 else "#" * (level + 2) + " " + _escape_heading_end(first))
+    return [first, *map(_escape_line_start, rest)]
+
+
+def _join_escaped(parts: list[str]) -> str:
+    """Join escaped pieces; a source `&` ending one piece cannot complete an entity with the next."""
+    text = "".join(parts)
+    if "&" not in text:
+        return text
+    fixed, start = list(parts), 0
+    for index, part in enumerate(parts):
+        # Only the last `&` can leave an entity open at the piece end; reading just its tail stays linear.
+        end = part.rfind("&") + 1
+        if end and _ENTITY_TAIL.fullmatch(part, end) and _ENTITY_RE.match(text, start + end - 1):
+            fixed[index] = part[:end] + "amp;" + part[end:]
+        start += len(part)
+    return "".join(fixed)
+
+
+# Characters left unquoted in generated link and image targets; `!$'*` are percent-encoded.
+_URL_SAFE = "/:#?&=@%+;,"
+
+
+def _url_target(target: str) -> str:
+    """Quote a link or image target; an `&` that would start a character reference becomes `&amp;`."""
+    return _ENTITY_RE.sub("&amp;", quote(target, safe=_URL_SAFE))
+
+
+_EMPHASIS_FORMS = {"*": ("*", "_"), "**": ("**", "__")}
+_EDGE_SPACES = " \t\n"
+
+
+def _space(character: str) -> bool:
+    """CommonMark whitespace; an empty string stands for the line edge."""
+    return not character or character in "\t\n\f\r" or unicodedata.category(character) == "Zs"
+
+
+def _punctuation(character: str) -> bool:
+    return bool(character) and unicodedata.category(character)[0] in "PS"
+
+
+def _flanking(before: str, after: str) -> tuple[bool, bool]:
+    """CommonMark left- and right-flanking of a delimiter run between two characters."""
+    return (not _space(after) and (not _punctuation(after) or _space(before) or _punctuation(before)),
+            not _space(before) and (not _punctuation(before) or _space(after) or _punctuation(after)))
+
+
+def _emphasis(parts: list[str | tuple[str, bool]]) -> str:
+    """Join escaped text and `(marker, opening)` tokens (`*` em, `**` strong, others literal link text)
+    into valid CommonMark; edge spaces move outside, spaces after whitespace collapse, same runs merge."""
+    tokens, markers, parents, stack, active, carry = [], [], [], [], {}, ""
+
+    def spaced(end: int) -> bool:
+        """Whether text written before `tokens[end]` ends in whitespace; emphasis tokens write none yet."""
+        while end and isinstance(tokens[end - 1], tuple) and isinstance(tokens[end - 1][0], int):
+            end -= 1
+        return bool(end) and isinstance(tokens[end - 1], str) and tokens[end - 1][-1] in _EDGE_SPACES
+
+    for part in parts:
+        if isinstance(part, str):
+            if not part:
+                continue
+            if carry:
+                if part[0] not in _EDGE_SPACES:
+                    tokens.append(carry)
+                carry = ""
+            elif tokens and isinstance(tokens[-1], tuple) and tokens[-1][1]:
+                text, chain = part.lstrip(_EDGE_SPACES), len(tokens)
+                while chain and isinstance(tokens[chain - 1], tuple) and tokens[chain - 1][1]:
+                    chain -= 1
+                if text != part and not spaced(chain):
+                    tokens.insert(chain, part[:len(part) - len(text)])
+                part = text
+            elif spaced(len(tokens)):
+                part = part.lstrip(" ")
+            if part:
+                tokens.append(part)
+        elif part[0] not in _EMPHASIS_FORMS and part[1]:
+            tokens += [carry, part] if carry else [part]
+            carry = ""
+        elif part[1]:
+            if part[0] in active:
+                stack.append(None)
+                continue
+            merged = (bool(tokens) and isinstance(tokens[-1], tuple) and isinstance(tokens[-1][0], int)
+                      and markers[tokens[-1][0]] == part[0])
+            run = tokens.pop()[0] if merged else len(markers)
+            if carry:
+                tokens.append(carry)
+            if not merged:
+                markers.append(part[0])
+                parents.append(next(iter(active.values()), None))
+                tokens.append((run, True))
+            active[part[0]], carry = run, ""
+            stack.append(run)
+        elif part[0] not in _EMPHASIS_FORMS or (run := stack.pop()) is not None:
+            if part[0] in _EMPHASIS_FORMS:
+                del active[markers[run]]
+                part = (run, False)
+            while tokens and isinstance(tokens[-1], str) and tokens[-1][-1] in _EDGE_SPACES:
+                text = tokens[-1].rstrip(_EDGE_SPACES)
+                carry = tokens[-1][len(text):] + carry
+                if text:
+                    tokens[-1] = text
+                    break
+                tokens.pop()
+            tokens.append(part)
+    tokens.extend([carry] if carry else [])
+    links = [index for index, token in enumerate(tokens) if token == ("[", True)]
+    tokens = [token[0] if isinstance(token, tuple) and isinstance(token[0], str) else token for token in tokens]
+    where = {token: index for index, token in enumerate(tokens) if isinstance(token, tuple)}
+    # A run without text, or across a blank line, keeps no markers.
+    contents = ["".join(token for token in tokens[where[run, True] + 1:where[run, False]]
+                        if isinstance(token, str)) for run in range(len(markers))]
+    choice = [0 if content and re.search(r"\n[ \t]*\n", content) is None else 2 for content in contents]
+
+    def delimiter(token: tuple[int, bool]) -> str:
+        """Current marker text of a run's opener or closer; a plain run writes nothing."""
+        return _EMPHASIS_FORMS[markers[token[0]]][choice[token[0]]] if choice[token[0]] < 2 else ""
+
+    def beside(index: int, character: str) -> list[str | None]:
+        """Characters around the delimiter run at `index`; nested same-side delimiters join it.
+        An opener right after a sibling closer of its character is glued: None."""
+        side, found = tokens[index][1], []
+        for step in (-1, 1):
+            position = index + step
+            while 0 <= position < len(tokens) and isinstance(tokens[position], tuple) and (
+                    not delimiter(tokens[position])
+                    or delimiter(tokens[position])[0] == character and tokens[position][1] == side):
+                position += step
+            token = tokens[position] if 0 <= position < len(tokens) else ""
+            found.append(token[::step][:1] if isinstance(token, str) else
+                         None if side and delimiter(token)[0] == character else delimiter(token)[0])
+        return found
+
+    def glued(index: int) -> tuple[int, int, int]:
+        """First and last token and total length of the delimiter run joined at `index`."""
+        side, character = tokens[index][1], delimiter(tokens[index])[0]
+        span = [index, index]
+        for edge, step in ((0, -1), (1, 1)):
+            while (0 <= span[edge] + step < len(tokens) and isinstance(tokens[span[edge] + step], tuple)
+                   and tokens[span[edge] + step][1] == side
+                   and delimiter(tokens[span[edge] + step])[:1] in ("", character)):
+                span[edge] += step
+        return span[0], span[1], sum(map(len, map(delimiter, tokens[span[0]:span[1] + 1])))
+
+    children = {}
+    for run, parent in enumerate(parents):
+        children.setdefault(parent, []).append(run)
+
+    def valid(run: int) -> bool:
+        """Check the run's current markers for flanking, sibling glue and closing its parent."""
+        character = _EMPHASIS_FORMS[markers[run]][choice[run]][0]
+        before, after = beside(where[run, True], character)
+        if before is None:
+            return False
+        left, right = _flanking(before, after)
+        if not left or character == "_" and right and not _punctuation(before):
+            return False
+        parent = parents[run]
+        if (right and (character == "*" or not left or _punctuation(after)) and parent is not None
+                and delimiter((parent, True))[:1] == character):
+            # An opener that can close must not close its parent: CommonMark's rule of 3 decides.
+            first, last, size = glued(where[run, True])
+            if not first <= where[parent, True] <= last:
+                other = glued(where[parent, True])[2]
+                if (size + other) % 3 or size % 3 == other % 3 == 0:
+                    return False
+        before, after = beside(where[run, False], character)
+        left, right = _flanking(before, after)
+        return right and not (character == "_" and left and not _punctuation(after))
+
+    # A run's validity reads only the delimiters between its own two text neighbours.
+    clusters, cluster = {}, None
+    for token in tokens:
+        if isinstance(token, str):
+            cluster = None
+            continue
+        cluster = [] if cluster is None else cluster
+        clusters[token] = cluster
+        cluster.extend([token[0]] if choice[token[0]] < 2 else [])
+    pending = list(range(len(markers)))[::-1]
+    while pending:
+        run = pending.pop()
+        if choice[run] < 2 and not valid(run):
+            choice[run] += 1
+            pending += clusters[run, True] + clusters[run, False] + children.get(run, [])
+    written = [token if isinstance(token, str) else delimiter(token) for token in tokens]
+    for index in links:
+        # A text `!` right before a link opener would turn the link into an image.
+        while index and not written[index - 1]:
+            index -= 1
+        if index and written[index - 1].endswith("!"):
+            written[index - 1] = written[index - 1][:-1] + "\\!"
+    return _join_escaped(written)
 
 
 def _unit_key(kind: str, ordinal: int) -> str:
@@ -474,17 +703,19 @@ def _unit_heading(kind: str, ordinal: int, label: str, *, preserve_unicode: bool
     if kind == "page":
         _remaining_markdown_bytes(max_markdown_bytes, len(str(ordinal)) + 5)
         return "Page %d" % ordinal
-    title = _escape_markdown_text(label, preserve_unicode=preserve_unicode,
+    title = _escape_markdown_text(label, preserve_unicode=preserve_unicode, quoted=True,
                                   max_markdown_bytes=_remaining_markdown_bytes(
                                       max_markdown_bytes, len(kind) + len(str(ordinal)) + 5))
     return "%s %d: \"%s\"" % (kind.title(), ordinal, title)
 
 
-def _escape_source_html(line: str, maximum: int | None = None) -> str:
-    """Keep every source HTML-like fragment visible instead of active."""
+def _escape_source_html(line: str, maximum: int | None = None, *, raw: bool = False) -> str:
+    """Keep source tags inert; raw-route text also keeps entity-shaped runs and fence openers literal."""
+    if raw:
+        line = _RAW_FENCE.sub(r"\1\\", _ENTITY_RE.sub("&amp;", line))
     if maximum is not None:
-        _check_markdown_size(_markdown_bytes(line) + 3 * (line.count("<") + line.count(">")), maximum)
-    return line.replace("<", "&lt;").replace(">", "&gt;")
+        _check_markdown_size(_markdown_bytes(line) + 3 * line.count("<"), maximum)
+    return line.replace("<", "&lt;")
 
 
 def _literal_fence(code: list[str], *, max_markdown_bytes: int | None = None) -> list[str]:
@@ -499,11 +730,82 @@ def _literal_fence(code: list[str], *, max_markdown_bytes: int | None = None) ->
     return [fence, *code, fence]
 
 
+# A list line that can interrupt a paragraph, and a marker-only line that cannot.
+_INTERRUPTING_ITEM = re.compile(r"(?:[-*]|1[.)]) ")
+_BARE_MARKER = re.compile(r" *(?:[-*]|[0-9]+[.)])")
+_ITEM_MARKER = re.compile(r"\A(-|[0-9]+\.)(?= |\Z)")
+
+
+def _ascii_integer(value: str | None, default: int) -> int:
+    """Read optionally signed ASCII digits (list numbers, table spans); other text keeps the default.
+    Magnitudes cap at 10**12, past every ordered marker `_ordered_marker` can write."""
+    text = (value or "").strip()
+    if re.fullmatch(r"[+-]?[0-9]+", text) is None:
+        return default
+    number = min(int(text.lstrip("+-").lstrip("0")[:13] or "0"), 10**12)
+    return -number if text[0] == "-" else number
+
+
+def _ordered_marker(number: int) -> str:
+    """Clamp an item number into the 0..999999999 range of a CommonMark ordered marker."""
+    return "%d. " % min(max(number, 0), 999999999)
+
+
+def _close_list_item(blocks: list[tuple], marker: str, first: int, outer: str) -> None:
+    """Put an item's first text on its marker line, else a bare marker line leading its first block."""
+    pad = " " * len(marker)
+    if first < len(blocks) and blocks[first][0] == "text" and blocks[first][2] == outer + pad:
+        head, *rest = blocks[first][1]
+        blocks[first] = ("list", [marker + head, *(pad + line if line else "" for line in rest)], outer)
+    else:
+        blocks.insert(first, ("lead" if first < len(blocks) else "list", [marker.rstrip()], outer))
+
+
+def _merge_list(blocks: list[tuple], start: int, floor: int) -> None:
+    """Merge adjacent item lines of one closed list and its nested lists into tight blocks.
+    A nested list that cannot interrupt a paragraph (bare marker, ordered start != 1) gets a blank first."""
+    merged = []
+    for kind, lines, indent in blocks[start:]:
+        base = merged[-1][2] if merged else ""
+        extra = indent[len(base):]
+        if (merged and {kind, merged[-1][0]} <= {"list", "lead"}
+                and indent.startswith(base) and not extra.strip()):
+            if (extra and not _INTERRUPTING_ITEM.match(lines[0])
+                    and not _BARE_MARKER.fullmatch(merged[-1][1][-1])):
+                merged[-1][1].append("")
+            merged[-1][1].extend(extra + line if line else "" for line in lines)
+            merged[-1] = (kind, merged[-1][1], base)
+        else:
+            merged.append((kind, lines, indent))
+    blocks[start:] = merged
+    _alternate_list(blocks, start, floor)
+
+
+def _alternate_list(blocks: list[tuple], start: int, floor: int) -> None:
+    """Switch `-` to `*` or `.` to `)` right after a same-type list, so CommonMark starts a new list.
+    Blocks before `floor`, the enclosing item or quote start, belong to another container."""
+    if start == len(blocks) or blocks[start][0] not in ("list", "lead"):
+        return
+    outer = blocks[start][2]
+    previous = next((block for block in reversed(blocks[floor:start])
+                     if block[2] == outer or not block[2].startswith(outer)), None)
+    if previous is None or previous[0] not in ("list", "lead") or previous[2] != outer:
+        return
+    before, current = _ITEM_MARKER.match(previous[1][0]), _ITEM_MARKER.match(blocks[start][1][0])
+    if before is None or current is None or (before[1] == "-") != (current[1] == "-"):
+        return
+    swap = "*" if current[1] == "-" else ")"
+    blocks[start:] = [(kind, [_ITEM_MARKER.sub(lambda match: match[1][:-1] + swap, line) for line in lines]
+                       if indent == outer and kind in ("list", "lead") else lines, indent)
+                      for kind, lines, indent in blocks[start:]]
+
+
 def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                   heads: set[str], numbers: set[str], tally: dict, *,
-                  preserve_unicode: bool = False,
+                  preserve_unicode: bool = False, raw: bool = False,
                   max_markdown_bytes: int | None = None) -> tuple[str, tuple[str, ...]]:
-    """Render anchored content units before metadata so all loss tallies are final."""
+    """Render units before metadata so loss tallies are final; block = (kind, payload[, line prefix]).
+    Anchor/lead join the next block unless it is a non-interrupting list; a blank keeps the shared prefix."""
     out = []
     keys = []
     size = 0
@@ -518,8 +820,13 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                                              max_markdown_bytes, size + len(anchor) + 6)), ""]
         size += sum(_markdown_bytes(line) + 1 for line in heading) if bounded else 0
         out += heading
-        anchors = set()
-        for block_kind, payload in blocks:
+        anchors, blank, shared, previous = set(), None, "", None
+        for block_kind, payload, *rest in blocks:
+            prefix = rest[0] if rest else ""
+            indent = _markdown_bytes(prefix) if bounded else 0
+            if block_kind == "end":
+                shared = posixpath.commonprefix([shared, prefix])
+                continue
             if block_kind == "anchor":
                 if (not isinstance(payload, str)
                         or re.fullmatch(r"brewdoc-chapter-(?!000000)[0-9]{6}-fragment-"
@@ -528,7 +835,7 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                         or payload in anchors):
                     raise BrewdocError("invalid or duplicate generated fragment anchor: %r" % payload)
                 anchors.add(payload)
-                _remaining_markdown_bytes(max_markdown_bytes, size + len(payload) + 14)
+                _remaining_markdown_bytes(max_markdown_bytes, size + indent + len(payload) + 14)
                 rendered = ['<a id="%s"></a>' % payload]
             elif block_kind == "table":
                 rendered = markdown_table(payload, preserve_unicode=preserve_unicode,
@@ -540,21 +847,33 @@ def _render_units(kind: str, units: list[tuple[int, str, list[tuple]]],
                 rendered = _drop_furniture(payload, heads, numbers, tally)
                 if block_kind == "block" and len(rendered) <= 2:
                     rendered = [line for line in rendered if line != "```"]
-            if rendered and block_kind in ("block", "math"):
+            if not rendered:
+                continue
+            if block_kind in ("block", "math"):
                 rendered = _literal_fence(rendered[1:-1], max_markdown_bytes=_remaining_markdown_bytes(
-                    max_markdown_bytes, size + 2)) + [""]
-                size += sum(_markdown_bytes(line) + 1 for line in rendered) if bounded else 0
-                out += rendered
-            elif rendered and block_kind == "anchor":
-                size += sum(_markdown_bytes(line) + 1 for line in rendered) if bounded else 0
-                out += rendered
-            elif rendered:
+                    max_markdown_bytes, size + 2))
+            elif block_kind != "anchor":
+                used, lines = size + 2, []
                 for line in rendered:
-                    escaped = _escape_source_html(line, _remaining_markdown_bytes(
-                        max_markdown_bytes, size + 2))
-                    size += _markdown_bytes(escaped) + 1 if bounded else 0
-                    out.append(escaped)
+                    lines.append(_escape_source_html(
+                        line, _remaining_markdown_bytes(max_markdown_bytes, used + indent), raw=raw))
+                    used += indent + _markdown_bytes(lines[-1]) + 1 if bounded else 0
+                rendered = lines
+            if (previous == "anchor" and block_kind in ("list", "lead")
+                    and not _INTERRUPTING_ITEM.match(rendered[0])):
+                blank = len(out)
+                out.append("")
                 size += 1 if bounded else 0
+            if blank is not None:
+                out[blank] = posixpath.commonprefix([shared, prefix]).rstrip()
+                size += len(out[blank]) if bounded else 0
+            rendered = [prefix + line if line else prefix.rstrip() for line in rendered]
+            size += sum(_markdown_bytes(line) + 1 for line in rendered) if bounded else 0
+            out += rendered
+            blank, shared, previous = None, prefix, block_kind
+            if block_kind not in ("anchor", "lead"):
+                size += 1 if bounded else 0
+                blank = len(out)
                 out.append("")
     body = _join_markdown_lines(out, max_markdown_bytes)
     return body, tuple(keys)
@@ -591,7 +910,7 @@ def _metadata_rows(path: Path, route: str, unit_kind: str, source_units: int,
     rows = [
         ("Markdown schema", MARKDOWN_SCHEMA),
         ("Source name", '"%s"' % _escape_markdown_text(
-            path.name, preserve_unicode=preserve_unicode,
+            path.name, preserve_unicode=preserve_unicode, quoted=True,
             max_markdown_bytes=_remaining_markdown_bytes(max_markdown_bytes, 2))),
         ("Source suffix", suffix[:1] + _escape_markdown_text(
             suffix[1:], preserve_unicode=preserve_unicode,
@@ -649,6 +968,7 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
                            % (unit_kind, ", ".join(UNIT_COUNTERS)))
     body, unit_keys = _render_units(unit_kind, units, heads, numbers, tally,
                                     preserve_unicode=preserve_unicode,
+                                    raw=route not in _MARKUP_ROUTES,
                                     max_markdown_bytes=max_markdown_bytes)
     tally[UNIT_COUNTERS[unit_kind]] = len(unit_keys)
     bounded = max_markdown_bytes is not None and bool(units)
@@ -656,7 +976,7 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
     size = _markdown_bytes(body) + 1 if bounded else 0
     prefix = ['# ""', "", '<a id="brewdoc-metadata"></a>', "## Metadata", ""]
     framing = sum(len(line) + 1 for line in prefix)
-    name = _escape_markdown_text(path.name, preserve_unicode=preserve_unicode,
+    name = _escape_markdown_text(path.name, preserve_unicode=preserve_unicode, quoted=True,
                                  max_markdown_bytes=_remaining_markdown_bytes(
                                      envelope_maximum, size + framing))
     prefix[0] = '# "%s"' % name
@@ -681,9 +1001,9 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
     _check_markdown_size(size, envelope_maximum)
     out += section
     for item in not_carried:
-        text = _escape_markdown_text(item, preserve_unicode=preserve_unicode,
-                                     max_markdown_bytes=_remaining_markdown_bytes(
-                                         envelope_maximum, size + 3))
+        text = _escape_line_start(_escape_markdown_text(
+            item, preserve_unicode=preserve_unicode,
+            max_markdown_bytes=_remaining_markdown_bytes(envelope_maximum, size + 3)))
         size += _markdown_bytes(text) + 3 if bounded else 0
         out.append("- " + text)
     section = ["", '<a id="brewdoc-contents"></a>', "## Contents", ""]
@@ -706,7 +1026,7 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
         destinations = {_unit_anchor(key) for key in unit_keys}
         destinations.add("brewdoc-publication-navigation")
         destinations.update(payload for _ordinal, _label, blocks in units
-                            for block_kind, payload in blocks if block_kind == "anchor")
+                            for block_kind, payload, *_prefix in blocks if block_kind == "anchor")
         previous_depth = -1
         for depth, label, destination in publication_navigation:
             if (type(depth) is not int or depth < 0 or depth > previous_depth + 1
@@ -717,11 +1037,40 @@ def _assemble(path: Path, route: str, unit_kind: str, source_units: int,
             text = _escape_markdown_text(label, preserve_unicode=preserve_unicode,
                                           max_markdown_bytes=_remaining_markdown_bytes(
                                               envelope_maximum, size + framing))
-            size += framing + _markdown_bytes(text) if bounded else 0
-            text = "[%s](#%s)" % (text, destination) if destination is not None else text
+            text = "[%s](#%s)" % (text, destination) if destination is not None else _escape_line_start(text)
+            size += 2 * depth + 3 + _markdown_bytes(text) if bounded else 0
             out.append("  " * depth + "- " + text)
     _check_markdown_size(size, envelope_maximum)
     out += ["", body.rstrip("\n")]
     markdown = _join_markdown_lines(out, max_markdown_bytes)
     _check_markdown_size(_markdown_bytes(markdown), max_markdown_bytes)
     return markdown, tally, unit_keys, artifacts
+
+
+# CommonMark fences at 0-3 spaces; a backtick info string holds no backtick.
+_FENCE_OPEN = re.compile(r" {0,3}(`{3,}(?=[^`]*\Z)|~{3,})")
+_FENCE_CLOSE = re.compile(r" {0,3}(`{3,}|~{3,})[ \t]*\Z")
+
+
+def _body_only(markdown: str, unit_keys: tuple[str, ...]) -> str:
+    """Schema 2 body without envelope or unit anchors; a single unit also loses its heading."""
+    if not unit_keys:
+        return ""
+    anchors = ['<a id="%s"></a>' % _unit_anchor(key) for key in unit_keys]
+    lines = markdown.split("\n")
+    kept, fence, found, skip = [], None, 0, 0
+    for line in lines[lines.index(anchors[0]):]:
+        if fence is not None:
+            close = _FENCE_CLOSE.match(line)
+            fence = None if close and close.group(1).startswith(fence) else fence
+        elif found < len(anchors) and line == anchors[found]:
+            found, skip = found + 1, 2 if len(anchors) == 1 else 0
+            continue
+        elif skip:
+            skip -= 1
+            continue
+        elif opening := _FENCE_OPEN.match(line):
+            fence = opening.group(1)
+        kept.append(line)
+    body = "\n".join(kept).strip("\n")
+    return body + "\n" if body else ""

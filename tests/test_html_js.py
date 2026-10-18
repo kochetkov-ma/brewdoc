@@ -9,6 +9,7 @@ import json
 import select
 import signal
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -67,7 +68,7 @@ def test_runaway_script_timing_preserves_valid_available_dom():
     'try{for(let i=0;i<201;i++)setTimeout(()=>{},10000)}catch(e){}',
     'try{document.write("x".repeat(8*1024*1024+1))}catch(e){}',
     'function again(){Promise.resolve().then(again)}again()',
-    'setInterval(()=>{},0)',
+    'function again(){setTimeout(again,0)}again()',
     'document.body.textContent="x".repeat(8*1024*1024+1)',
 ])
 def test_caught_or_runaway_resource_exhaustion_still_refuses(script):
@@ -135,7 +136,7 @@ def test_cross_redirect_or_ambiguous_cors_never_exposes_body(mode, headers):
     captured = render(source, 'https://fixture.test/', fetch, time.monotonic() + 10, soft_window=0.1)
     # THEN the response body remains hidden with ordinary partial provenance.
     assert captured['capture_status'] == 'partial', 'CORS denial must retain useful initial DOM.'
-    assert captured['errors'] == [{'category': 'cors_denied', 'resource_url': None}], 'CORS ambiguity must deny exposure.'
+    assert captured['errors'] == [{'category': 'cors_denied', 'resource_url': 'https://fixture.test/jump'}], 'CORS ambiguity must deny exposure and name the request.'
     assert '<p id="result">article</p>' in captured['html'], 'Denied cross-origin bytes must never replace content.'
 
 
@@ -151,6 +152,24 @@ def test_cross_redirect_or_ambiguous_cors_never_exposes_body(mode, headers):
      {'https://fixture.test/module.js': {'body': b'export const value="imported"'}}, 'imported', 'partial'),
     ('JSON.stringify=()=>"[]";Map.prototype.get=()=>null;fetch("/data").then(r=>r.text()).then(t=>document.querySelector("#result").textContent=t)',
      {'https://fixture.test/data': {'body': b'protected'}}, 'protected', 'settled'),
+    ('document.currentScript.parentElement.querySelector("#result").textContent=document.currentScript.localName',
+     {}, 'script', 'settled'),
+    ('self.value="self alias";document.querySelector("#result").textContent=self===window?window.value:"other"',
+     {}, 'self alias', 'settled'),
+    ('for(const c of [console,window.console])c.log(1),c.info(1),c.warn(1),c.error(1),c.debug(1);document.querySelector("#result").textContent="quiet"',
+     {}, 'quiet', 'settled'),
+    ('document.cookie="a=b";document.querySelector("#result").textContent="["+document.cookie+"]"', {}, '[]', 'settled'),
+    ('requestAnimationFrame(t=>document.querySelector("#result").textContent="frame "+t);'
+     'cancelAnimationFrame(requestAnimationFrame(()=>document.body.append("cancelled")))', {}, 'frame 0', 'settled'),
+    ('const u=new window.URL("../b/c?x=1&y=a+b#h","https://fixture.test/a/d/e");u.searchParams.set("x","2 3");'
+     'u.searchParams.append("z","!");u.hash="";let bare;try{new URL("/x")}catch(e){bare=e instanceof TypeError}'
+     'document.querySelector("#result").textContent=[u.href,u.origin,u.host,u.port,u.pathname,u.search,'
+     'u.searchParams.get("y"),u.searchParams.has("q"),new URL("/p","https://h.test:8443/x").host,'
+     'new URLSearchParams({k:"v w"}),bare].join("|")',
+     {}, 'https://fixture.test/a/b/c?x=2+3&amp;y=a+b&amp;z=%21|https://fixture.test|fixture.test||/a/b/c|'
+     '?x=2+3&amp;y=a+b&amp;z=%21|a b|false|h.test:8443|k=v+w|true', 'settled'),
+    ('document.querySelector("#result").textContent=new URL("p",location)+" "+location', {},
+     'https://fixture.test/p https://fixture.test/', 'settled'),
 ])
 def test_host_apis_dynamic_scripts_and_imports_preserve_created_content(script, resources, expected, status):
     # GIVEN bounded sources with an independent expected content value.
@@ -188,20 +207,24 @@ def test_private_destination_refuses_even_when_page_catches_rejection():
 
 def test_success_and_soft_capture_reap_owned_worker(monkeypatch):
     import brewdoc.htmljs as module
-    # GIVEN a tracked child process for a useful partial capture.
+    # GIVEN cached prerequisites, so the capture worker is the only tracked child.
+    module._check_runtime()
     processes = []
-    original = module.subprocess.Popen
-    def start(*args, **options):
-        process = original(*args, **options)
-        processes.append(process)
-        return process
-    monkeypatch.setattr(module.subprocess, 'Popen', start)
+    class Tracked(module.subprocess.Popen):
+        def __init__(self, *args, **options):
+            super().__init__(*args, **options)
+            processes.append(self)
+        def wait(self, timeout=None):
+            # Await worker exit before the owner's 0.1 s reap grace; load cannot turn it into SIGKILL.
+            super().wait(10)
+            return super().wait(timeout)
+    monkeypatch.setattr(module.subprocess, 'Popen', Tracked)
     # WHEN a later timer remains after the short soft window.
     captured = render('<html><body><p>article</p><script>setTimeout(()=>{},10000)</script></body></html>',
                       'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.05)
     # THEN the child exits normally and is already reaped by its owner.
-    assert captured['capture_status'] == 'partial', 'The later timer must remain partial.'
-    assert tuple(process.returncode for process in processes) in ((0,), (int(signal.SIGUSR1), 0)), 'Only the optional prerequisite child and the finished capture may run.'
+    assert (captured['capture_status'], [process.returncode for process in processes]) == ('partial', [0]), \
+        'The later timer must remain partial and the one worker must exit cleanly.'
     with pytest.raises(ProcessLookupError):
         os.kill(processes[-1].pid, 0)
 
@@ -229,6 +252,89 @@ def test_loading_deadline_fallback_kills_and_reaps_unresponsive_worker(monkeypat
         os.kill(processes[-1].pid, 0)
 
 
+@pytest.fixture
+def exiting_worker(monkeypatch):
+    """Hold the real worker alive past its reap grace; killpg then meets it as an unreaped zombie."""
+    import brewdoc.htmljs as module
+    module._check_runtime()
+    held = SimpleNamespace(processes=[], kills=[])
+    class Held(module.subprocess.Popen):
+        def __init__(self, arguments, **options):
+            hold = 'import sys;from brewdoc.htmljs import _worker_fd;_worker_fd(int(sys.argv[1]),int(sys.argv[2]));sys.stdin.read()'
+            super().__init__([sys.executable, '-I', '-c', hold, *arguments[-2:]],
+                             **{**options, 'stdin': subprocess.PIPE, 'stdout': subprocess.PIPE})
+            held.processes.append(self)
+    def killpg(pid, sig):
+        # Release the worker and await its exit (stdout EOF) unreaped; macOS answers EPERM for that group.
+        held.kills.append((pid, sig))
+        held.processes[0].stdin.close()
+        held.processes[0].stdout.read()
+        held.processes[0].stdout.close()
+        raise PermissionError(1, 'Operation not permitted')
+    monkeypatch.setattr(module.subprocess, 'Popen', Held)
+    monkeypatch.setattr(module.os, 'killpg', killpg)
+    return held
+
+
+def test_capture_survives_eperm_from_killing_an_already_exited_worker(exiting_worker):
+    # GIVEN a worker that has returned its capture and exits only once the owner tries to kill it.
+    source = '<html><body><p>article</p><script>setTimeout(()=>{},10000)</script></body></html>'
+    # WHEN the reap grace expires and killpg meets the exited, unreaped worker.
+    captured = render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.05)
+    # THEN the capture is returned and the cleanly exited worker is reaped.
+    assert (captured['capture_status'], [process.returncode for process in exiting_worker.processes], exiting_worker.kills) == (
+        'partial', [0], [(exiting_worker.processes[0].pid, signal.SIGKILL)],
+    ), 'EPERM from an already exited worker must not replace the capture.'
+
+
+def test_refusal_survives_eperm_from_killing_an_already_exited_worker(exiting_worker):
+    # GIVEN a forged-snapshot page whose worker exits only once the owner tries to kill it.
+    source = '<html><body><p>article</p><script>Object.defineProperty(document,"childNodes",{value:["forged"]})</script></body></html>'
+    # WHEN the refusal unwinds through the expired reap grace.
+    with pytest.raises(BrewdocError, match='JS resource execution refused'):
+        render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.1)
+    # THEN the expected refusal survives and the cleanly exited worker is reaped.
+    assert ([process.returncode for process in exiting_worker.processes], exiting_worker.kills) == (
+        [0], [(exiting_worker.processes[0].pid, signal.SIGKILL)],
+    ), 'EPERM from an already exited worker must not replace the refusal.'
+
+
+@pytest.fixture
+def budget_context(monkeypatch):
+    """Yield a native context whose wall clock is test-driven while CPU clocks stay real."""
+    from brewdoc._urljs import native
+    wall = SimpleNamespace(now=0.0, step=0.0)
+    def monotonic():
+        wall.now += wall.step
+        return wall.now
+    monkeypatch.setattr(native, 'time', SimpleNamespace(
+        monotonic=monotonic, thread_time=time.thread_time, process_time=time.process_time))
+    with native.Context({}.__getitem__) as context:
+        context.eval('globalThis.result="";globalThis.read=()=>result', 'bootstrap')
+        context.save(['read'])
+        yield SimpleNamespace(context=context, wall=wall)
+
+
+def test_cheap_script_ignores_wall_clock_jumps_from_machine_load(budget_context):
+    # GIVEN a wall clock that jumps 1 s on every read, as under heavy load.
+    budget_context.wall.step = 1.0
+    # WHEN one call runs a loop of about 10 ms CPU.
+    budget_context.context.eval('let n=0;for(let i=0;i<1000000;i++)n++;result=String(n)', 'page')
+    # THEN the 250 ms per-call budget counts CPU time and lets the loop finish.
+    assert budget_context.context.call('read') == '1000000', 'Wall-clock load must not interrupt cheap script work.'
+
+
+def test_cpu_runaway_script_interrupts_while_wall_clock_stands_still(budget_context):
+    from brewdoc._urljs.native import NativeError
+    # GIVEN a wall clock that never moves.
+    assert budget_context.wall.step == 0.0, 'The wall clock must stay frozen.'
+    # WHEN one call runs a loop of about 10 s CPU.
+    with pytest.raises(NativeError) as caught:
+        budget_context.context.eval('let n=0;for(let i=0;i<1000000000;i++)n++;result=String(n)', 'page')
+    # THEN the CPU budget alone stops it as a trusted timing interrupt.
+    assert (caught.value.resource, caught.value.timing) == (False, True), 'Runaway CPU work must interrupt by CPU time.'
+
+
 def test_parent_death_stops_worker_waiting_for_module(tmp_path):
     # GIVEN a separate controlling process blocked on host module delivery.
     script = tmp_path / 'parent.py'
@@ -245,7 +351,7 @@ def fetch(request):
     print("module_wait",flush=True)
     threading.Event().wait(60)
 module.render('<html><body><p>article</p><script>import("./module.js")</script></body></html>',
-              'https://fixture.test/',fetch,time.monotonic()+45)
+              'https://fixture.test/',fetch,time.monotonic()+45,soft_window=12.0)
 ''')
     parent = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:

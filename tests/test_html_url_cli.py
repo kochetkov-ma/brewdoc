@@ -5,6 +5,9 @@ import json
 import pytest
 
 from brewdoc import cli, htmlurl
+from brewdoc.service import ROUTES
+from test_html_url import (MALFORMED_DISPOSITION, OCTET, SECRET_SHOWN, SECRET_URL, converted,
+                           document_acquisition, ok, pdf_bytes, refused)
 
 
 URL = "https://example.com/article"
@@ -50,7 +53,8 @@ def test_url_cli_forwards_mode_and_prints_exact_receipt_then_unicode(render_js, 
     # THEN mode is forwarded once and stdout preserves the exact result
     assert (code, calls, capsys.readouterr().out) == (
         0, [(URL, None, {"render_js": render_js, "timeout": 30.0, "sheets": None,
-                        "artifact_outputs": None, "article": False})],
+                        "artifact_outputs": None, "article": False,
+                        "body_only": False})],
         json.dumps(RECEIPT, ensure_ascii=True, sort_keys=True) + "\n" + MARKDOWN,
     ), "URL CLI must preserve Unicode and the acquisition receipt"
 
@@ -108,3 +112,36 @@ def test_url_hard_refusal_prints_receipt_without_markdown_or_fallback(monkeypatc
     assert (code, calls, capsys.readouterr().out) == (
         1, [], json.dumps(receipt, ensure_ascii=True, sort_keys=True) + "\n",
     ), "requested JS must not silently retry static/local conversion"
+
+
+def test_url_cli_writes_a_pdf_document_with_its_pdf_receipt(tmp_path, monkeypatch, capsys):
+    # GIVEN a PDF served at a URL and its local conversion under the expected snapshot name
+    url = "https://example.com/files/report"
+    body = pdf_bytes(tmp_path)
+    destination = tmp_path / "report.md"
+    destination.write_bytes(b"previous output\n")
+    name, (local_code, receipt, markdown) = converted(tmp_path, url, ".pdf", body)
+    monkeypatch.setattr(htmlurl, "_request", lambda *args: ok((("Content-Type", "application/pdf"),), body))
+    assert local_code == 0, "the synthetic PDF must convert as a local file"
+    # WHEN the CLI acquires the URL into an output file
+    code = cli.main(["--url", url, "--out", str(destination)])
+    # THEN stdout is the PDF receipt and the file holds the PDF Markdown
+    assert (code, json.loads(capsys.readouterr().out), destination.read_bytes()) == (
+        0, dict(receipt, out=str(destination), source=url, receipt_schema="brewdoc.receipt/2",
+                acquisition=document_acquisition(url, url, body, body)), markdown.encode("utf-8"),
+    ), "--url must convert a PDF document through the PDF route"
+
+
+def test_url_cli_malformed_disposition_prints_a_media_refusal_instead_of_crashing(monkeypatch, capsys):
+    # GIVEN an octet-stream response whose Content-Disposition parameters are malformed
+    calls = []
+    hop = ok((OCTET, ("Content-Disposition", MALFORMED_DISPOSITION)), b"%PDF-")
+    monkeypatch.setattr(htmlurl, "_request", lambda url, *args: (calls.append(url), hop)[1])
+    assert calls == [], "acquisition starts without a request"
+    # WHEN the CLI acquires the URL
+    code = cli.main(["--url", SECRET_URL])
+    # THEN exit 1 prints the exact media refusal receipt with the redacted URL
+    assert (code, calls, capsys.readouterr().out) == (
+        1, [SECRET_URL], json.dumps(refused(ROUTES[".html"], SECRET_SHOWN, SECRET_URL, "media", SECRET_SHOWN),
+                                    ensure_ascii=True, sort_keys=True) + "\n",
+    ), "a malformed Content-Disposition must refuse at media, not crash the CLI"

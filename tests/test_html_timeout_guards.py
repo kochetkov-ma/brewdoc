@@ -19,7 +19,8 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Timeout guard p
 INITIAL = b"<html><body><p>Initial article</p></body></html>"
 FALLBACK = {"category": "initial_html_timeout_fallback", "resource_url": None}
 TIMING = {"category": "capture_timeout", "resource_url": None}
-ANCILLARY = {"category": "ancillary_transport_failed", "resource_url": None}
+ANCILLARY = [{"category": "ancillary_transport_failed", "resource_url": "https://fixture.test/data-%d" % index}
+             for index in range(15)]
 WORKER_BOOT = """
 import sys,threading,time
 from multiprocessing.connection import Connection
@@ -329,8 +330,8 @@ def test_actual_owned_sigkill_is_the_eligible_cancellation_race_control(monkeypa
 
 
 @pytest.mark.parametrize("count,expected_errors", [
-    pytest.param(1, [ANCILLARY, FALLBACK], id="one-known-parent-diagnostic"),
-    pytest.param(21, [ANCILLARY] * 15 + [FALLBACK], id="cause-survives-public-error-bound"),
+    pytest.param(1, [ANCILLARY[0], FALLBACK], id="one-known-parent-diagnostic"),
+    pytest.param(21, ANCILLARY + [FALLBACK], id="cause-survives-public-error-bound"),
 ])
 def test_original_source_fallback_retains_known_parent_diagnostics_and_its_cause(count, expected_errors, monkeypatch):
     # GIVEN known ordinary parent failures before an unresponsive trusted worker.

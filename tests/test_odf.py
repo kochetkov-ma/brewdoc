@@ -83,13 +83,13 @@ def expected_document(path, kind, body, labels, omissions, tables, text_regions)
     source = path.read_bytes()
     rendered = body.encode("utf-8")
     return SCHEMA_TWO.format(
-        **NOT_APPLICABLE, name=re.sub(r"([.-])", r"\\\1", path.name), suffix=path.suffix,
+        **NOT_APPLICABLE, name=path.name, suffix=path.suffix,
         route=kind, unit=unit, count=len(labels), keys=", ".join(keys) or "none",
         source_bytes=len(source), source_sha256=hashlib.sha256(source).hexdigest(),
         body_bytes=len(rendered), body_sha256=hashlib.sha256(rendered).hexdigest(),
         pages=0, sheets=0, chapters={"odt": len(labels), "odp": 0}[kind],
         tables=tables, text_regions=text_regions,
-        omissions="\n".join("- " + line.replace("-", "\\-") for line in omissions),
+        omissions="\n".join("- " + line for line in omissions),
         contents=contents, body=body,
     )
 

@@ -10,11 +10,13 @@ import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote, unquote_to_bytes, urlsplit
+from urllib.parse import unquote_to_bytes, urlsplit
 from xml.parsers import expat
 
-from brewdoc.common import (MARKDOWN_ESCAPES, BrewdocError, Rendered, Route, _assemble,
-                            _escape_markdown_text, new_tally, reading)
+from brewdoc.common import (BrewdocError, Rendered, Route, _ascii_integer, _assemble,
+                            _close_list_item, _emphasis, _escape_markdown_text, _join_escaped,
+                            _merge_list, _ordered_marker, _source_lines, _url_target, new_tally,
+                            reading)
 
 CONTAINER = "{urn:oasis:names:tc:opendocument:xmlns:container}"
 OPF = "{http://www.idpf.org/2007/opf}"
@@ -38,8 +40,8 @@ LIMITS = {
     "total_table_slots": 262_144, "markdown_bytes": 8_388_608,
 }
 OMISSIONS = ("CSS, layout, pagination and font rendering", "scripts, forms and active media",
-             "image pixels and graphical SVG content", "unsupported SVG and MathML semantics",
-             "navigation semantics beyond declared TOC hierarchy")
+             "image pixels, images without alt text and graphical SVG content",
+             "unsupported SVG and MathML semantics", "navigation semantics beyond declared TOC hierarchy")
 
 
 def _limit(name: str, value: int) -> None:
@@ -428,16 +430,19 @@ def _encryption(package, members: dict, publication: _Publication, budget: _Budg
             raise BrewdocError("EPUB unsupported encryption declaration: %s" % target)
 
 
-OMITTED = {"script", "style", "template", "form", "input", "button", "select", "textarea",
+OMITTED = {"script", "style", "template", "input", "button", "select", "option", "optgroup",
+           "datalist", "textarea", "output", "progress", "meter",
            "audio", "video", "object", "embed", "iframe", "canvas", "source", "track"}
 BLOCKS = {"p", "div", "section", "article", "header", "footer", "main", "aside", "nav", "hgroup",
           "address", "figure", "figcaption", "dl", "dt", "dd", "hr", "ul", "ol", "li",
-          "blockquote", "pre", "code", "table", "h1", "h2", "h3", "h4", "h5", "h6"}
+          "blockquote", "pre", "code", "table", "h1", "h2", "h3", "h4", "h5", "h6",
+          "form", "fieldset", "legend", "label", "details", "summary"}
 SVG = "{http://www.w3.org/2000/svg}"
 XLINK = "{http://www.w3.org/1999/xlink}"
 PUBLICATION_ANCHOR = "brewdoc-publication-navigation"
-LITERAL_ESCAPES = {**MARKDOWN_ESCAPES, ord("\n"): "&#10;", ord("\r"): "&#13;",
-                   ord("\t"): "&#9;", ord(" "): "&#32;"}
+EMPHASIS = {"em": "*", "i": "*", "strong": "**", "b": "**"}
+# Cell whitespace collapses except inside literal code records, which keep source spacing.
+CELL_SPACE = re.compile(r'(Code: text="[^"]*")|[ \t\r\n]+')
 
 
 def _name(node: ET.Element) -> str:
@@ -494,15 +499,27 @@ def _prose_text(node: ET.Element) -> str:
     return "".join(parts)
 
 
-def _escape(text: str) -> str:
-    return _escape_markdown_text(text, preserve_unicode=True,
+def _escape(text: str, *, quoted: bool = False, literal: bool = False) -> str:
+    return _escape_markdown_text(text, preserve_unicode=True, quoted=quoted, literal=literal,
                                  max_markdown_bytes=LIMITS["markdown_bytes"])
 
 
 def _checked_join(parts: list[str], separator: str = "") -> str:
+    """Join escaped pieces within the byte limit; a source `&` cannot open an entity across pieces."""
     _limit("markdown_bytes", sum(len(part.encode("utf-8")) for part in parts)
            + len(separator.encode("utf-8")) * max(0, len(parts) - 1))
-    return separator.join(parts)
+    return separator.join(parts) if separator else _join_escaped(parts)
+
+
+def _inline_text(text: str | None) -> str:
+    return _escape(re.sub(r"[ \t\r\n]+", " ", text or ""))
+
+
+def _region(tokens: list[str | tuple[str, bool]]) -> str:
+    """Resolve one region's text and emphasis tokens into Markdown within the byte limit."""
+    text = _emphasis(tokens)
+    _limit("markdown_bytes", len(text.encode("utf-8")))
+    return text
 
 
 def _navigation(package, members: dict, publication: _Publication,
@@ -632,81 +649,80 @@ def _destination(source: str, target: str, indices: list[_ChapterIndex],
 
 
 def _image(node: ET.Element, source: str) -> str:
-    target = node.get("src")
+    """Render `![alt](target)`, or nothing without alt text; unsafe targets still refuse.
+    Like HTML, only http(s), mailto and relative targets survive; other schemes give `()`."""
+    target = node.get("src") or ""
     if target:
         if "\\" in target or any(ord(char) < 32 or ord(char) == 127 for char in target):
             raise BrewdocError("EPUB unsafe target: %s" % target)
         components = urlsplit(target)
         if not components.scheme and not components.netloc:
             _resolve_target(source, components.path or target, fragments=True)
-    fields = []
-    for name in ("alt", "title", "src"):
-        value = node.get(name)
-        quoted = _checked_join(['"', _escape(value), '"']) if value is not None else "unspecified"
-        fields.append(_checked_join([name, "=", quoted]))
-    return "Image: " + "; ".join(fields)
+        elif components.scheme.lower() not in {"", "http", "https", "mailto"}:
+            target = ""
+    alt = _collapse(node.get("alt", ""))
+    if not alt:
+        return ""
+    return _checked_join(["![", _escape(alt), "](", _url_target(target), ")"])
 
 
 def _link(label: str, target: str | None, current: _ChapterIndex,
-          indices: list[_ChapterIndex]) -> str:
+          indices: list[_ChapterIndex]) -> list[str | tuple[str, bool]]:
+    """Render a link as `_emphasis` tokens, so label edge spaces move outside it.
+    A blank label stays plain text once its target passes the usual checks."""
     if target is None:
-        return label
+        return [label]
     if "\\" in target or any(ord(char) < 32 or ord(char) == 127 for char in target):
         raise BrewdocError("EPUB unsafe target: %s" % target)
     components = urlsplit(target)
     if components.scheme.lower() in {"http", "https", "mailto"}:
-        safe = ":/?#@!$&'*+,;=~%.-_"
-        encoded_size = sum(1 if chr(byte).isascii() and (chr(byte).isalnum() or chr(byte) in safe)
-                           else 3 for byte in target.encode("utf-8"))
-        _limit("markdown_bytes", len(label.encode("utf-8")) + encoded_size + 4)
-        return _checked_join(["[", label, "](", quote(target, safe=safe), ")"])
-    if components.scheme or components.netloc:
-        return _checked_join([label, ' (Link target: "', _escape(target), '")'])
-    if components.query:
-        _resolve_target(current.member, components.path or "#" + components.fragment, fragments=True)
-        return _checked_join([label, ' (Link target: "', _escape(target), '")'])
-    destination = _destination(current.member, target, indices, current)
-    return (_checked_join(["[", label, "](#", destination, ")"]) if destination else
-            _checked_join([label, ' (Link target: "', _escape(target), '")']))
+        closing = "](%s)" % _url_target(target)
+        _limit("markdown_bytes", len(label.encode("utf-8")) + len(closing) + 1)
+    else:
+        destination = ""
+        if components.query and not (components.scheme or components.netloc):
+            _resolve_target(current.member, components.path or "#" + components.fragment, fragments=True)
+        elif not (components.scheme or components.netloc):
+            destination = _destination(current.member, target, indices, current)
+        if not destination:
+            return [label, (' (Link target: "%s")' % _escape(target, quoted=True), False)]
+        closing = "](#%s)" % destination
+    return [("[", True), label, (closing, False)] if label.strip(" \t\r\n") else [label]
 
 
-def _inline(node: ET.Element, current: _ChapterIndex, indices: list[_ChapterIndex],
-            *, cell: bool = False, nested_table=None) -> str:
-    """Render inline text, emphasis and links without dropping excluded-subtree tails."""
+def _inline(node: ET.Element, current: _ChapterIndex, indices: list[_ChapterIndex], *,
+            cell: bool = False, nested_table=None) -> list[str | tuple[str, bool]]:
+    """Render inline text and links as `_emphasis` tokens without dropping excluded-subtree tails."""
+    tag = _name(node)
     if _omitted(node):
-        return ""
-    parts = [_escape(re.sub(r"[ \t\r\n]+", " ", node.text or ""))]
+        return []
+    if tag == "br":
+        return [" / " if cell else "\n"]
+    tokens = [_inline_text(node.text)]
     for child in node:
         name = _name(child)
-        if _omitted(child):
-            text = ""
-        elif name == "br":
-            text = " / " if cell else "\n"
+        if _omitted(child) or not name and not child.tag.startswith(SVG):
+            parts = []
         elif name == "img":
-            text = _image(child, current.member)
+            parts = [_image(child, current.member)]
         elif name == "table":
-            text = nested_table(child) if nested_table is not None else ""
+            parts = [nested_table(child)] if nested_table is not None else []
         elif cell and name in {"code", "pre"}:
-            literal = _included_text(child)
-            _limit("markdown_bytes", sum(len(LITERAL_ESCAPES.get(ord(char), char).encode("utf-8"))
-                                         for char in literal) + 13)
-            text = _checked_join(['Code: text="', literal.translate(LITERAL_ESCAPES), '"'])
+            parts = [_checked_join(['Code: text="', _escape(_included_text(child), literal=True), '"'])]
         elif child.tag == SVG + "svg":
-            text = _checked_join(_svg_lines(child, current.member), "; ")
-        elif not name and not child.tag.startswith(SVG):
-            text = ""
+            parts = [_checked_join(_svg_lines(child, current.member), "; ")]
         else:
-            text = _inline(child, current, indices, cell=cell, nested_table=nested_table)
-        if cell and name in BLOCKS and name != "table" and text:
-            text = " " + text + " "
-        parts.append(text)
-        parts.append(_escape(re.sub(r"[ \t\r\n]+", " ", child.tail or "")))
-    content = _checked_join(parts)
-    name = _name(node)
-    if name in {"em", "i", "strong", "b"} and content:
-        marker = "*" if name in {"em", "i"} else "**"
-        return _checked_join([marker, content, marker])
-    return _link(content, node.get("href"), current, indices) if name == "a" else content
+            parts = _inline(child, current, indices, cell=cell, nested_table=nested_table)
+        if cell and name in BLOCKS and name != "table" and any(
+                isinstance(part, str) and part for part in parts):
+            parts = [" ", *parts, " "]
+        tokens += parts
+        tokens.append(_inline_text(child.tail))
+    if tag in EMPHASIS:
+        return [(EMPHASIS[tag], True), *tokens, (EMPHASIS[tag], False)]
+    if tag == "a" and node.get("href") is not None:
+        return _link(_region(tokens), node.get("href"), current, indices)
+    return tokens
 
 
 def _svg_lines(node: ET.Element, source: str) -> list[str]:
@@ -714,7 +730,8 @@ def _svg_lines(node: ET.Element, source: str) -> list[str]:
     lines = []
     for child in node:
         if child.tag in {SVG + "title", SVG + "desc"} and not _omitted(child):
-            lines.append('SVG %s: "%s"' % (child.tag[len(SVG):], _escape(_collapse(_included_text(child)))))
+            lines.append('SVG %s: "%s"' % (child.tag[len(SVG):],
+                                            _escape(_collapse(_included_text(child)), quoted=True)))
     def included_images(element):
         if _omitted(element):
             return
@@ -731,21 +748,9 @@ def _svg_lines(node: ET.Element, source: str) -> list[str]:
             components = urlsplit(target)
             if not components.scheme and not components.netloc:
                 _resolve_target(source, components.path or target, fragments=True)
-        lines.append('SVG image reference: %s' % ('"%s"' % _escape(target)
+        lines.append('SVG image reference: %s' % ('"%s"' % _escape(target, quoted=True)
                                                 if target is not None else "unspecified"))
     return lines
-
-
-def _integer(value: str | None, default: int, *, maximum: int | None = None) -> int:
-    if value is None or re.fullmatch(r"[+-]?[0-9]+", value.strip()) is None:
-        return default
-    text = value.strip()
-    if maximum is not None and not text.startswith("-") and len(text.lstrip("+0")) > len(str(maximum)):
-        return maximum + 1
-    try:
-        return int(text)
-    except ValueError:
-        raise BrewdocError("EPUB integer attribute exceeds supported resource limits") from None
 
 
 def _table_rows(node: ET.Element, budget: _Budget, current: _ChapterIndex,
@@ -775,8 +780,8 @@ def _table_rows(node: ET.Element, budget: _Budget, current: _ChapterIndex,
                     continue
                 while (y, x) in occupied:
                     x += 1
-                cols = max(1, _integer(cell.get("colspan"), 1, maximum=LIMITS["table_columns"]))
-                rows = _integer(cell.get("rowspan"), 1, maximum=LIMITS["table_slots"])
+                cols = max(1, _ascii_integer(cell.get("colspan"), 1))
+                rows = _ascii_integer(cell.get("rowspan"), 1)
                 rows = len(group) - row_number if rows == 0 else max(1, rows)
                 _limit("table_columns", x + cols)
                 _limit("table_slots", rows * cols)
@@ -798,6 +803,7 @@ def _table_rows(node: ET.Element, budget: _Budget, current: _ChapterIndex,
     grid = [[""] * width for _row in range(row_count)]
 
     def nested_records(nested):
+        """Flatten a nested table into one cell: optional caption, then quoted row/column records."""
         rows = _table_rows(nested, budget, current, indices)
         records, size = [], 0
         for ny, row in enumerate(rows):
@@ -806,14 +812,14 @@ def _table_rows(node: ET.Element, budget: _Budget, current: _ChapterIndex,
                 size += len(prefix) + len(content.encode("utf-8")) + 1 + bool(records) * 2
                 _limit("markdown_bytes", size)
                 records.append(_checked_join([prefix, content, '"']))
-        captions = [_inline(caption, current, indices, cell=True).strip(" \t\r\n")
+        captions = [_region(_inline(caption, current, indices, cell=True)).strip(" \t\r\n")
                     for caption in nested.findall(XHTML + "caption") if not _omitted(caption)]
         prefix = ('Nested table caption: "%s"; ' % _checked_join(captions, " ") if captions else "")
         return _checked_join([" ", prefix, "Nested table: ", _checked_join(records, "; "), " "])
 
     for (y, x), cell in cells.items():
-        grid[y][x] = _collapse(_inline(cell, current, indices, cell=True,
-                                      nested_table=nested_records))
+        content = _region(_inline(cell, current, indices, cell=True, nested_table=nested_records))
+        grid[y][x] = CELL_SPACE.sub(lambda match: match[1] or " ", content).strip(" \t\r\n")
     return grid
 
 
@@ -837,89 +843,49 @@ def _region_anchors(node: ET.Element, index: _ChapterIndex, *, descendants: bool
 
 def _render_blocks(body: ET.Element, current: _ChapterIndex, indices: list[_ChapterIndex],
                    budget: _Budget, tally: dict, *, consume_toc: bool) -> list[tuple]:
-    """Render ordered XHTML regions and keep complex list children inside their items."""
+    """Render ordered XHTML regions; list items and quotes carry their nesting as line prefixes."""
     blocks, emitted = [], set()
-    list_level = 0
+    prefix, floor = "", 0
     if _omitted(body):
         return blocks
 
     def anchors(node, descendants=True):
         for anchor in _region_anchors(node, current, descendants=descendants):
             if anchor not in emitted:
-                blocks.append(("anchor", anchor))
+                blocks.append(("anchor", anchor, prefix))
                 emitted.add(anchor)
 
     def text(lines, *, source=True):
         if not lines:
             return
         _limit("markdown_bytes", sum(len(line.encode("utf-8")) + 1 for line in lines))
-        blocks.append(("text", lines))
+        blocks.append(("text", lines, prefix))
         if source:
             tally["text_regions"] += 1
 
-    def list_blocks(node, quote_depth):
-        """Keep complex items in explicit scopes; simple nested lists retain ordinary markers."""
-        nonlocal list_level
-        list_level += 1
-        lines = []
+    def list_blocks(node):
+        """Put each item's first text on its marker line; tight item lines share one block."""
+        nonlocal prefix, floor
+        outer, start, scope = prefix, len(blocks), floor
         items = [child for child in node if child.tag == XHTML + "li" and not _omitted(child)]
         reversed_order = "reversed" in node.attrib
-        number = _integer(node.get("start"), len(items) if reversed_order else 1)
+        number = _ascii_integer(node.get("start"), len(items) if reversed_order else 1)
         step = -1 if reversed_order else 1
         for item in items:
-            number = _integer(item.get("value"), number)
-            marker = "%d. " % number if _name(node) == "ol" else "- "
+            number = _ascii_integer(item.get("value"), number)
+            marker = _ordered_marker(number) if _name(node) == "ol" else "- "
             number += step
-            def rich(element):
-                if _omitted(element):
-                    return False
-                return (_name(element) in {"table", "pre", "code", "img", "blockquote"}
-                        or any(element.get(key) in current.fragments for key in ("id", XML + "id"))
-                        or any(rich(child) for child in element))
-
-            scoped = rich(item)
-            if scoped:
-                if lines:
-                    blocks.append(("list", lines))
-                    lines = []
-                anchors(item, False)
-                text(['List item (level %d, marker "%s"):' % (list_level, marker.rstrip())], source=False)
-                flow(item, quote_depth)
-                text(["End list item (level %d)." % list_level], source=False)
-                continue
-            first = len(blocks)
+            prefix, first = outer + " " * len(marker), len(blocks)
             anchors(item, False)
-            flow(item, quote_depth)
-            rendered = blocks[first:]
-            del blocks[first:]
-            started = False
-            for kind, payload in rendered:
-                if kind == "anchor":
-                    if lines:
-                        blocks.append(("list", lines))
-                        lines = []
-                    blocks.append((kind, payload))
-                    continue
-                content = payload
-                if not content:
-                    continue
-                if not started and kind == "list":
-                    lines.append(marker)
-                    started = True
-                if not started:
-                    lines.append(marker + content[0])
-                    lines.extend("    " + line for line in content[1:])
-                    started = True
-                else:
-                    lines.extend("    " + line for line in content)
-                _limit("markdown_bytes", sum(len(line.encode("utf-8")) + 1 for line in lines))
-            if not started:
-                lines.append(marker)
-        if lines:
-            blocks.append(("list", lines))
-        list_level -= 1
+            floor = len(blocks)
+            flow(item)
+            prefix, floor = outer, scope
+            _close_list_item(blocks, marker, first, outer)
+        _merge_list(blocks, start, floor)
 
-    def walk(node, quote_depth=0):
+    def walk(node):
+        """Render one visible element as its block kind; unknown containers flow their children."""
+        nonlocal prefix, floor
         if _omitted(node):
             return
         name = _name(node)
@@ -928,120 +894,129 @@ def _render_blocks(body: ET.Element, current: _ChapterIndex, indices: list[_Chap
             text(["[Publication navigation](#%s)" % PUBLICATION_ANCHOR], source=False)
         elif name == "table":
             for caption in node.findall(XHTML + "caption"):
-                walk(caption, quote_depth)
+                walk(caption)
             anchors(node)
             rows = _table_rows(node, budget, current, indices)
             if rows:
-                blocks.append(("table", rows))
+                blocks.append(("table", rows, prefix))
                 tally["tables"] += 1
         elif name in {"ul", "ol"}:
             anchors(node, False)
-            list_blocks(node, quote_depth)
+            list_blocks(node)
         elif name == "blockquote":
             anchors(node, False)
-            text(["Quote (level %d):" % (quote_depth + 1)], source=False)
-            flow(node, quote_depth + 1)
-            text(["End quote (level %d)." % (quote_depth + 1)], source=False)
+            outer, scope = prefix, floor
+            prefix, floor = prefix + "> ", len(blocks)
+            flow(node)
+            prefix, floor = outer, scope
+            blocks.append(("end", None, prefix))
         elif name in {"pre", "code"}:
             anchors(node)
             code = _included_text(node)
             _limit("markdown_bytes", len(code.encode("utf-8")) + 2)
-            blocks.append(("block", ["```", *code.split("\n"), "```"] ))
+            blocks.append(("block", ["```", *code.split("\n"), "```"], prefix))
             tally["text_regions"] += 1
         elif name in {"p", "h1", "h2", "h3", "h4", "h5", "h6", "caption", "dt", "dd"}:
+            level = int(name[1:]) if name.startswith("h") else None
             if _has_code(node):
                 anchors(node, False)
-                heading_level = int(name[1:]) if name.startswith("h") else None
-                flow(node, quote_depth, heading_level=heading_level)
+                flow(node, heading_level=level)
                 return
             anchors(node)
-            content = _inline(node, current, indices).strip(" \t\r\n")
+            content = _region(_inline(node, current, indices)).strip(" \t\r\n")
             if content:
-                if name.startswith("h") and name[1:].isdigit():
-                    level = int(name[1:])
-                    content = ("#" * (level + 2) + " " + content if level <= 4 else
-                               "**Heading %d: %s**" % (level, content))
-                text(content.split("\n"))
+                text(_source_lines(content, level))
         elif name == "img":
             anchors(node)
-            text([_image(node, current.member)])
+            if image := _image(node, current.member):
+                text([image])
         elif node.tag == SVG + "svg":
             anchors(node)
             for line in _svg_lines(node, current.member):
                 text([line])
         elif name:
             anchors(node, False)
-            flow(node, quote_depth)
+            flow(node)
 
-    def flow(node, quote_depth, *, heading_level=None):
-        """Split literal code in place and balance surrounding inline emphasis per region."""
-        pending = [(_escape(re.sub(r"[ \t\r\n]+", " ", node.text or "")), (), None)]
+    def flow(node, *, heading_level=None):
+        """Split literal code in place; the text between splits is one emphasis region.
+        A piece carries its open emphasis markers and link elements; a split closes, then reopens them."""
+        pending = [([_inline_text(node.text)], ())]
         inline_nodes = []
 
         def flush():
-            pieces = []
-            for content, markers, link_target in pending:
-                trimmed = content.strip(" \t\r\n")
-                if trimmed and (markers or link_target is not None):
-                    leading = content[:len(content) - len(content.lstrip(" \t\r\n"))]
-                    trailing = content[len(content.rstrip(" \t\r\n")):]
-                    for marker in reversed(markers):
-                        trimmed = _checked_join([marker, trimmed, marker])
-                    if link_target is not None:
-                        trimmed = _link(trimmed, link_target, current, indices)
-                    content = _checked_join([leading, trimmed, trailing])
-                pieces.append(content)
-            content = _checked_join(pieces).strip(" \t\r\n")
+            """Emit pending pieces as one region, reopening only frames that change between pieces."""
+            buffers, opened = [[]], ()
+            for tokens, frames in [*pending, ([], ())]:
+                keep = 0
+                while keep < min(len(opened), len(frames)) and opened[keep] == frames[keep]:
+                    keep += 1
+                for frame in reversed(opened[keep:]):
+                    if isinstance(frame, str):
+                        buffers[-1].append((frame, False))
+                        continue
+                    label = _region(buffers.pop())
+                    buffers[-1] += (_link(label, frame.get("href"), current, indices)
+                                    if label.strip(" \t\r\n") else [label])
+                for frame in frames[keep:]:
+                    if isinstance(frame, str):
+                        buffers[-1].append((frame, True))
+                    else:
+                        buffers.append([])
+                buffers[-1] += tokens
+                opened = frames
+            content = _region(buffers[0]).strip(" \t\r\n")
             for inline_node, descendants in inline_nodes:
                 anchors(inline_node, descendants)
             if content:
-                if heading_level is not None:
-                    content = ("#" * (heading_level + 2) + " " + content if heading_level <= 4 else
-                               "**Heading %d: %s**" % (heading_level, content))
-                text(content.split("\n"))
+                text(_source_lines(content, heading_level))
             pending.clear()
             inline_nodes.clear()
 
-        def mixed_inline(element, markers=(), link_target=None):
+        def mixed_inline(element, frames=()):
+            """Queue inline pieces with their open frames; code, images and SVG split as blocks."""
             if _omitted(element):
                 return
             name = _name(element)
             if name == "code":
                 flush()
-                walk(element, quote_depth)
+                walk(element)
                 return
-            markers += (("*",) if name in {"em", "i"} else
-                        ("**",) if name in {"strong", "b"} else ())
-            if name == "a":
-                link_target = element.get("href")
+            if name in EMPHASIS:
+                frames += (EMPHASIS[name],)
+            elif name == "a" and element.get("href") is not None:
+                frames += (element,)
             inline_nodes.append((element, False))
-            pending.append((_escape(re.sub(r"[ \t\r\n]+", " ", element.text or "")), markers, link_target))
+            pending.append(([_inline_text(element.text)], frames))
             for child in element:
-                if _has_code(child):
-                    mixed_inline(child, markers, link_target)
+                if _name(child) == "img" or child.tag == SVG + "svg":
+                    flush()
+                    walk(child)
+                elif _has_code(child):
+                    mixed_inline(child, frames)
                 else:
                     inline_nodes.append((child, True))
-                    pending.append((_inline(child, current, indices), markers, link_target))
-                pending.append((_escape(re.sub(r"[ \t\r\n]+", " ", child.tail or "")), markers, link_target))
+                    pending.append((_inline(child, current, indices), frames))
+                pending.append(([_inline_text(child.tail)], frames))
             if name == "a" and element.get("href") is not None and not _collapse(_prose_text(element)):
                 flush()
-                text([_link("Link target", element.get("href"), current, indices)], source=False)
+                text([_region(_link("Link target", element.get("href"), current, indices))], source=False)
 
         for child in node:
             name = _name(child)
             if name in BLOCKS or name == "img" or child.tag == SVG + "svg":
                 flush()
-                walk(child, quote_depth)
+                walk(child)
             elif _has_code(child):
                 mixed_inline(child)
             else:
                 inline_nodes.append((child, True))
-                pending.append((_inline(child, current, indices), (), None))
-            pending.append((_escape(re.sub(r"[ \t\r\n]+", " ", child.tail or "")), (), None))
+                pending.append((_inline(child, current, indices), ()))
+            pending.append(([_inline_text(child.tail)], ()))
         flush()
 
     anchors(body, False)
-    flow(body, 0)
+    flow(body)
     for anchor in current.fragments.values():
         if anchor not in emitted:
             blocks.append(("anchor", anchor))
@@ -1081,7 +1056,7 @@ def _render_epub(path: Path, _sheets=None) -> Rendered:
                 label = labels.get(item.member) or index.title or index.heading or "Chapter %d" % index.ordinal
                 units.append((index.ordinal, label, blocks))
                 del root
-        metadata = tuple((field, '"%s"' % _escape(value)) for field, value in publication.metadata)
+        metadata = tuple((field, '"%s"' % _escape(value, quoted=True)) for field, value in publication.metadata)
         return _assemble(path, "epub", "chapter", len(publication.spine), units, tally,
                          not_carried=OMISSIONS, preserve_unicode=True, publication_rows=metadata,
                          publication_navigation=tuple(navigation), max_markdown_bytes=LIMITS["markdown_bytes"])

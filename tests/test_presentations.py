@@ -32,7 +32,7 @@ def test_empty_presentation_keeps_exact_zero_unit_document_and_success_receipt(t
     out = tmp_path / "empty.md"
     omissions = ["charts, SmartArt and embedded objects", "image pixels, audio and video",
                  "animations, transitions, layout and master text, styling and visual positioning"]
-    expected = schema_two(path, "\n", **NOT_APPLICABLE, name="empty\\.pptx", suffix=".pptx",
+    expected = schema_two(path, "\n", **NOT_APPLICABLE, name="empty.pptx", suffix=".pptx",
                           route="presentation", unit="slide", count=0, keys="none", pages=0,
                           sheets=0, chapters=0, tables=0, text_regions=0,
                           omissions="\n".join("- " + item for item in omissions), contents="").rstrip() + "\n"

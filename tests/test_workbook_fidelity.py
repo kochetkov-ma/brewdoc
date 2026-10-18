@@ -20,7 +20,7 @@ from test_spreadsheets import DROPPED, SHEET_RECEIPT, VBA_KEY, formula_ref, tall
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
-OMISSIONS = "\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]).replace(" - only", " \\- only")
+OMISSIONS = "\n".join("- " + item for item in SHEET_RECEIPT["not_carried"])
 FORMULA_TABLE = (
     "| Key | Kind | Availability | Count | Location | Media type | Bytes | SHA-256 |\n"
     "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
@@ -59,7 +59,7 @@ def workbook_document(path, body, contents, *, source_units=1, ordinal=1,
     """Declare complete workbook Markdown with source identity and UTF-8 body identity."""
     source, encoded = path.read_bytes(), body.encode("utf-8")
     markdown = SCHEMA_TWO.format(
-        name=path.name.replace("-", "\\-").replace(".", "\\."), suffix=path.suffix,
+        name=path.name, suffix=path.suffix,
         source_bytes=len(source), source_sha256=hashlib.sha256(source).hexdigest(),
         body_bytes=len(encoded), body_sha256=hashlib.sha256(encoded).hexdigest(),
         route="sheet", unit="sheet", count=1, keys="sheet/%06d" % ordinal,
@@ -159,9 +159,9 @@ def test_public_unicode_cells_keep_all_source_symbols_and_full_source_ordinals(
     assert (hashlib.sha256(path.read_bytes()).hexdigest(), rows) == (
         digest, [["&"], ["<"], [">"], ["aaa ' aaa"], ['"'], ["☺"], ["֍"], ["àâéêèçöïî«»"]],
     ), "the fixture must expose exact Unicode symbols before conversion"
-    body = ('<a id="brewdoc-sheet-000006"></a>\n## Sheet 6: "spc\\_chrs"\n\n'
-            '| & |\n| --- |\n| &lt; |\n| &gt; |\n| aaa \' aaa |\n| " |\n| ☺ |\n| ֍ |\n| àâéêèçöïî«» |\n')
-    expected = workbook_document(path, body, '- [Sheet 6: "spc\\_chrs"](#brewdoc-sheet-000006)',
+    body = ('<a id="brewdoc-sheet-000006"></a>\n## Sheet 6: "spc_chrs"\n\n'
+            '| & |\n| --- |\n| &lt; |\n| > |\n| aaa \' aaa |\n| " |\n| ☺ |\n| ֍ |\n| àâéêèçöïî«» |\n')
+    expected = workbook_document(path, body, '- [Sheet 6: "spc_chrs"](#brewdoc-sheet-000006)',
                                  source_units=6, ordinal=6, vba=vba, vba_count=vba_count, artifacts=artifact_table)
     receipt = sheet_receipt(path, unit_keys=["sheet/000006"], selected_sheets=["spc_chrs"],
                             artifacts=[item.to_dict() for item in references])

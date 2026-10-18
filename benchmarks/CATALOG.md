@@ -1,19 +1,23 @@
 # Corpus catalog
 
-The corpus contains **50 public Internet inputs and 0 generated inputs**:
-9 PDFs, 6 DOCX documents, 2 EPUB publications, 4 PPTX presentations, 22 workbooks
-and 7 HTML pages, totaling 5,670,670 bytes. Original files remain in
+The corpus contains **55 public Internet inputs and 0 generated inputs**:
+9 PDFs, 6 DOCX documents, 1 ODT document, 2 EPUB publications, 4 PPTX presentations,
+1 ODP presentation, 22 workbooks, 7 HTML pages, 1 email message, 1 Markdown file
+and 1 plain text file, totaling 5,742,306 bytes. Original files remain in
 [tests/fixtures](../tests/fixtures). Each input below links to its source file,
 public download and detailed annotation. [corpus.json](corpus.json) holds the
 searchable metadata, license links and immutable local hashes.
 
 `core` contains 13 original government/research/reference/literary documents; `feature_probe`
 contains 20 public upstream Calamine examples and 10 public office-format
-examples, plus 6 MDN learning examples and 1 EPUBCheck example. Both groups
+examples, plus 6 MDN learning examples, 1 EPUBCheck example, 3 Tika email and
+OpenDocument examples and 2 public raw-text documents, 42 in total. Both groups
 already appear in tests.
 Public provenance is separate from the feature-probe selection label. The
-manifest records 48 matching downloads, one mismatch and one unavailable EPUB
-download that returned XHTML. Stored inputs remain unchanged. The patent endpoint
+manifest records 53 matches, one mismatch and one unavailable EPUB download that
+returned XHTML. Of the matches, 48 are verified downloads; the email, OpenDocument,
+Markdown and text inputs match their retained SOURCES.md hashes and sizes without
+an upstream fetch. Stored inputs remain unchanged. The patent endpoint
 regenerates CreationDate; its explicit mismatch is confined to metadata in a
 bounded comparison, with all page images unchanged.
 
@@ -107,8 +111,8 @@ The two Census workbooks belong to `core`; all Calamine workbooks belong to
 Each page has one source body chapter. The seven annotations record complete
 static-body structure: full tables and spans, declared controls, decoded literal
 code, navigation and footer content. They do not reconstruct browser layout,
-external stylesheets, scripts or interactive state. The MDN article and form
-are learning examples; the Apache module page is a technical reference.
+external stylesheets, scripts or interactive state. The two MDN article pages
+and the form are learning examples; the Apache module page is a technical reference.
 The six MDN pages use CC0-1.0; the Apache page uses Apache-2.0.
 
 | Original file and title | Format / bytes | Chapters | Topic and contents | Public source / annotation |
@@ -131,6 +135,35 @@ body lists, tables, fallback and refusal behavior use separate synthetic tests.
 |---|---|---:|---|---|
 | [epubcheck-minimal.epub](../tests/fixtures/epub/epubcheck-minimal.epub)<br>Minimal EPUB 3.0 | EPUB 3 / 1,504 | 1 | One XHTML heading and paragraph, declared metadata and one TOC link. Complete source review. | [public download](https://raw.githubusercontent.com/w3c/epubcheck/main/src/test/resources/epub3/00-minimal/files/minimal.epub) / [annotation](annotations/epub-epubcheck-minimal.json) |
 | [standardebooks-herland.epub](../tests/fixtures/epub/standardebooks-herland.epub)<br>Herland | EPUB 3 / 985,271 | 16 | Twelve narrative chapters with titlepage, imprint, colophon and uncopyright; Unicode, image metadata, verse and links. Complete structural review, sampled prose. | [public source](https://standardebooks.org/ebooks/charlotte-perkins-gilman/herland) / [annotation](annotations/epub-standardebooks-herland.json) |
+
+## Email message
+
+The source annotation records the root message headers in source order and its
+plain body. The DKIM signature header is inventoried, not verified.
+
+| Original file and title | Format / bytes | Messages | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [tika-testRFC822_dkim.eml](../tests/fixtures/eml/tika-testRFC822_dkim.eml)<br>RFC 822 message with a DKIM signature | EML / 866 | 1 | message parser features; literal headers. One `text/plain` message with no attachments; DKIM-Signature, Received, From, To, Subject, Date and Message-ID headers and a three-paragraph plain body. | [public source](https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-mail-module/src/test/resources/test-documents/testRFC822_dkim.eml) / [annotation](annotations/eml-tika-rfc822-dkim.json) |
+
+## OpenDocument text and presentation
+
+Both packages have 16 archive members and one `content.xml` body. Annotations
+record the declared text body or slide; styles and visual layout are not annotated.
+
+| Original file and title | Format / bytes | Chapters or slides | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [tika-testOpenOffice2.odt](../tests/fixtures/odt/tika-testOpenOffice2.odt)<br>OpenOffice 2 text sample | ODT 1.0 / 26,460 | 1 | document parser features; paragraph order. One text paragraph with an explicit space element, followed by an empty paragraph; no headings or tables. | [public source](https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testOpenOffice2.odt) / [annotation](annotations/odt-tika-openoffice2.json) |
+| [tika-testMasterFooter.odp](../tests/fixtures/odp/tika-testMasterFooter.odp)<br>ODP empty slide with a master footer | ODP 1.2 / 13,975 | 1 | presentation parser features; master footer. One slide with empty title and subtitle frames and a notes page; the footer text lives on the master page. | [public source](https://raw.githubusercontent.com/apache/tika/main/tika-parsers/tika-parsers-standard/tika-parsers-standard-modules/tika-parser-miscoffice-module/src/test/resources/test-documents/testMasterFooter.odp) / [annotation](annotations/odp-tika-master-footer.json) |
+
+## Markdown and plain text
+
+Both files are strict UTF-8 and annotated as opaque text: byte, code point and
+line-ending counts only. Markdown syntax and table semantics are not annotated.
+
+| Original file and title | Format / bytes | Lines | Topic and contents | Public source / annotation |
+|---|---|---:|---|---|
+| [calamine-README.md](../tests/fixtures/md/calamine-README.md)<br>Calamine README | Markdown / 13,296 | 419 | raw text; code fences and lists. Project README with 13,268 code points, LF line endings and a final newline. | [public source](https://raw.githubusercontent.com/tafia/calamine/master/README.md) / [annotation](annotations/md-calamine-readme.json) |
+| [nasa-giss-global-temperature-index.txt](../tests/fixtures/txt/nasa-giss-global-temperature-index.txt)<br>NASA GISS global temperature index | Text / 17,039 | 176 | raw text; fixed-width table. ASCII temperature anomaly table with LF line endings and no final newline. | [public source](https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.txt) / [annotation](annotations/txt-nasa-giss-global-temperature-index.json) |
 
 ## Scope and reuse
 

@@ -2,6 +2,7 @@
   const hostGlobal = globalThis;
   let nextId = 1;
   let clock = 0;
+  let frameTime;
   let baseURL = '';
   const requests = [];
   const pending = new Map();
@@ -439,7 +440,7 @@
     defineProperty(globalThis, 'localStorage', { configurable: true, get() { touch(); return storage; } });
   }
 
-  function anchorURL(value) {
+  function anchorURL(value, baseText) {
     const raw = String(value);
     if (raw.length > 8192 || encodeURL(raw).replace(/%[0-9a-f]{2}/gi, '_').length > 8192 ||
         /[\u0000-\u0020\u007f\\]/.test(raw) || /%(?![0-9a-f]{2})/i.test(raw))
@@ -457,7 +458,7 @@
     let parsed;
     if (/^https?:\/\//i.test(raw)) parsed = absolute(raw);
     else {
-      const base = absolute(pageDocument.baseURI);
+      const base = absolute(baseText ?? pageDocument.baseURI);
       if (raw.startsWith('//')) parsed = absolute(base.protocol + raw);
       else {
         if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) throw new TypeError('anchor URL scheme unsupported');
@@ -478,6 +479,68 @@
     parsed.pathname = parts.join('/') || '/';
     parsed.href = parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search + parsed.hash;
     return parsed;
+  }
+
+  const urlParts = new WeakMap();
+  const urlQueries = new WeakMap();
+  const queryOwners = new WeakMap();
+  const formEncode = text => encodeURL(text).replace(/%20/g, '+')
+    .replace(/[!'()~]/g, letter => '%' + letter.charCodeAt(0).toString(16).toUpperCase());
+  const formDecode = text => { try { return decodeURIComponent(text.replace(/\+/g, ' ')); } catch { return text; } };
+  class URLSearchParams {
+    #list = [];
+    constructor(init = '') {
+      if (init && typeof init === 'object')
+        for (const [key, value] of Symbol.iterator in init ? init : entries(init)) this.#list.push([String(key), String(value)]);
+      else for (const pair of String(init).replace(/^\?/, '').split('&')) {
+        const at = pair.indexOf('=');
+        if (pair) this.#list.push(at < 0 ? [formDecode(pair), ''] : [formDecode(pair.slice(0, at)), formDecode(pair.slice(at + 1))]);
+      }
+    }
+    #changed() { queryOwners.get(this)?.(this.toString()); }
+    get(name) { return this.#list.find(([key]) => key === String(name))?.[1] ?? null; }
+    has(name) { return this.#list.some(([key]) => key === String(name)); }
+    append(name, value) { this.#list.push([String(name), String(value)]); this.#changed(); }
+    delete(name) { this.#list = this.#list.filter(([key]) => key !== String(name)); this.#changed(); }
+    set(name, value) {
+      const index = this.#list.findIndex(([key]) => key === String(name));
+      this.#list = this.#list.filter(([key]) => key !== String(name));
+      this.#list.splice(index < 0 ? this.#list.length : index, 0, [String(name), String(value)]);
+      this.#changed();
+    }
+    entries() { return this.#list.map(([key, value]) => [key, value]).values(); }
+    [Symbol.iterator]() { return this.entries(); }
+    toString() { return this.#list.map(([key, value]) => formEncode(key) + '=' + formEncode(value)).join('&'); }
+  }
+  class URL {
+    constructor(url, base) {
+      if (base === undefined && !/^https?:\/\//i.test(String(url))) throw new TypeError('URL without base must be absolute');
+      urlParts.set(this, anchorURL(url, base === undefined ? undefined : new URL(base).href));
+    }
+    get origin() { return this.protocol + '//' + this.host; }
+    get searchParams() {
+      if (!urlQueries.has(this)) {
+        const query = new URLSearchParams(this.search);
+        queryOwners.set(query, text => { this.search = text; urlQueries.set(this, query); });
+        urlQueries.set(this, query);
+      }
+      return urlQueries.get(this);
+    }
+    toString() { return this.href; }
+    toJSON() { return this.href; }
+  }
+  // Only href, pathname, search and hash are writable; other components stay read-only.
+  for (const name of ['href', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash']) {
+    const prefix = { pathname: '/', search: '?', hash: '#' }[name];
+    defineProperty(URL.prototype, name, {
+      configurable: true, enumerable: true, get() { return urlParts.get(this)[name]; },
+      set: name === 'href' || prefix ? function (value) {
+        const parts = { ...urlParts.get(this), [name]: String(value) };
+        if (prefix && parts[name] && !parts[name].startsWith(prefix)) parts[name] = prefix + parts[name];
+        urlParts.set(this, anchorURL(name === 'href' ? parts.href : parts.protocol + '//' + parts.host + parts.pathname + parts.search + parts.hash));
+        urlQueries.delete(this);
+      } : undefined
+    });
   }
 
   class Headers {
@@ -567,12 +630,12 @@
     });
   }
 
-  function setTimer(callback, delay = 0, repeat = false, args = []) {
+  function setTimer(callback, delay = 0, repeat = false, args = [], frame = false) {
     if (typeof callback !== 'function') throw new TypeError('string timers unsupported');
     if (timers.size >= 200) { violation = true; throw new RangeError('timer count exceeded'); }
     const id = nextId++;
     const milliseconds = Math.max(0, Math.min(2147483647, Number(delay) || 0));
-    timers.set(id, { callback, args, delay: milliseconds, due: clock + milliseconds, repeat });
+    timers.set(id, { callback, args, delay: milliseconds, due: clock + milliseconds, repeat, frame });
     return id;
   }
 
@@ -582,8 +645,14 @@
     parsedView = undefined;
     baseURL = url;
     installStorage();
-    globalThis.window = view;
+    globalThis.window = globalThis.self = view;
     globalThis.document = view.document;
+    Object.defineProperty(view.document, 'currentScript', { get: () => currentScript ?? null });
+    Object.defineProperty(view.document, 'cookie', { get: () => '', set() {} });
+    const silent = () => {};
+    globalThis.console = { log: silent, info: silent, warn: silent, error: silent, debug: silent };
+    globalThis.URL = URL;
+    globalThis.URLSearchParams = URLSearchParams;
     pageDocument = view.document;
     pageWindow = view;
     const htmlConstructor = view.HTMLElement;
@@ -643,7 +712,7 @@
       globalThis[key] = view[key];
     Object.defineProperty(document, 'readyState', { value: 'loading', writable: true });
     Object.defineProperty(document, 'baseURI', { value: url, writable: true });
-    globalThis.location = parse(locationJSON);
+    globalThis.location = { ...parse(locationJSON), toString() { return this.href; } };
     Object.defineProperty(globalThis, 'history', { value: Object.freeze({ length: 1, state: null }) });
     const anchorPrototype = view.HTMLAnchorElement.prototype;
     const href = Object.getOwnPropertyDescriptor(anchorPrototype, 'href');
@@ -680,6 +749,9 @@
     globalThis.setInterval = (callback, delay, ...args) => setTimer(callback, delay, true, args);
     globalThis.clearTimeout = id => timers.delete(id);
     globalThis.clearInterval = globalThis.clearTimeout;
+    // Frames are due at once so one always runs on the next pump pass, which never waits for them.
+    globalThis.requestAnimationFrame = callback => setTimer(callback, 0, false, [clock], true);
+    globalThis.cancelAnimationFrame = globalThis.clearTimeout;
     globalThis.AbortController = class {
       constructor() { this.signal = new EventTarget(); this.signal.aborted = false; }
       abort() { this.signal.aborted = true; this.signal.dispatchEvent(new Event('abort')); }
@@ -807,16 +879,18 @@
     if (record.error) state.reject(error(record.name || 'TypeError', record.error));
     else state.resolve(new Response(record));
   };
-  globalThis.__smallTimers = () => controlJSON([...timers].map(([id, timer]) => ({ id, due: timer.due })));
+  globalThis.__smallTimers = () => controlJSON([...timers].map(([id, timer]) => ({ id, due: timer.due, repeat: timer.repeat, frame: timer.frame })));
   globalThis.__smallRunTimer = (id, now) => {
     clock = now;
     const timer = timers.get(id);
     if (!timer) return;
     if (timer.repeat) timer.due = now + Math.max(1, timer.delay);
     else timers.delete(id);
-    try { timer.callback(...timer.args); } catch (reason) { errors.push(String(reason)); }
+    // One pump pass is one frame: its frames share the earliest request time, keeping output deterministic.
+    const args = timer.frame ? [frameTime ??= timer.args[0]] : timer.args;
+    try { timer.callback(...args); } catch (reason) { errors.push(String(reason)); }
   };
-  globalThis.__smallClock = now => { clock = now; };
+  globalThis.__smallClock = now => { clock = now; frameTime = undefined; };
   globalThis.__smallErrors = () => {
     const descriptor = ownDescriptor(hostGlobal, 'Promise');
     if (!descriptor || descriptor.get !== promiseGetter || descriptor.set !== promiseSetter ||

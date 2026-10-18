@@ -1,16 +1,16 @@
 # Document conversion corpus
 
-[corpus.json](corpus.json) indexes 49 existing files (5,668,302 bytes) in
+[corpus.json](corpus.json) indexes 55 existing files (5,742,306 bytes) in
 [tests/fixtures](../tests/fixtures). Run examples from a repository checkout.
 Fixtures and benchmark tools are not installed by the brewdoc wheel.
 
 Browse the [file catalog](CATALOG.md) for each document's title, topics, structural features and
-pages, sheets, chapters or slides. All 49 inputs are public Internet files; none were generated for
+pages, sheets, chapters or slides. All 55 inputs are public Internet files; none were generated for
 this corpus. The [annotation and provenance contract](annotations/README.md) explains source
 evidence, download verification and remaining unknowns.
 
 For a complete run, follow the [baseline methodology](METHODOLOGY.md): freeze
-the context, capture all 49 inputs twice, compare observations and review source
+the context, capture all 55 inputs twice, compare observations and review source
 content. Immutable raw results live in `.codex/reports/<UTC>_baseline-results/`.
 Selected completed full runs have reviewed portable bundles in
 `benchmarks/results/<run-id>/`, versioned on the `benchmark` branch. Browse the
@@ -18,18 +18,18 @@ Selected completed full runs have reviewed portable bundles in
 
 The `core` group contains 9 government/research PDFs, 2 Census workbooks,
 1 Apache HTML reference and the Herland EPUB novel.
-The `feature_probe` group contains 20 upstream Calamine parser examples and 10
-DOCX/PPTX container examples, plus 5 MDN HTML learning examples and 1 EPUBCheck
-example. Keep the 13 core and 36 feature-probe results separate. Every input
-already appears in the test suite; this is a reusable comparison set, not a
-held-out quality set.
+The `feature_probe` group contains 20 upstream Calamine parser examples, 10
+DOCX/PPTX container examples, 3 Tika EML/ODT/ODP examples, 6 MDN HTML learning
+examples, 1 EPUBCheck example and 2 original Markdown/text files. Keep the 13
+core and 42 feature-probe results separate. Every input already appears in the
+test suite; this is a reusable comparison set, not a held-out quality set.
 
-HTML adds three table pages, an article example, a technical reference and a form.
+HTML adds three table pages, two article examples, a technical reference and a form.
 Each source annotation covers one recovered body, including navigation and footer
 content. See [HTML source scope](annotations/README.md#html-body-records) for
 tables, declared controls, literal code and static exclusions. Source coverage
-does not establish format acceptance. A targeted six-HTML capture has its own
-selection and cannot count as a complete 49-input run. Historical runs retain
+does not establish format acceptance. A targeted seven-HTML capture has its own
+selection and cannot count as a complete 55-input run. Historical runs retain
 their frozen manifests and recorded coverage.
 
 ## EPUB acceptance
@@ -44,15 +44,26 @@ evidence is synthetic; no additional EPUB corpus is included.
 Each source receives two targeted captures for output acceptance. The scoped
 EPUB iteration compares the previous 47-input selection once before and once
 after shared changes. This compatibility comparison is separate from a complete
-two-pass 49-input benchmark. Historical result bundles retain their denominators.
+two-pass 55-input benchmark. Historical result bundles retain their denominators.
 
 The accepted capture pair for each EPUB agrees byte for byte and retains the
 same complete receipt after only output-path normalization. All 17 units, declared
-metadata, source headings, reviewed text, Unicode, image records and links survive
-the stated review scope. Herland has 1,429 text regions: 1,410 source paragraphs,
-16 headings and 3 image metadata records. Four earlier captures exposed a lost
+metadata, source headings, reviewed text, Unicode, alt-text images and links
+survive the stated review scope. Herland has 1,428 text regions: 1,410 source
+paragraphs, 16 headings and 2 images. Four earlier captures exposed a lost
 `hgroup` heading and remain quality-failure evidence; there were eight capture
 attempts in total, of which four were accepted.
+
+Clean output changed both accepted outputs. Minimal EPUBCheck now has 1,949 bytes,
+SHA-256 `6a73472d45e05534c5b0e7d0219ea1873fe4268242104a508c2cfd8c505cf785`,
+1 unit, 2 text regions and 0 tables (was 1,930 bytes). Herland now has 317,606
+bytes, SHA-256 `3eba52207d5fb604dcd29c478e1cc3945ceee93485b154877398b0111655dc04`,
+16 units, 1,428 text regions and 0 tables (was 321,313 bytes and 1,429 regions).
+Parsed as CommonMark, the only text changes are four verse quotes as `> ` blocks,
+two logo images as `![alt](src)`, the dropped empty-alt title-page image and the
+new receipt omission. Removed escapes render the same text. Verse lines split at
+`<br/>` no longer keep a trailing space. All 1,410 source paragraphs and 16
+headings appear in spine order.
 
 Optional `accepted_output` objects in fixture receipts identify reviewed UTF-8
 Markdown by hash and byte length and retain the full receipt with only `out`
@@ -152,7 +163,7 @@ Keep the source and license links with redistributed inputs. Calamine examples
 retain the [MIT notice](LICENSES/calamine-MIT.txt), copyright 2016 Johann Tuffe.
 Government documents retain their individual public-domain bases in the index.
 
-The five MDN HTML learning examples use CC0-1.0; their pinned license links are
+The six MDN HTML learning examples use CC0-1.0; their pinned license links are
 in the index. The Apache HTTP Server reference retains its
 [Apache-2.0 license](LICENSES/apache-httpd-LICENSE.txt) and
 [upstream NOTICE](LICENSES/apache-httpd-NOTICE.txt), copyright 2026 The Apache

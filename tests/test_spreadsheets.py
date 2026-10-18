@@ -384,9 +384,9 @@ def test_combined_formula_vba_outputs_keep_sheet_and_artifact_request_orders(tmp
     inputs_out, calc_out = tmp_path / "inputs.json", tmp_path / "calc.json"
     expected = schema_two(
         path, CALC + "\n" + INPUTS, formula="available", formula_count=5, vba="available", vba_count=1,
-        name="book\\.xlsm", suffix=".xlsm", route="sheet", unit="sheet", count=2,
+        name="book.xlsm", suffix=".xlsm", route="sheet", unit="sheet", count=2,
         keys="sheet/000002, sheet/000001", pages=0, sheets=2, chapters=0, tables=2, text_regions=0,
-        omissions="\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]).replace(" - only", " \\- only"),
+        omissions="\n".join("- " + item for item in SHEET_RECEIPT["not_carried"]),
         contents='- [Sheet 2: "Calc"](#brewdoc-sheet-000002)\n- [Sheet 1: "Inputs"](#brewdoc-sheet-000001)')
     expected = expected.replace("| Source unit count | 2 |", "| Source unit count | 3 |")
     expected = expected.replace("| VBA source module capability | available |",
@@ -998,7 +998,7 @@ def test_special_sheet_labels_and_selected_empty_sheet_remain_navigable(tmp_path
     markdown, actual_tally = brewdoc.render_book(path, sheets=("R&D <Plan> café #1", "Empty"))
     # THEN labels preserve Unicode with safe escaping, link full-source ordinals, and the empty sheet keeps
     # its own anchor and count
-    label = '"R&amp;D &lt;Plan&gt; café \\#1"'
+    label = '"R&D &lt;Plan> café #1"'
     assert (markdown[markdown.index('<a id="brewdoc-contents"></a>'):], actual_tally) == (
         '<a id="brewdoc-contents"></a>\n## Contents\n\n'
         "- [Sheet 2: %s](#brewdoc-sheet-000002)\n"

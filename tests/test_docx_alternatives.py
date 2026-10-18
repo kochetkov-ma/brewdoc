@@ -44,7 +44,7 @@ def alternative(*branches, prefix="mc", namespace=MC):
 
 
 def expected_result(path, rendered_body, *, label="Body", regions=1, tables=0,
-                    non_ascii=0, shown_name="sample\\.docx"):
+                    non_ascii=0, shown_name="sample.docx"):
     """Build the existing full receipt and schema from independent expected body bytes."""
     receipt = {
         "file_ok": True, "route": "doc", "reason":
@@ -60,7 +60,7 @@ def expected_result(path, rendered_body, *, label="Body", regions=1, tables=0,
         path, rendered_body, **NOT_APPLICABLE, name=shown_name, suffix=".docx", route="doc",
         unit="chapter", count=1, keys="chapter/000001", pages=0, sheets=0, chapters=1,
         tables=tables, text_regions=regions,
-        omissions="\n".join("- " + item for item in OMISSIONS).replace(" - only", " \\- only"),
+        omissions="\n".join("- " + item for item in OMISSIONS),
         contents='- [Chapter 1: "%s"](#brewdoc-chapter-000001)' % label)
     markdown = markdown.replace("| Dropped non ascii replaced | 0 |",
                                 "| Dropped non ascii replaced | %d |" % non_ascii)
@@ -228,5 +228,5 @@ def test_licensed_textbox_alternative_renders_once_with_exact_receipt():
         "Row 1 column 2\n\nRow 2 column 2\n")
     assert actual == expected_result(
         path, expected_body, regions=28, tables=1, non_ascii=18,
-        shown_name="tika\\-testWORD\\_various\\.docx"), (
+        shown_name="tika-testWORD_various.docx"), (
         "the licensed duplicate must disappear without dropping independent document text or changing counters")

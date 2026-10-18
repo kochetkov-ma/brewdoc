@@ -57,14 +57,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("document", nargs="?",
                         help="the PDF, DOCX, PPTX, EPUB, HTML, ODT, ODP, EML or spreadsheet to render; "
                              "UTF-8 .md/.txt pass through unchanged")
-    parser.add_argument("--url", help="acquire one public HTTP(S) HTML page instead of a local document")
+    parser.add_argument("--url", help="acquire one public HTTP(S) HTML page or supported document "
+                                     "instead of a local document")
     parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
                         help="maximum waiting for one --url call and JS; positive finite seconds "
                              "within supported clock range, default 30")
     parser.add_argument("--render-js", action="store_true",
                         help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
     parser.add_argument("--article", action="store_true",
-                        help="select one explicit HTML article or suitable main; refuse ambiguous pages")
+                        help="keep main or article content; with none, render the whole clean page "
+                             "and set receipt article_fallback: true")
+    parser.add_argument("--body-only", action="store_true",
+                        help="omit the title, metadata, omissions, contents and unit anchors; "
+                             "keep unit headings only for several units")
     parser.add_argument("--out", help="write Markdown here (PDF/DOCX/PPTX ASCII; other formats UTF-8); "
                                      "default stdout")
     parser.add_argument("--sheet", action="append",
@@ -88,6 +93,8 @@ def main(argv=None) -> int:
         parser.error("--timeout requires --url")
     if args.article and args.self_check:
         parser.error("--article cannot be combined with --self-check")
+    if args.body_only and args.self_check:
+        parser.error("--body-only cannot be combined with --self-check")
     if args.self_check:
         return self_check()
     if args.url is not None:
@@ -96,7 +103,8 @@ def main(argv=None) -> int:
         rc, line, markdown = _run_url(
             args.url, args.out, render_js=args.render_js,
             timeout=_DEFAULT_TIMEOUT if args.timeout is None else args.timeout,
-            sheets=args.sheet, artifact_outputs=args.artifact, article=args.article)
+            sheets=args.sheet, artifact_outputs=args.artifact, article=args.article,
+            body_only=args.body_only)
     elif not args.document:
         parser.print_usage()
         return EXIT_USAGE
@@ -111,7 +119,7 @@ def main(argv=None) -> int:
         else:
             rc, line, markdown = run(
                 args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs,
-                article=args.article)
+                article=args.article, body_only=args.body_only)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
         encoding = _markdown_encoding(line["route"])
