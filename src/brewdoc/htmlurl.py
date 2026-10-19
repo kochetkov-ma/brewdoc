@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import email.message
+import functools
 import hashlib
 import http.client
 import ipaddress
@@ -25,7 +26,8 @@ from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
 from brewdoc.common import BrewdocError
 from brewdoc._standalone import child_command
 from brewdoc import htmltext
-from brewdoc.service import EXIT_FAIL, HTML_ONLY, ROUTES, WORKBOOK_ONLY, _html_receipt_route, _line, run
+from brewdoc.service import (EXIT_FAIL, HTML_ONLY, LINKS_HTML_ONLY, ROUTES, WORKBOOK_ONLY, _html_receipt_route,
+                             _line, run)
 
 _BODY_LIMIT = 8 * 1048576
 _AGGREGATE_LIMIT = 32 * 1048576
@@ -39,8 +41,24 @@ _SOFT_WINDOW = 12.0
 _USER_AGENT = "brewdoc URL acquisition"
 _ACCEPT = {"html": "text/html,application/xhtml+xml,*/*;q=0.8", "script": "text/javascript, application/javascript",
            "module": "text/javascript, application/javascript", "api": "*/*"}
-_SCRIPT_TYPES = frozenset({"text/javascript", "application/javascript",
-                           "text/ecmascript", "application/ecmascript"})
+# WHATWG MIME Sniffing JavaScript MIME type essences.
+_SCRIPT_TYPES = frozenset({"application/ecmascript", "application/javascript", "application/x-ecmascript",
+                           "application/x-javascript", "text/ecmascript", "text/javascript", "text/javascript1.0",
+                           "text/javascript1.1", "text/javascript1.2", "text/javascript1.3", "text/javascript1.4",
+                           "text/javascript1.5", "text/jscript", "text/livescript", "text/x-ecmascript",
+                           "text/x-javascript"})
+# Weak challenge markers and shell evidence count only below this visible text length.
+_PAGE_TEXT_LIMIT = 1000
+_WEAK_CHALLENGES = {"ddos-guard": ("/.well-known/ddos-guard/",), "hcaptcha": ("hcaptcha.com",),
+                    "recaptcha": ("/recaptcha/",), "cloudflare": ("challenges.cloudflare.com/turnstile",),
+                    "generic": ("checking your browser", "проверка браузера", "проверяем браузер",
+                                "проверка вашего браузера", "please enable cookies", "вы не робот",
+                                "are you a robot")}
+_CAPTCHA_HOSTS = frozenset({"hcaptcha", "recaptcha", "cloudflare"})  # Script hosts that lose to shell evidence.
+# An empty app root is shell evidence only below this visible text length.
+_SHELL_TEXT_LIMIT = 200
+_NO_JAVASCRIPT = ("enable javascript", "javascript enabled", "включите javascript", "отключен javascript")
+_APP_ROOTS = "#root, #app, #__next, #__nuxt"
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _CONNECT_ATTEMPTS = 3
 _CONNECT_SLICE = 3.0
@@ -271,7 +289,9 @@ def _connect(url: str, address: str, deadline: float,
             raise _error("URL connection peer refused", "connect", URLPolicyError)
         if parts.scheme == "https":
             stream.settimeout(_remaining(deadline))
-            stream = ssl.create_default_context().wrap_socket(
+            context = ssl.create_default_context()
+            context.set_alpn_protocols(["http/1.1"])  # WordPress.com edge answers 403 to a ClientHello without ALPN
+            stream = context.wrap_socket(
                 stream, server_hostname=parts.hostname, do_handshake_on_connect=False)
             stream.settimeout(_remaining(deadline))
             stream.do_handshake()
@@ -393,7 +413,8 @@ def _search_body(url: str, origin: str | None, body: str, content_type: str) -> 
     integers = ("page", "hitsPerPage", "minWordSizefor1Typo", "minWordSizefor2Typos", "minProximity")
     booleans = ("advancedSyntax", "ignorePlurals", "clickAnalytics", "getRankingInfo")
     arrays = ("analyticsTags", "numericFilters", "tagFilters", "restrictSearchableAttributes")
-    if (type(fields) is not dict or set(fields) != {*integers, *booleans, *arrays, "query", "queryType", "typoTolerance"}
+    if (type(fields) is not dict
+            or set(fields) != {*integers, *booleans, *arrays, "query", "queryType", "typoTolerance"}
             or type(fields["query"]) is not str
             or any(type(fields[name]) is not int or fields[name] < 0 for name in integers)
             or fields["hitsPerPage"] == 0
@@ -580,6 +601,7 @@ def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
     deadline = deadline if deadline is not None else time.monotonic() + _DEFAULT_TIMEOUT
     budget = budget if budget is not None else {"accepted_requests": 0, "decoded_bytes": 0}
     redirects = []
+    response = None
     try:
         for hop in range(6):
             if outgoing is None:
@@ -607,8 +629,11 @@ def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
                 raise _error("URL search redirect refused", "redirect", URLPolicyError)
             if response["status"] in _REDIRECTS:
                 location = _header(response["headers"], "location")
-                if hop == 5 or not location:
-                    raise _error("URL redirect limit or target refused", "redirect", URLPolicyError)
+                if not location:
+                    raise _error("URL redirect target refused", "redirect", URLPolicyError)
+                if hop == 5:
+                    raise _error("URL redirect limit exceeded after 5 hops (last status %d)" % response["status"],
+                                 "redirect", URLPolicyError)
                 try:
                     target = _validate_url(urljoin(current, _location(location)))
                 except (BrewdocError, ValueError) as exc:
@@ -619,21 +644,33 @@ def _fetch(url: str, *, deadline: float | None = None, kind: str = "html",
                 current = target
                 continue
             if kind == "html" and not 200 <= response["status"] < 300:
-                raise _error("URL HTTP status refused: %d" % response["status"], "status")
+                check = None
+                if htmltext._SUPPORTED_RUNTIME and htmltext.LexborHTMLParser is not None:
+                    try:
+                        source = htmltext._decode_html(response["body"], _charset(response["headers"]))[0]
+                        check = _page_check(source, current, response["headers"],
+                                            blocked=response["status"])
+                    except BrewdocError:
+                        pass  # An undecodable error page keeps the plain status refusal.
+                if check in (None, "shell"):
+                    raise _error("URL HTTP status refused: %d" % response["status"], "status")
+                raise _page_refusal(check, response["status"])
             if 200 <= response["status"] < 300:
                 _validate_media(response["body"], response["headers"], kind, current)
             excluded = {"connection", "transfer-encoding", "content-encoding", "content-length",
                         "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade"}
-            response["headers"] = tuple((key, value) for key, value in response["headers"]
-                                        if key.lower() not in excluded) + (("Content-Length", str(len(response["body"]))),)
+            response["headers"] = (tuple((key, value) for key, value in response["headers"]
+                                         if key.lower() not in excluded)
+                                   + (("Content-Length", str(len(response["body"]))),))
             response.update({"requested_url": requested, "final_url": current,
                              "entity_sha256": hashlib.sha256(response["entity"]).hexdigest(),
                              "body_sha256": hashlib.sha256(response["body"]).hexdigest(),
                              "redirects": tuple(redirects)})
             return response
-        raise _error("URL redirect limit exceeded", "redirect", URLPolicyError)
     except BrewdocError as exc:
         exc.resource_url = current
+        exc.http_status = None if response is None else response["status"]
+        exc.redirect_count = len(redirects)
         raise
 
 
@@ -682,35 +719,63 @@ def _acquisition(render_js: bool) -> dict:
                                        "parser_blocking_order", "async_script_order"] if render_js else
                                       ["scripts", "stylesheets", "images", "subframes", "media", "browser_state"]),
             "refusal_stage": None, "soft_window_seconds": None,
-            "soft_window_origin": None,
-            "timeout_seconds": None}
+            "soft_window_origin": None, "timeout_seconds": None, "http_status": None, "redirect_count": 0,
+            "challenge": None, "charset": None, "charset_source": None, "render_js": None}
 
 
-def _capture_errors(errors: list[dict], limit: int) -> list[dict]:
-    """Reserve one bounded diagnostic slot for the actual timing recovery cause."""
-    causes = {"capture_timeout", "initial_html_timeout_fallback"}
-    cause = next((error for error in errors if error["category"] in causes), None)
-    if cause is None:
-        return errors[:limit]
-    ordinary = [error for error in errors if error["category"] not in causes]
-    return ordinary[:limit - 1] + [cause]
-
-
-def _challenge(html: str) -> bool:
-    """Recognize narrow provider challenge and explicit login form evidence."""
+def _page_check(html: str, url: str, headers: tuple[tuple[str, str], ...], *, blocked: int = 0) -> str | None:
+    """Name a captcha, bot challenge or login page, or return "shell" for a JavaScript-only page.
+    `blocked` is a non-2xx status, where DataDome or QRATOR evidence is definitive."""
     parser = htmltext.LexborHTMLParser(html)
+    lowered = functools.cache(html.lower)  # Content pages return before needing it; it costs about half a parse.
+    fields = {(key.lower(), value.strip().lower()) for key, value in headers}
     title = " ".join(node.text().lower() for node in parser.css("head title"))
-    cloudflare = ("/cdn-cgi/challenge-platform/" in html or "_cf_chl_opt" in html)
-    login = bool(parser.css('form input[type="password"]'))
-    return ((cloudflare and any(value in title for value in ("just a moment", "attention required")))
-            or (login and title.strip() in ("login", "log in", "sign in")))
+    if ("cf-mitigated", "challenge") in fields or (
+            any(value in title for value in ("just a moment", "attention required"))
+            and ("/cdn-cgi/challenge-platform/" in lowered() or "_cf_chl_opt" in lowered())):
+        return "cloudflare"
+    if urlsplit(url).path == "/showcaptcha" or parser.css('form[action*="/checkcaptcha"]'):
+        return "yandex-smartcaptcha"
+    if blocked and ("captcha-delivery.com" in lowered() or any(key == "x-datadome" for key, _ in fields)):
+        return "datadome"
+    if blocked == 439 or (blocked and ("server", "qrator") in fields):
+        return "qrator"
+    if parser.css('form input[type="password"]') and title.strip() in ("login", "log in", "sign in"):
+        return "login"
+    # Collect shell evidence before stripping: Lexbor keeps noscript content as one text node.
+    scripts = parser.css("script")
+    empty_root = any(not node.text(strip=True) for node in parser.css(_APP_ROOTS))
+    parser.strip_tags(["script", "style", "noscript", "template"])
+    visible = len(" ".join((parser.body.text(separator=" ") if parser.body else "").split()))
+    if visible >= _PAGE_TEXT_LIMIT:
+        return None
+    if ("server", "ddos-guard") in fields:
+        return "ddos-guard"
+    shell = scripts and ((empty_root and visible < _SHELL_TEXT_LIMIT)
+                         or any(message in lowered() for message in _NO_JAVASCRIPT))
+    return next((name for name, markers in _WEAK_CHALLENGES.items() if not (shell and name in _CAPTCHA_HOSTS)
+                 and any(marker in lowered() for marker in markers)), "shell" if shell else None)
 
 
-def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
+def _page_refusal(check: str, status: int, *, rendered: bool = False) -> BrewdocError:
+    """Refuse one page-check result with a plain reason at challenge or javascript_required."""
+    if check == "shell":
+        return _error("URL page content was not produced by the bounded JavaScript engine" if rendered
+                      else "URL page needs JavaScript; retry with --render-js auto", "javascript_required")
+    error = _error("URL login page refused" if check == "login"
+                   else "URL captcha or bot challenge refused: %s (HTTP %d)" % (check, status), "challenge")
+    error.challenge = check
+    return error
+
+
+def _run_url(url: str, out=None, *, render_js: bool | str | None = False, sheets=None,
              artifact_outputs=None, timeout: int | float = _DEFAULT_TIMEOUT,
-             article: bool = False, body_only: bool = False) -> tuple[int, dict, str]:
-    """Acquire a frozen URL snapshot, then reuse local conversion and output transactions."""
-    acquisition = _acquisition(render_js)
+             article: bool = False, body_only: bool = False, links: bool = True) -> tuple[int, dict, str]:
+    """Acquire a frozen URL snapshot, then reuse local conversion and output transactions.
+    `render_js` "auto" runs JS only on a static shell; True means "always"."""
+    known = type(render_js) is bool or render_js in (None, "auto", "always")
+    render_js = {True: "always", False: None}.get(render_js, render_js) if known else None
+    acquisition = _acquisition(render_js == "always") | {"render_js": render_js}
     requested = url
     suffix = ".html"
     stage = "timeout"
@@ -718,12 +783,17 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
     budget = {"accepted_requests": 0, "decoded_bytes": 0}
     try:
         acquisition["timeout_seconds"] = _timeout_seconds(timeout)
-        if render_js:
-            acquisition["soft_window_seconds"] = min(_SOFT_WINDOW, acquisition["timeout_seconds"] / 2)
-            acquisition["soft_window_origin"] = "request"
+        javascript = {key: value for key, value in _acquisition(True).items()
+                      if key in ("mode", "engine", "unsupported_resources")} | {
+            "soft_window_seconds": min(_SOFT_WINDOW, acquisition["timeout_seconds"] / 2),
+            "soft_window_origin": "request"}
+        if render_js == "always":
+            acquisition.update(javascript)
         started = time.monotonic()
         deadline = started + acquisition["timeout_seconds"]
         stage = "options"
+        if not known:
+            raise BrewdocError('render_js must be None, False, True, "auto" or "always"')
         if sheets is not None or artifact_outputs:
             raise BrewdocError(WORKBOOK_ONLY)
         stage = "url"
@@ -739,34 +809,38 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
         stage = "connect"
         response = _fetch(requested, deadline=deadline, budget=budget)
         final_url = response["final_url"]
-        acquisition["final_url"] = _display_url(final_url)
+        acquisition.update({"final_url": _display_url(final_url), "http_status": response["status"],
+                            "redirect_count": len(response["redirects"])})
         acquisition["response"] = {"entity_bytes": len(response["entity"]),
                                    "entity_sha256": response["entity_sha256"],
                                    "body_bytes": len(response["body"]),
                                    "body_sha256": response["body_sha256"]}
         suffix, label = _media_suffix(response["body"], response["headers"], final_url)
         if suffix != ".html":
-            if article:
+            if article or not links:
                 stage = "options"
-                raise BrewdocError(HTML_ONLY)
+                raise BrewdocError(HTML_ONLY if article else LINKS_HTML_ONLY)
             stage = "encoding"
             snapshot = _text_snapshot(response["body"], label) if suffix in (".txt", ".md") else response["body"]
             del response
-            acquisition["capture_status"] = "not_applied" if render_js else "static"
+            acquisition["capture_status"] = "not_applied" if render_js == "always" else "static"
             snapshot_kind = "document"
         else:
             stage = "prerequisites"
             if not htmltext._SUPPORTED_RUNTIME or htmltext.LexborHTMLParser is None:
                 raise BrewdocError("URL HTML parser unavailable")
             stage = "encoding"
-            source = htmltext._decode_html(response["body"], label)
+            source, acquisition["charset"], acquisition["charset_source"] = htmltext._decode_html(
+                response["body"], label)
+            stage = "challenge"
+            check = _page_check(source, final_url, response["headers"])
             csp = any(key.lower() == "content-security-policy" for key, _ in response["headers"])
             del response
-            stage = "challenge"
-            if _challenge(source):
-                raise BrewdocError("URL challenge or login page refused")
-            if render_js:
+            if check and (check != "shell" or not render_js):
+                raise _page_refusal(check, acquisition["http_status"])
+            if render_js == "always" or check:
                 stage = "javascript"
+                acquisition.update(javascript)
 
                 def fetch(request: dict) -> dict:
                     """Revalidate the finite parent request before guarded acquisition."""
@@ -802,7 +876,7 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
                 acquisition["errors"] = [{"category": error.get("category", "script"),
                                            "resource_url": _display_url(error["resource_url"])
                                            if error.get("resource_url") else None}
-                                          for error in _capture_errors(errors, 16)]
+                                          for error in htmljs._capture_errors(errors, 16)]
                 acquisition["pending"] = capture["pending"]
                 acquisition["counts"].update(capture["counts"])
                 if csp:
@@ -811,6 +885,8 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
                     if len(acquisition["errors"]) < 16:
                         acquisition["errors"].append({"category": "csp_policy_unsupported", "resource_url": None})
                 del capture
+                if check := _page_check(source, final_url, ()):
+                    raise _page_refusal(check, acquisition["http_status"], rendered=True)
             else:
                 acquisition["capture_status"] = "static"
                 snapshot_kind = "static_html"
@@ -826,28 +902,30 @@ def _run_url(url: str, out=None, *, render_js: bool = False, sheets=None,
             path = Path(folder) / ("url-%s%s" % (url_hash[:16], suffix))
             path.write_bytes(snapshot)
             del snapshot
-            code, receipt, markdown = run(path, out, article=article, body_only=body_only)
+            code, receipt, markdown = run(path, out, article=article, body_only=body_only, links=links)
         if code != 0:
             stage = "output" if receipt["reason"].startswith("output write failed:") else "conversion"
             receipt["reason"] = "URL snapshot conversion or output refused"
             acquisition["capture_status"] = "refused"
             acquisition["refusal_stage"] = stage
-        receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
-                        "acquisition": acquisition})
-        return code, receipt, markdown
     except (BrewdocError, OSError, ValueError, ImportError) as exc:
         stage = getattr(exc, "acquisition_stage", stage)
         acquisition["capture_status"] = "refused"
         acquisition["refusal_stage"] = stage
         acquisition["counts"]["requests"] = budget["accepted_requests"]
+        if final_url is None:
+            acquisition.update({"http_status": getattr(exc, "http_status", None),
+                                "redirect_count": getattr(exc, "redirect_count", 0)})
         resource_url = getattr(exc, "resource_url", None) or (final_url if stage != "options" else None)
         acquisition["errors"] = [{"category": stage, "resource_url": resource_url and _display_url(resource_url)}]
         acquisition["error_count"] = 1
-        reason = (str(exc) if stage == "options" or (stage == "timeout" and acquisition["timeout_seconds"] is None)
-                  else "URL acquisition refused during %s" % stage)
+        acquisition["challenge"] = getattr(exc, "challenge", None)
+        shown = stage in ("options", "status", "redirect", "challenge", "javascript_required") or (
+            stage == "timeout" and acquisition["timeout_seconds"] is None)
+        reason = str(exc) if shown else "URL acquisition refused during %s" % stage
         suffix = getattr(exc, "document_suffix", suffix)
-        route = _html_receipt_route(article) if suffix == ".html" else ROUTES[suffix]
-        receipt = _line(route, False, reason, "url" + suffix)
-        receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
-                        "acquisition": acquisition})
-        return EXIT_FAIL, receipt, ""
+        route = _html_receipt_route(article, links) if suffix == ".html" else ROUTES[suffix]
+        code, receipt, markdown = EXIT_FAIL, _line(route, False, reason, "url" + suffix), ""
+    receipt.update({"source": _display_url(requested), "receipt_schema": "brewdoc.receipt/2",
+                    "acquisition": acquisition})
+    return code, receipt, markdown

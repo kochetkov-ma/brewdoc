@@ -6,13 +6,14 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
 
 import pytest
 
-from brewdoc import cli, htmlurl
+from brewdoc import cli, htmljs, htmlurl
 from brewdoc.common import BrewdocError
 
 
@@ -47,9 +48,9 @@ def test_url_cli_forwards_each_requests_effective_timeout_once(render_js, argume
     code = cli.main(["--url", URL] + ["--render-js"] * render_js + arguments)
     # THEN both acquisition modes receive exactly one effective per-call value.
     assert (code, calls, capsys.readouterr().out) == (
-        0, [(URL, None, {"render_js": render_js, "timeout": expected_timeout,
+        0, [(URL, None, {"render_js": {False: None, True: "always"}[render_js], "timeout": expected_timeout,
                         "sheets": None, "artifact_outputs": None, "article": False,
-                        "body_only": False})],
+                        "body_only": False, "links": True})],
         json.dumps(RECEIPT, sort_keys=True) + "\n" + MARKDOWN,
     ), "the CLI must pass the request's effective timeout and preserve output"
 
@@ -112,7 +113,7 @@ def test_local_cli_without_timeout_keeps_its_original_route_and_receipt(monkeypa
     # THEN no timeout keyword or acquisition envelope changes the local contract.
     assert (code, calls, capsys.readouterr().out) == (
         0, [("article.html", None, {"sheets": None, "artifact_outputs": None, "article": False,
-                              "body_only": False})],
+                              "body_only": False, "links": True})],
         json.dumps(receipt, sort_keys=True) + "\n" + MARKDOWN,
     ), "local conversion must retain its original arguments and receipt"
 
@@ -285,7 +286,7 @@ def _html_response(body, *, deadline, budget, **options):
     digest = hashlib.sha256(body).hexdigest()
     return {"status": 200, "headers": (("Content-Type", "text/html"),),
             "entity": body, "body": body, "entity_sha256": digest,
-            "body_sha256": digest, "final_url": URL}
+            "body_sha256": digest, "final_url": URL, "redirects": ()}
 
 
 def _chapter_body(markdown):
@@ -554,10 +555,32 @@ def test_worker_failure_or_buffered_hard_error_never_becomes_timeout_fallback(so
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Native safety regressions require isolated Linux.")
+@pytest.mark.parametrize("violation,cause", [
+    pytest.param("Object.defineProperty(document.body,'toString',{value:()=> 'forged'});", "initial_html_dom_fallback",
+                 id="serializer-tamper-before-loop"),
+    pytest.param("try{new Uint8Array(80*1024*1024)}catch(error){};", "initial_html_heap_fallback",
+                 id="caught-heap-denial-before-loop"),
+])
+def test_dom_or_heap_fallback_cause_keeps_priority_over_actual_script_timing_stop(violation, cause, monkeypatch, tmp_path):
+    # GIVEN acquired content and a DOM-guard or heap fallback cause before a timing loop.
+    body = ('<html><body><p>Initial article</p><script>' + violation + 'while(true){}</script></body></html>').encode()
+    output = tmp_path / "article.md"
+    output.write_bytes(b"previous output\n")
+    monkeypatch.setattr(htmlurl, "_fetch", lambda url, **options: _html_response(body, **options))
+    assert output.read_bytes() == b"previous output\n", "prior output must exist before the fallback replaces it"
+    # WHEN native timing and the sticky fallback cause coexist.
+    code, receipt, markdown = htmlurl._run_url(URL, output, render_js=True, timeout=1)
+    acquisition = receipt["acquisition"]
+    # THEN the initial article is published under its own cause, never as a timeout fallback.
+    assert (code, _chapter_body(markdown), acquisition["capture_status"], acquisition["errors"],
+            acquisition["snapshot"]["kind"], output.read_bytes()) == (
+        0, "Initial article\n", "partial", [{"category": cause, "resource_url": None}], cause, markdown.encode(),
+    ), "a DOM-guard or heap fallback cause must survive a trusted timing interruption"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Native safety regressions require isolated Linux.")
 @pytest.mark.parametrize("violation", [
-    pytest.param("Object.defineProperty(document.body,'toString',{value:()=> 'forged'});", id="serializer-tamper-before-loop"),
-    pytest.param("try{new Uint8Array(80*1024*1024)}catch(error){};", id="caught-heap-denial-before-loop"),
-    pytest.param("try{for(let n=0;n<201;n++)setTimeout(()=>{},10000)}catch(error){};", id="caught-timer-quota-before-loop"),
+    pytest.param("try{for(let n=0;n<201;n++)setTimeout(()=>{},10000)}catch(error){};", id="caught-timer-count-quota-before-loop"),
 ])
 def test_hard_violation_keeps_priority_over_actual_script_timing_stop(violation, monkeypatch, tmp_path):
     # GIVEN acquired content and an actual safety violation before a timing loop.
@@ -571,7 +594,7 @@ def test_hard_violation_keeps_priority_over_actual_script_timing_stop(violation,
     # THEN timeout recovery cannot erase hard safety evidence or publish a fallback.
     assert (code, markdown, receipt["acquisition"]["capture_status"], output.read_bytes()) == (
         1, "", "refused", b"previous output\n",
-    ), "heap, tamper and quota failure must dominate a trusted timing interruption"
+    ), "quota failure must dominate a trusted timing interruption"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Native policy regressions require isolated Linux.")
@@ -601,3 +624,77 @@ def test_caught_forbidden_request_remains_hard_with_a_short_timeout(monkeypatch,
     assert (code, markdown, receipt["acquisition"]["capture_status"], output.read_bytes()) == (
         1, "", "refused", b"previous output\n",
     ), "a forbidden destination must remain a hard authoritative refusal"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Process-group signals are POSIX-only.")
+def test_unkillable_silent_worker_refuses_within_recovery_and_reap_waits(monkeypatch):
+    # GIVEN a silent worker that never exits while every group signal is refused.
+    clock = [100.0]
+    kills = []
+    ticks = iter(range(10_000))
+
+    class Process:
+        """Stay alive and unreaped like a worker the parent cannot signal."""
+        pid = 987654
+        returncode = None
+
+        def poll(self):
+            """Report the still-running worker."""
+            return None
+
+        def wait(self, timeout):
+            """Spend the whole modeled wait because the worker never exits."""
+            clock[0] += timeout
+            raise subprocess.TimeoutExpired("worker", timeout)
+
+    class Channel:
+        """Stay silent; each poll costs its timeout plus 1 ms, at most 10,000 polls."""
+        def __init__(self, descriptor):
+            os.close(descriptor)
+
+        def send_bytes(self, payload):
+            """Accept bootstrap bytes without producing a worker response."""
+
+        def poll(self, timeout):
+            """Advance modeled time; StopIteration ends an unbounded supervision spin."""
+            next(ticks)
+            clock[0] += timeout + 0.001
+            return False
+
+        def close(self):
+            """Descriptor was already closed at construction."""
+
+    class Watchdog:
+        """Never fire, so the main loop is the only canceller."""
+        def __init__(self, interval, callback):
+            pass
+
+        def start(self):
+            """Stay inert."""
+
+        def cancel(self):
+            """Stay inert."""
+
+        def join(self):
+            """Stay inert."""
+
+    def refuse(pid, number):
+        """Refuse every group signal like macOS EPERM."""
+        kills.append((pid, number))
+        raise PermissionError(1, "group signal refused")
+
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
+    monkeypatch.setattr(htmljs.subprocess, "Popen", lambda *args, **options: Process())
+    monkeypatch.setattr(htmljs, "Connection", Channel)
+    monkeypatch.setattr(htmljs.threading, "Timer", Watchdog)
+    monkeypatch.setattr(htmljs.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(htmljs.os, "killpg", refuse)
+    assert (clock, kills) == ([100.0], []), "the worker starts unsignalled at modeled time 100"
+    # WHEN the 0.5 s loading deadline and its 1 s recovery pass without a successful signal.
+    with pytest.raises(Exception) as refused:
+        htmljs.render("<p>Initial article</p>", URL, lambda request: None, 100.5, soft_window=0.5)
+    # THEN refusal lands after recovery (1.5 s) and within existing reap waits 0.1 + 1 s plus 0.15 s slack.
+    assert (type(refused.value).__name__, str(refused.value), clock[0] - 100.0, set(kills)) == (
+        "BrewdocError", "JS child cancellation unproved", pytest.approx((1.5 + 2.75) / 2, abs=(2.75 - 1.5) / 2),
+        {(Process.pid, signal.SIGKILL)},
+    ), "an unkillable silent worker must refuse within a bounded time, never spin or claim fallback"

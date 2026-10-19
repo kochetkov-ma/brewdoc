@@ -16,7 +16,7 @@ from brewdoc import run, selfcheck
 from brewdoc.common import BrewdocError
 from brewdoc.service import ROUTES
 from test_contract import docx, text_op, zero_tally, zones_book
-from test_html import HTML_OMISSIONS
+from test_html import HTML_OMISSIONS, RUSSIAN
 from test_html_timeout import CHAPTER, URL, _html_response
 
 
@@ -249,29 +249,49 @@ def test_display_url_redacts_entire_nonempty_fragment_and_userinfo(htmlurl, url,
     assert shown == expected, "Display provenance must not reveal fragment tokens or credentials."
 
 
-@pytest.mark.parametrize("render_js,runtime,shown,expected_render", [
-    (True, "https://example.com/page?q=secret#access_token=synthetic-secret",
-     "https://example.com/page?q=[redacted]#[redacted]",
-     ["https://example.com/page?q=secret#access_token=synthetic-secret"]),
-    (False, "https://example.com/page?q=secret", "https://example.com/page?q=[redacted]", []),
+JS_ENVELOPE = {
+    "mode": "javascript", "soft_window_seconds": 12.0, "soft_window_origin": "request",
+    "engine": {"name": "quickjs-ng", "version": None, "dom_name": "linkedom", "dom_version": None},
+    "unsupported_resources": ["stylesheets", "images", "subframes", "media", "service_workers",
+                              "websockets", "web_rtc", "navigation", "layout", "canvas",
+                              "shadow_roots", "browser_state", "parser_blocking_order",
+                              "async_script_order"], "render_js": "always"}
+RAN_ENGINE = {"name": "quickjs-ng", "version": "0.17.0.1", "dom_name": "linkedom", "dom_version": "0.18.13"}
+SETTLED = {"requests": 0, "timers": 0, "modules": 0, "promises": 0, "jobs": False}
+FRAGMENT_SHOWN = "https://example.com/page?q=[redacted]#[redacted]"
+
+
+@pytest.mark.parametrize("render_js,runtime,shown,expected_render,kind,envelope", [
+    (True, "https://example.com/page?q=secret#access_token=synthetic-secret", FRAGMENT_SHOWN,
+     ["https://example.com/page?q=secret#access_token=synthetic-secret"], "javascript_dom",
+     JS_ENVELOPE | {"engine": RAN_ENGINE, "capture_status": "partial", "error_count": 1, "pending": SETTLED,
+                    "errors": [{"category": "script", "resource_url": FRAGMENT_SHOWN}]}),
+    ("auto", "https://example.com/page?q=secret#access_token=synthetic-secret", FRAGMENT_SHOWN, [],
+     "static_html", {"render_js": "auto"}),
+    (False, "https://example.com/page?q=secret", "https://example.com/page?q=[redacted]", [], "static_html", {}),
 ])
 def test_run_url_redacts_receipt_fragments_without_changing_runtime_or_identity(
-        htmlurl, monkeypatch, tmp_path, render_js, runtime, shown, expected_render):
+        htmlurl, monkeypatch, tmp_path, render_js, runtime, shown, expected_render, kind, envelope):
     # GIVEN synthetic HTML and a requested URL carrying query and fragment secrets.
-    from brewdoc import htmljs, run
+    from brewdoc import htmljs
 
     requested = "https://example.com/page?q=secret#access_token=synthetic-secret"
     body = b"<html><body><p>article</p></body></html>"
+    snapshot = body.replace(b"<html>", b"<html><head></head>")
     local = tmp_path / "local.html"
     local.write_bytes(body)
     baseline = run(local)
+    _, (code, receipt, markdown) = converted(tmp_path, runtime, ".html", snapshot)
+    acquisition = static_page(shown, body, snapshot) | envelope | {
+        "url_sha256": sha256(runtime.encode()), "counts": {"requests": 0, "promise_jobs": 0, "timer_callbacks": 0},
+        "snapshot": {"kind": kind, "bytes": len(snapshot), "sha256": sha256(snapshot)}}
     seen = []
     rendered_urls = []
     monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
 
     def fetch(url, **kwargs):
         seen.append(url)
-        return {"final_url": url, "body": body, "entity": body,
+        return {"status": 200, "redirects": (), "final_url": url, "body": body, "entity": body,
                 "body_sha256": hashlib.sha256(body).hexdigest(),
                 "entity_sha256": hashlib.sha256(body).hexdigest(),
                 "headers": (("Content-Type", "text/html"),)}
@@ -288,19 +308,14 @@ def test_run_url_redacts_receipt_fragments_without_changing_runtime_or_identity(
         }
 
     monkeypatch.setattr(htmljs, "render", render)
-    assert baseline[0] == 0, "The local HTML precondition must convert successfully."
+    assert (baseline[0], code) == (0, 0), "The local HTML and expected snapshot must convert successfully."
     # WHEN the actual URL orchestration produces provenance and Markdown.
-    code, receipt, markdown = htmlurl._run_url(requested, render_js=render_js)
-    provenance = {key: receipt["acquisition"][key] for key in (
-        "requested_url", "final_url", "effective_base_url", "url_sha256")}
-    # THEN runtime/hash preserve JS state while every displayed URL hides it.
-    assert (code, receipt["source"], provenance, seen, rendered_urls,
-            markdown.splitlines()[-1], run(local)) == (
-        0, shown, {"requested_url": shown, "final_url": shown, "effective_base_url": shown,
-                   "url_sha256": hashlib.sha256(runtime.encode()).hexdigest()},
-        [runtime], expected_render, "article", baseline,
+    result = htmlurl._run_url(requested, render_js=render_js)
+    # THEN runtime/hash preserve JS state while every displayed URL, including nested errors, hides it.
+    assert (result, seen, rendered_urls, run(local)) == (
+        (0, dict(receipt, source=shown, receipt_schema="brewdoc.receipt/2", acquisition=acquisition), markdown),
+        [runtime], expected_render, baseline,
     ), "Only display fields may redact the fragment; existing local conversion must remain exact."
-    assert "synthetic-secret" not in str(receipt), "Nested resource error provenance must also redact the fragment."
 
 
 def test_duplicate_cors_headers_reach_the_js_policy_owner_unchanged(htmlurl, monkeypatch):
@@ -318,14 +333,22 @@ def test_duplicate_cors_headers_reach_the_js_policy_owner_unchanged(htmlurl, mon
 
 
 @pytest.mark.parametrize("policy", ["default-src 'none'", ""])
-def test_js_main_response_csp_presence_marks_valid_dom_partial(htmlurl, monkeypatch, policy):
+def test_js_main_response_csp_presence_marks_valid_dom_partial(htmlurl, monkeypatch, tmp_path, policy):
     # GIVEN valid captured HTML and a main-response CSP field, including empty policy.
     from brewdoc import htmljs
 
+    url = "https://example.com/"
     body = b"<html><body><p>article</p></body></html>"
+    snapshot = body.replace(b"<html>", b"<html><head></head>")
+    _, (code, receipt, markdown) = converted(tmp_path, url, ".html", snapshot)
+    acquisition = static_page(url, body, snapshot) | JS_ENVELOPE | {
+        "engine": RAN_ENGINE, "capture_status": "partial", "pending": SETTLED,
+        "errors": [{"category": "csp_policy_unsupported", "resource_url": None}], "error_count": 1,
+        "counts": {"requests": 0, "promise_jobs": 0, "timer_callbacks": 0},
+        "snapshot": {"kind": "javascript_dom", "bytes": len(snapshot), "sha256": sha256(snapshot)}}
     monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
     monkeypatch.setattr(htmlurl, "_fetch", lambda *args, **kwargs: {
-        "final_url": "https://example.com/", "body": body, "entity": body,
+        "status": 200, "redirects": (), "final_url": url, "body": body, "entity": body,
         "body_sha256": hashlib.sha256(body).hexdigest(), "entity_sha256": hashlib.sha256(body).hexdigest(),
         "headers": (("Content-Type", "text/html"), ("Content-Security-Policy", policy)),
     })
@@ -334,26 +357,23 @@ def test_js_main_response_csp_presence_marks_valid_dom_partial(htmlurl, monkeypa
         "pending": {"requests": 0, "timers": 0, "modules": 0, "promises": 0, "jobs": False},
         "counts": {"promise_jobs": 0, "timer_callbacks": 0},
     })
-    assert len(body) == 40, "The synthetic captured document must stay fixed."
+    assert (len(body), code) == (40, 0), "The synthetic captured document must stay fixed and convert locally."
     # WHEN actual URL orchestration converts the valid DOM.
-    code, receipt, markdown = htmlurl._run_url("https://example.com/", render_js=True)
+    result = htmlurl._run_url(url, render_js=True)
     # THEN unsupported CSP is visible instead of claiming settled browser policy.
-    assert (code, receipt["acquisition"]["capture_status"], receipt["acquisition"]["errors"],
-            receipt["acquisition"]["error_count"], markdown.splitlines()[-1]) == (
-        0, "partial", [{"category": "csp_policy_unsupported", "resource_url": None}], 1, "article",
-    ), "Main-response CSP must mark useful DOM partial while preserving successful conversion."
+    assert result == (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition),
+                      markdown), "Main-response CSP must mark useful DOM partial and still convert."
 
 
-@pytest.mark.parametrize("render_js", [False, True])
-def test_url_refusal_pending_envelope_retains_unknown_promise_state(htmlurl, render_js):
+@pytest.mark.parametrize("render_js,envelope", [(False, {}), (True, JS_ENVELOPE)], ids=["static", "javascript"])
+def test_url_refusal_pending_envelope_retains_unknown_promise_state(htmlurl, render_js, envelope):
     # GIVEN a URL rejected before any script execution.
     assert htmlurl._acquisition(render_js)["capture_status"] == "refused", "The initial envelope must start refused."
     # WHEN actual orchestration rejects a non-HTTP scheme.
-    code, receipt, markdown = htmlurl._run_url("file:///private", render_js=render_js)
+    result = htmlurl._run_url("file:///private", render_js=render_js)
     # THEN unobserved promise state is null rather than implicitly complete.
-    assert (code, receipt["acquisition"]["pending"], markdown) == (
-        1, {"requests": None, "timers": None, "modules": None, "promises": None, "jobs": None}, "",
-    ), "Pre-execution refusals must retain the complete unknown-work envelope."
+    assert result == (1, invalid_url(**envelope), ""), \
+        "Pre-execution refusals must retain the complete unknown-work envelope."
 
 
 @pytest.mark.parametrize("encoding", ["identity", "gzip"])
@@ -453,8 +473,8 @@ def test_redirect_hops_are_bounded_instead_of_retrying_forever(htmlurl, monkeypa
     ((("Content-Type", "application/xhtml+xml"),), b"<p>x</p>", "media"),
     ((), b"<p>x</p>", "media"),
     ((("Content-Type", "text/html"), ("Content-Type", "text/plain")), b"<p>x</p>", "media"),
-    ((("Content-Type", "text/html; charset=utf-8"),), b"<p>\xff</p>", "encoding"),
-], ids=["xhtml", "missing-type", "duplicate-type", "invalid-utf8"])
+    ((("Content-Type", "text/html; charset=shift_jis"),), b"<p>\x81</p>", "encoding"),
+], ids=["xhtml", "missing-type", "duplicate-type", "invalid-shift-jis"])
 def test_main_document_refuses_unsupported_ambiguous_or_undecodable_html(htmlurl, monkeypatch, headers, body, stage):
     # GIVEN successful transport carrying unsupported, ambiguous or undecodable HTML
     hop = {"status": 200, "headers": headers, "entity": body, "body": body}
@@ -529,6 +549,26 @@ def test_pinned_https_connection_verifies_hostname_and_keeps_tls_required(htmlur
     assert (stream.connections, stream.timeouts, tls, stream.closed) == (
         [("93.184.216.34", 443)], [30.0, 30.0, 30.0], [("example.com", True, ssl.CERT_REQUIRED)], True
     ), "numeric connection must retain verified original-host TLS and close its socket"
+
+
+def test_https_connection_offers_exactly_http11_alpn_on_the_context_it_wraps_with(htmlurl, monkeypatch):
+    # GIVEN an approved address and recorders for ALPN offers and the wrapping TLS context
+    stream = Socket()
+    offers, wrapped = [], []
+    offer = ssl.SSLContext.set_alpn_protocols
+    monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: stream)
+    monkeypatch.setattr(ssl.SSLContext, "set_alpn_protocols", lambda context, protocols:
+                        (offers.append((context, list(protocols))), offer(context, protocols))[1])
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options:
+                        (wrapped.append(context), sock)[1])
+    monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
+    assert (offers, wrapped) == ([], []), "ALPN test must start before any TLS context exists"
+    # WHEN the transport opens the approved HTTPS endpoint
+    connection = htmlurl._connect("https://example.com/", "93.184.216.34", 130.0)
+    connection.close()
+    # THEN the one wrapping context offers only http/1.1, the protocol http.client speaks
+    assert [(context is wrapped[0], protocols) for context, protocols in offers] == [(True, ["http/1.1"])], \
+        "the TLS handshake must offer exactly ALPN http/1.1 so ClientHello-fingerprinting edges answer"
 
 
 @pytest.mark.parametrize("peer", ["127.0.0.1", "8.8.8.8", "::ffff:93.184.216.34"])
@@ -636,7 +676,8 @@ def test_private_dns_hard_failure_preserves_existing_output_and_exact_safe_recei
             "counts": {"requests": 1, "promise_jobs": 0, "timer_callbacks": 0},
             "unsupported_resources": ["scripts", "stylesheets", "images", "subframes", "media", "browser_state"],
             "refusal_stage": "dns", "soft_window_seconds": None,
-            "soft_window_origin": None, "timeout_seconds": 30.0,
+            "soft_window_origin": None, "timeout_seconds": 30.0, "http_status": None, "redirect_count": 0,
+            "challenge": None, "charset": None, "charset_source": None, "render_js": None,
         },
     }
     # THEN the whole refusal is sanitized and no snapshot or output is published
@@ -676,12 +717,10 @@ def test_malformed_url_refusal_never_echoes_userinfo_like_path_secrets(htmlurl, 
     out.write_bytes(b"prior output")
     assert out.read_bytes() == b"prior output", "redaction refusal must preserve a preexisting output"
     # WHEN the explicit URL boundary rejects the malformed destination
-    code, receipt, markdown = htmlurl._run_url("https:///user:secret@example.com/?token=secret", out)
+    result = htmlurl._run_url("https:///user:secret@example.com/?token=secret", out)
     # THEN malformed source text is represented by a placeholder rather than leaked in provenance
-    assert (code, receipt["source"], receipt["acquisition"]["requested_url"],
-            receipt["acquisition"]["url_sha256"], markdown, out.read_bytes()) == (
-        1, "[invalid URL]", None, None, "", b"prior output"
-    ), "invalid URL grammar must never publish path-embedded credentials or secret query values"
+    assert (result, out.read_bytes()) == ((1, invalid_url(), ""), b"prior output"), \
+        "invalid URL grammar must never publish path-embedded credentials or secret query values"
 
 
 CONTENT_TYPES = '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
@@ -772,7 +811,7 @@ def converted(tmp_path, url, suffix, snapshot):
     return local.name, run(local)
 
 
-def document_acquisition(url, final_url, body, snapshot, requests=1):
+def document_acquisition(url, final_url, body, snapshot, requests=1, http_status=200, redirect_count=0):
     """Return the exact static acquisition envelope of one converted URL document."""
     return {"mode": "static", "requested_url": url, "final_url": final_url, "effective_base_url": None,
             "url_sha256": sha256(url.encode()),
@@ -782,7 +821,9 @@ def document_acquisition(url, final_url, body, snapshot, requests=1):
             "engine": None, "capture_status": "static", "errors": [], "error_count": 0,
             "pending": PENDING, "counts": {"requests": requests, "promise_jobs": 0, "timer_callbacks": 0},
             "unsupported_resources": STATIC_RESOURCES, "refusal_stage": None,
-            "soft_window_seconds": None, "soft_window_origin": None, "timeout_seconds": 30.0}
+            "soft_window_seconds": None, "soft_window_origin": None, "timeout_seconds": 30.0,
+            "http_status": http_status, "redirect_count": redirect_count, "challenge": None,
+            "charset": None, "charset_source": None, "render_js": None}
 
 
 def refused(route, shown, url, stage, resource_url, **changes):
@@ -795,12 +836,20 @@ def refused(route, shown, url, stage, resource_url, **changes):
         "capture_status": "refused", "errors": [{"category": stage, "resource_url": resource_url}],
         "error_count": 1, "pending": PENDING, "counts": {"requests": 1, "promise_jobs": 0, "timer_callbacks": 0},
         "unsupported_resources": STATIC_RESOURCES, "refusal_stage": stage,
-        "soft_window_seconds": None, "soft_window_origin": None, "timeout_seconds": 30.0}
+        "soft_window_seconds": None, "soft_window_origin": None, "timeout_seconds": 30.0,
+        "http_status": None, "redirect_count": 0, "challenge": None, "charset": None,
+        "charset_source": None, "render_js": None}
     return {"file_ok": False, "route": route.name, "reason": "URL acquisition refused during %s" % stage,
             "source": shown, "out": None, "receipt_schema": "brewdoc.receipt/2",
             "unit_kind": route.unit_kind, "units": 0, "tables": 0, "text_regions": 0,
             "columns_split": 0, "dropped": zero_tally()["dropped"], "broken_ligature_words": 0,
             "not_carried": list(route.not_carried), "acquisition": acquisition | changes}
+
+
+def invalid_url(**changes):
+    """Return the exact HTML refusal of a URL rejected before any request; `changes` replace acquisition keys."""
+    return refused(ROUTES[".html"], "[invalid URL]", "", "url", None, requested_url=None, url_sha256=None,
+                   counts={"requests": 0, "promise_jobs": 0, "timer_callbacks": 0}, **changes)
 
 
 def failing(make):
@@ -900,14 +949,7 @@ def test_url_document_with_render_js_records_javascript_as_not_applied(htmlurl, 
     renders = []
     monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
     monkeypatch.setattr(htmljs, "render", lambda *args, **options: renders.append(args))
-    acquisition = document_acquisition(url, url, body, body) | {
-        "mode": "javascript", "capture_status": "not_applied", "soft_window_seconds": 12.0,
-        "soft_window_origin": "request",
-        "engine": {"name": "quickjs-ng", "version": None, "dom_name": "linkedom", "dom_version": None},
-        "unsupported_resources": ["stylesheets", "images", "subframes", "media", "service_workers",
-                                  "websockets", "web_rtc", "navigation", "layout", "canvas",
-                                  "shadow_roots", "browser_state", "parser_blocking_order",
-                                  "async_script_order"]}
+    acquisition = document_acquisition(url, url, body, body) | JS_ENVELOPE | {"capture_status": "not_applied"}
     assert code == 0, "the synthetic PDF must convert as a local file"
     # WHEN JS acquisition receives a document
     result = htmlurl._run_url(url, render_js=True)
@@ -933,7 +975,7 @@ def test_url_document_magic_mismatch_refuses_at_media_with_the_claimed_route(
     # WHEN static URL acquisition classifies the response
     result = htmlurl._run_url(url)
     # THEN it refuses at media and reports the claimed document route and the failing URL
-    assert (result, calls) == ((1, refused(ROUTES[suffix], url, url, "media", url), ""), [url]), \
+    assert (result, calls) == ((1, refused(ROUTES[suffix], url, url, "media", url, http_status=200), ""), [url]), \
         "magic mismatch must refuse at media under the detected route"
 
 
@@ -949,7 +991,7 @@ def test_url_document_with_article_refuses_at_options_after_classification(htmlu
     result = htmlurl._run_url(url, article=True)
     # THEN article mode refuses with the trusted option message under the PDF route
     assert (result, calls) == ((1, dict(
-        refused(ROUTES[".pdf"], url, url, "options", None, final_url=url, response=response),
+        refused(ROUTES[".pdf"], url, url, "options", None, final_url=url, response=response, http_status=200),
         reason="--article is an HTML-only option"), ""), [url]), \
         "--article with a document URL must refuse at options with the detected route"
 
@@ -967,7 +1009,8 @@ def test_url_text_transcoded_past_the_document_cap_refuses_at_resource(htmlurl, 
     result = htmlurl._run_url(url)
     # THEN the oversized UTF-8 snapshot refuses at resource under the text route
     assert (result, calls) == (
-        (1, refused(ROUTES[".txt"], url, url, "resource", url, final_url=url, response=response), ""), [url],
+        (1, refused(ROUTES[".txt"], url, url, "resource", url, final_url=url, response=response,
+                    http_status=200), ""), [url],
     ), "a transcoded text snapshot over the document cap must refuse at resource"
 
 
@@ -1016,9 +1059,28 @@ def test_redirect_to_an_octet_stream_document_routes_by_the_final_url_suffix(htm
     # THEN the final URL suffix routes the document and the snapshot keeps the requested URL hash
     assert (result, calls) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
-                 acquisition=document_acquisition(url, final, body, body, requests=2)), markdown),
+                 acquisition=document_acquisition(url, final, body, body, requests=2, redirect_count=1)), markdown),
         [url, final],
     ), "a redirect to a document must convert it through the PDF route"
+
+
+def test_url_success_records_the_final_main_document_status_and_redirect_count(htmlurl, monkeypatch, tmp_path):
+    # GIVEN one redirect to a PDF answered with the non-200 success status 203
+    url = "https://example.com/download"
+    final = "https://example.com/files/report.pdf"
+    body = pdf_bytes(tmp_path)
+    _, (code, receipt, markdown) = converted(tmp_path, url, ".pdf", body)
+    calls = serve(htmlurl, monkeypatch, {url: moved("/files/report.pdf"), final: dict(ok((OCTET,), body), status=203)})
+    assert code == 0, "the synthetic PDF must convert as a local file"
+    # WHEN static URL acquisition follows the redirect
+    result = htmlurl._run_url(url)
+    # THEN the receipt carries the final 203 status and one redirect
+    assert (result, calls) == (
+        (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
+                 acquisition=document_acquisition(url, final, body, body, requests=2, http_status=203,
+                                                  redirect_count=1)), markdown),
+        [url, final],
+    ), "success receipts must record the final main-document status and redirect count"
 
 
 @pytest.mark.parametrize("location,target", [
@@ -1040,38 +1102,65 @@ def test_redirect_location_whitespace_is_percent_encoded_before_validation(htmlu
         "Location whitespace must be percent-encoded instead of refusing the redirect"
 
 
-@pytest.mark.parametrize("hops,stage,resource_url,requests", [
-    ({SECRET_URL: moved("/a%")}, "redirect", SECRET_SHOWN, 1),
-    ({SECRET_URL: moved("/a\\b")}, "redirect", SECRET_SHOWN, 1),
-    ({SECRET_URL: moved("https://user:pw@example.com/")}, "redirect", SECRET_SHOWN, 1),
-    ({SECRET_URL: moved("http://example.com/plain")}, "redirect", SECRET_SHOWN, 1),
+TARGET = "URL redirect target refused"
+MEDIA = "URL acquisition refused during media"
+ENCODING = "URL acquisition refused during encoding"
+LIMIT = "URL redirect limit exceeded after 5 hops (last status %d)"
+
+
+def redirect_chain(last_status):
+    """Return six redirects from SECRET_URL whose sixth hop answers `last_status`."""
+    hops = {SECRET_URL: moved("/hop1")}
+    hops.update({"https://example.com/hop%d" % index: moved("/hop%d" % (index + 1)) for index in range(1, 6)})
+    hops["https://example.com/hop5"]["status"] = last_status
+    return hops
+
+
+@pytest.mark.parametrize("hops,stage,reason,resource_url,requests,http_status,redirect_count", [
+    ({SECRET_URL: moved("/a%")}, "redirect", TARGET, SECRET_SHOWN, 1, 302, 0),
+    ({SECRET_URL: moved("/a\\b")}, "redirect", TARGET, SECRET_SHOWN, 1, 302, 0),
+    ({SECRET_URL: moved("https://user:pw@example.com/")}, "redirect", TARGET, SECRET_SHOWN, 1, 302, 0),
+    ({SECRET_URL: moved("http://example.com/plain")}, "redirect", "URL HTTPS downgrade refused",
+     SECRET_SHOWN, 1, 302, 0),
     ({SECRET_URL: moved("/next"), "https://example.com/next": dict(ok((HTML_TYPE,), b""), status=404)},
-     "status", "https://example.com/next", 2),
-    ({SECRET_URL: ok((("Content-Type", "application/zip"),), b"PK\x03\x04")}, "media", SECRET_SHOWN, 1),
+     "status", "URL HTTP status refused: 404", "https://example.com/next", 2, 404, 1),
+    ({SECRET_URL: ok((("Content-Type", "application/zip"),), b"PK\x03\x04")}, "media", MEDIA,
+     SECRET_SHOWN, 1, 200, 0),
     ({SECRET_URL: ok((OCTET, ("Content-Disposition", 'attachment; filename="a.pdf"'),
                       ("Content-Disposition", 'attachment; filename="b.pdf"')), b"%PDF-")},
-     "media", SECRET_SHOWN, 1),
-    ({SECRET_URL: ok((("Content-Type", "text/html; charset=x-bogus"),), b"<p>x</p>")}, "encoding", SECRET_SHOWN, 1),
+     "media", MEDIA, SECRET_SHOWN, 1, 200, 0),
+    ({SECRET_URL: ok((("Content-Type", "text/html; charset=x-bogus"),), b"<p>x</p>")}, "encoding", ENCODING,
+     SECRET_SHOWN, 1, 200, 0),
     ({SECRET_URL: ok((("Content-Type", "text/html; charset=iso-2022-kr"),), b"<p>x</p>")},
-     "encoding", SECRET_SHOWN, 1),
+     "encoding", ENCODING, SECRET_SHOWN, 1, 200, 0),
     ({SECRET_URL: ok((("Content-Type", "text/html; charset=utf-8; charset=koi8-r"),), b"<p>x</p>")},
-     "encoding", SECRET_SHOWN, 1),
-    ({SECRET_URL: ok((OCTET, ("Content-Disposition", MALFORMED_DISPOSITION)), b"%PDF-")}, "media", SECRET_SHOWN, 1),
-    ({SECRET_URL: ok((OCTET, ("Content-Disposition", NUL_DISPOSITION)), b"%PDF-")}, "media", SECRET_SHOWN, 1),
+     "encoding", ENCODING, SECRET_SHOWN, 1, 200, 0),
+    ({SECRET_URL: ok((OCTET, ("Content-Disposition", MALFORMED_DISPOSITION)), b"%PDF-")}, "media", MEDIA,
+     SECRET_SHOWN, 1, 200, 0),
+    ({SECRET_URL: ok((OCTET, ("Content-Disposition", NUL_DISPOSITION)), b"%PDF-")}, "media", MEDIA,
+     SECRET_SHOWN, 1, 200, 0),
+    ({SECRET_URL: dict(ok((HTML_TYPE,), b"<p>blocked</p>"), status=403)}, "status",
+     "URL HTTP status refused: 403", SECRET_SHOWN, 1, 403, 0),
+    ({SECRET_URL: {"status": 302, "headers": (), "entity": b"", "body": b""}}, "redirect", TARGET,
+     SECRET_SHOWN, 1, 302, 0),
+    (redirect_chain(302), "redirect", LIMIT % 302, "https://example.com/hop5", 6, 302, 5),
+    (redirect_chain(307), "redirect", LIMIT % 307, "https://example.com/hop5", 6, 307, 5),
 ], ids=["lone-percent", "backslash", "userinfo", "downgrade", "status-after-redirect", "unsupported-media",
         "duplicate-disposition", "unknown-charset", "replacement-charset", "two-charsets",
-        "malformed-disposition", "nul-disposition"])
+        "malformed-disposition", "nul-disposition", "status-403", "redirect-without-location",
+        "redirect-limit", "redirect-limit-last-307"])
 def test_url_refusal_reports_its_real_stage_and_redacted_failing_url(
-        htmlurl, monkeypatch, hops, stage, resource_url, requests):
+        htmlurl, monkeypatch, hops, stage, reason, resource_url, requests, http_status, redirect_count):
     # GIVEN a static URL whose response chain fails one acquisition policy
     calls = serve(htmlurl, monkeypatch, hops)
     assert calls == [], "acquisition starts without a request"
     # WHEN URL acquisition runs
     result = htmlurl._run_url(SECRET_URL)
-    # THEN the refusal names its own stage and the redacted URL that failed
-    assert result == (1, refused(ROUTES[".html"], SECRET_SHOWN, SECRET_URL, stage, resource_url, counts={
-        "requests": requests, "promise_jobs": 0, "timer_callbacks": 0}), ""), \
-        "every refusal must carry its real stage and redacted resource URL"
+    # THEN the refusal names its stage, trusted status/redirect reason, main-document status and failing URL
+    assert result == (1, dict(refused(ROUTES[".html"], SECRET_SHOWN, SECRET_URL, stage, resource_url, counts={
+        "requests": requests, "promise_jobs": 0, "timer_callbacks": 0}, http_status=http_status,
+        redirect_count=redirect_count), reason=reason), ""), \
+        "every refusal must carry its real stage, reason, main-document status and redacted resource URL"
 
 
 @pytest.mark.parametrize("connect,stage", [
@@ -1102,11 +1191,39 @@ def test_timeout_inside_fetch_names_the_redacted_url_being_fetched(htmlurl, monk
     assert calls == [], "acquisition starts without a request"
     # WHEN URL acquisition runs
     result = htmlurl._run_url(SECRET_URL)
-    # THEN the timeout refusal names the redacted hop that was being fetched
+    # THEN the timeout names the redacted hop being fetched and the last received redirect
     assert (result, calls) == ((1, refused(ROUTES[".html"], SECRET_SHOWN, SECRET_URL, "timeout",
                                            "https://example.com/next?token=[redacted]", counts={
-                                               "requests": 2, "promise_jobs": 0, "timer_callbacks": 0}), ""),
+                                               "requests": 2, "promise_jobs": 0, "timer_callbacks": 0},
+                                           http_status=302, redirect_count=1), ""),
                                [SECRET_URL, target]), "a fetch timeout must carry the URL it was fetching"
+
+
+def test_sub_request_refusal_keeps_the_main_document_status_and_redirect_count(htmlurl, monkeypatch):
+    # GIVEN a page reached by one redirect whose script request redirects to cleartext HTTP
+    from brewdoc import htmljs
+
+    url = "https://example.com/start"
+    page = "https://example.com/page"
+    script = "https://example.com/app.js"
+    body = b"<html><body><p>article</p></body></html>"
+    calls = serve(htmlurl, monkeypatch, {url: moved("/page"), page: ok((HTML_TYPE,), body),
+                                         script: moved("http://example.com/app.js")})
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: None)
+    monkeypatch.setattr(htmljs, "render", lambda source, final_url, fetch, *args, **options: fetch(
+        {"kind": "script", "url": script}))
+    response = {"entity_bytes": len(body), "entity_sha256": sha256(body),
+                "body_bytes": len(body), "body_sha256": sha256(body)}
+    expected = dict(refused(ROUTES[".html"], url, url, "redirect", script, **JS_ENVELOPE, final_url=page,
+                            response=response, counts={"requests": 3, "promise_jobs": 0, "timer_callbacks": 0},
+                            http_status=200, redirect_count=1, charset="UTF-8", charset_source="default"),
+                    reason="URL HTTPS downgrade refused")
+    assert calls == [], "acquisition starts without a request"
+    # WHEN JS acquisition fails on the script's redirect
+    result = htmlurl._run_url(url, render_js=True)
+    # THEN status and redirect count describe the 200 page after one redirect, not the 302 script
+    assert (result, calls) == ((1, expected, ""), [url, page, script]), \
+        "sub-request errors must not overwrite the main-document status or redirect count"
 
 
 def test_search_request_policy_refusal_carries_the_url_stage(htmlurl, monkeypatch):
@@ -1137,6 +1254,34 @@ def test_connect_phase_failure_moves_to_the_next_address_with_a_sliced_deadline(
         [("93.184.216.34", 103.0), ("8.8.8.8", 130.0)], ["GET"],
         {"status": 200, "headers": (HTML_TYPE,), "entity": b"<p>public</p>", "body": b"<p>public</p>"},
     ), "a connect-phase failure must try the next validated address once"
+
+
+def test_tcp_connect_timeout_on_the_first_address_falls_back_to_the_second_within_the_deadline(
+        htmlurl, monkeypatch):
+    # GIVEN two public addresses whose first socket times out on TCP connect
+    dead, alive = Socket(), Socket("8.8.8.8")
+    sockets = iter((dead, alive))
+    connection = served(b"<p>public</p>")
+
+    def time_out(address):
+        dead.connections.append(address)
+        raise TimeoutError("synthetic connect timeout")
+
+    monkeypatch.setattr(dead, "connect", time_out)
+    monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: next(sockets))
+    monkeypatch.setattr(htmlurl.http.client, "HTTPConnection", lambda *args, **options: connection)
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options: sock)
+    monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(htmlurl, "_dns_lookup", lambda *args: ("93.184.216.34", "8.8.8.8"))
+    assert (dead.connections, alive.connections) == ([], []), "no connect precedes the request"
+    # WHEN one request runs with 30 seconds left
+    captured = htmlurl._request("https://example.com/a", 130.0, "text/html")
+    # THEN the dead address uses its 3 s slice, the second gets the rest and serves the GET once
+    assert (dead.connections, dead.timeouts, dead.closed, alive.connections, alive.timeouts, alive.closed,
+            [method for method, *_ in connection.requests], captured) == (
+        [("93.184.216.34", 443)], [3.0], True, [("8.8.8.8", 443)], [30.0, 30.0, 30.0], True, ["GET"],
+        {"status": 200, "headers": (HTML_TYPE,), "entity": b"<p>public</p>", "body": b"<p>public</p>"},
+    ), "a TCP connect timeout on one address must fall back to the next, not refuse at timeout"
 
 
 def test_address_fallback_interleaves_families_and_stops_after_three_attempts(htmlurl, monkeypatch):
@@ -1334,3 +1479,552 @@ def test_url_header_charset_decodes_legacy_cyrillic_into_a_utf8_snapshot(
     assert (code, receipt["acquisition"]["refusal_stage"], snapshots, markdown.splitlines()[-1:]) == (
         0, None, [("url-%s%s" % (sha256(url.encode())[:16], suffix), snapshot)], ["Привет"],
     ), "header charsets must decode legacy pages instead of refusing them"
+
+
+def page(text):
+    """Return the UTF-8 static snapshot of one paragraph page without declarations."""
+    return ("<html><head></head><body><p>%s</p></body></html>" % text).encode()
+
+
+@pytest.mark.parametrize("content_type,body,snapshot,charset,source", [
+    ("text/html; charset=koi8-r", "<p>Привет</p>".encode("koi8_r"), PRIVET_HTML, "KOI8-R", "header"),
+    ("text/html", '<meta charset="windows-1251"><p>Привет</p>'.encode("cp1251"), PRIVET_META_HTML,
+     "windows-1251", "meta"),
+    ("text/html", "<p>Привет</p>".encode(), PRIVET_HTML, "UTF-8", "default"),
+    ("text/html", b"\xef\xbb\xbf" + "<p>Привет</p>".encode(), PRIVET_HTML, "UTF-8", "bom"),
+    ("text/html", ("<p>%s</p>" % RUSSIAN).encode("cp1251"), page(RUSSIAN), "windows-1251", "fallback"),
+    ("text/html; charset=windows-1251", "<p>Привет</p>".encode(), PRIVET_HTML, "UTF-8", "fallback"),
+    ("text/html; charset=utf-8", ("<p>" + "мир " * 50).encode() + b"\xff</p>", page("мир " * 50 + "\ufffd"),
+     "UTF-8", "fallback"),
+], ids=["header", "meta", "default", "bom", "undeclared-windows-1251", "header-windows-1251-on-utf8-body",
+        "utf8-with-one-invalid-byte"])
+def test_url_html_receipt_names_the_decoding_charset_and_its_source_without_local_fallback_key(
+        htmlurl, monkeypatch, tmp_path, content_type, body, snapshot, charset, source):
+    # GIVEN an HTML response and the local conversion of its expected UTF-8 snapshot
+    url = "https://example.com/news"
+    name, (code, receipt, markdown) = converted(tmp_path, url, ".html", snapshot)
+    calls = serve(htmlurl, monkeypatch, {url: ok((("Content-Type", content_type),), body)})
+    snapshots = record_snapshots(htmlurl, monkeypatch)
+    acquisition = document_acquisition(url, url, body, snapshot) | {
+        "effective_base_url": url, "charset": charset, "charset_source": source,
+        "snapshot": {"kind": "static_html", "bytes": len(snapshot), "sha256": sha256(snapshot)}}
+    assert code == 0, "the expected snapshot must convert as a local file"
+    # WHEN static URL acquisition decodes and converts the page
+    result = htmlurl._run_url(url)
+    # THEN acquisition names charset and source; receipt/2 has no top-level charset_fallback key
+    assert (result, calls, snapshots) == (
+        (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition), markdown),
+        [url], [(name, snapshot)],
+    ), "URL HTML receipts must disclose the decoding charset only inside acquisition"
+
+
+# Issue #66 page check and --render-js auto. Pages reduce D0 live captures of 2026-10-19 to their
+# markers; synthetic project-authored markup (MIT), source site named beside each constant.
+CAPTCHA = "URL captcha or bot challenge refused: %s (HTTP %d)"
+LOGIN = "URL login page refused"
+STATIC_SHELL = "URL page needs JavaScript; retry with --render-js auto"
+JS_SHELL = "URL page content was not produced by the bounded JavaScript engine"
+RENDER_JS_MODES = 'render_js must be None, False, True, "auto" or "always"'
+PAGE = "https://example.com/page"
+CAPTCHA_URL = "https://example.com/showcaptcha?cc=1"
+ANTI_DDOS_URL = "https://example.com/anti-ddos/check"
+PROSE = "Static pages keep their text without running scripts. " * 24
+# https://market.yandex.ru/ card answered by a 302 to /showcaptcha
+SMARTCAPTCHA = (
+    '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Вы не робот?</title>'
+    '<link rel="stylesheet" href="/captcha_smart.min.css"><div id="root"><main>'
+    '<form method="POST" action="/checkcaptcha?key=k&amp;retpath=r">'
+    "<h1>Подтвердите, что запросы отправляли вы, а не робот</h1>"
+    "<p>Нам очень жаль, но запросы с вашего устройства похожи на автоматические.</p>"
+    '<button>Я не робот</button><p>Yandex SmartCaptcha</p></form></main></div><script src="/captcha.js"></script></html>')
+# https://www.pcmag.com/ managed challenge
+CLOUDFLARE = (
+    '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head><body><div class="main-wrapper">'
+    '<noscript><span id="challenge-error-text">Enable JavaScript and cookies to continue</span></noscript></div>'
+    "<script>window._cf_chl_opt={cType:'managed'};var s=document.createElement('script');"
+    "s.src='/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1';document.head.appendChild(s);</script>"
+    "</body></html>")
+CLOUDFLARE_BLOCK = ('<html><head><title>Attention Required! | Cloudflare</title></head><body>'
+                    '<h1>Sorry, you have been blocked</h1>'
+                    '<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script></body></html>')
+# https://techora.ru/ generic browser check
+BROWSER_CHECK = (
+    '<!doctype html><html lang="ru"><head><meta name="robots" content="noindex,nofollow">'
+    "<title>Проверяем браузер</title></head><body><main><h1>Проверяем браузер</h1>"
+    '<p id="status" role="status">Обычно это занимает меньше секунды.</p>'
+    '<button id="continue" type="button">Продолжить</button></main><script>/* probe */</script></body></html>')
+# https://www.panram.ru/ redirect to /anti-ddos/check
+ANTI_DDOS = (
+    '<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Проверка браузера</title></head><body>'
+    '<div class="loader"><h1 class="loader-header">Идет проверка вашего браузера</h1>'
+    '<p class="loader-text">Пожалуйста подождите...</p><script>const cfg={"cookieCodeName":"ANTI_DDOS_CODE",'
+    '"reportUrl":"/anti-ddos/report"};setTimeout(()=>{},100);</script></div></body></html>')
+# https://acloserlisten.com/ proof-of-work 403
+PROOF_OF_WORK = (
+    "<!DOCTYPE html><title>Checking your browser...</title><noscript><p>Javascript required</p></noscript>"
+    '<script>/* sha-256 proof of work */ e("Confirm you are human","We need to check you\'re not a robot '
+    'before you can enter this site.")</script><div id=main><h1 id=head></h1><div id=body><div id=text></div>'
+    "</div></div>")
+# https://www.reuters.com/ DataDome 401
+DATADOME = ('<html lang="en"><head><title>example.com</title></head><body style="margin:0">'
+            '<p id="cmsg">Please enable JS and disable any ad blocker</p>'
+            '<script data-cfasync="false" src="https://ct.captcha-delivery.com/c.js"></script></body></html>')
+# https://www.avito.ru/ QRATOR proof-of-work 439 with Server: QRATOR, captured 2026-10-19
+QRATOR_POW = (
+    '<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Доступ ограничен: проверка безопасности'
+    '</title></head><body><div class="firewall-container"><h2 class="firewall-title">Доступ ограничен: '
+    'проверка безопасности</h2><span id="pow-status-text">Выполняется проверка, подождите...</span></div>'
+    "<script>fetch('/web/3/firewallPow/get', {method: 'POST'});</script></body></html>")
+DDOS_GUARD = "<html><head><title>DDoS-Guard</title></head><body><p>Please wait.</p></body></html>"
+HCAPTCHA = ('<html><head><title>Verify</title></head><body><form action="/verify" method="post">'
+            '<div class="h-captcha" data-sitekey="k"></div></form>'
+            '<script src="https://js.hcaptcha.com/1/api.js"></script></body></html>')
+RECAPTCHA = ('<html><head><title>Verify</title></head><body><form action="/verify" method="post">'
+             '<div class="g-recaptcha" data-sitekey="k"></div></form>'
+             '<script src="https://www.google.com/recaptcha/api.js"></script></body></html>')
+TURNSTILE = ('<html><head><title>Verify</title></head><body><form action="/verify" method="post">'
+             '<div class="cf-turnstile" data-sitekey="k"></div></form>'
+             '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></body></html>')
+LOGIN_FORM = ('<html><head><title>%s</title></head><body><form action="/session" method="post">'
+              '<input name="user"><input type="password" name="password"><button>Continue</button></form></body></html>')
+# https://crates.io/crates/serde SvelteKit shell
+CRATES_SHELL = (
+    '<!doctype html><html lang="en"><head><title>crates.io: Rust Package Registry</title></head>'
+    '<body data-sveltekit-preload-data="hover"><noscript>For full functionality of this site it is necessary to '
+    'enable JavaScript.</noscript><div style="display: contents"><script>import("/_app/immutable/entry/start.js")'
+    ".then(kit => kit.start());</script></div></body></html>")
+# https://hn.algolia.com/?q=rust React shell
+HN_SHELL = ('<!doctype html><html><head><title>HN Search</title></head><body><noscript>This page will only work '
+            'with JavaScript enabled</noscript><main id="root"></main><script src="/public/main.js" defer="defer">'
+            "</script></body></html>")
+# https://www.dvnovosti.ru/ Vue shell with a Russian noscript message
+VUE_SHELL = (
+    '<!doctype html><html lang="ru"><body><div id="app"></div><noscript><form action="/noscript/" method="post">'
+    "<p>В вашем браузере отключен JavaScript. Это ограничивает возможности сайта.</p>"
+    '<button type="submit">Показать содержимое страницы</button></form></noscript>'
+    '<script src="/build/client/client.js" defer></script></body></html>')
+NEXT_SHELL = ('<html><head><title>Shop</title></head><body><div id="__next"></div>'
+              '<script src="/_next/static/chunks/main.js"></script></body></html>')
+RENDERED_HN = ('<html><head><title>HN Search</title></head><body><main id="root"><p>Rust results</p></main>'
+               '<script src="/public/main.js" defer="defer"></script></body></html>')
+# https://pikabu.ru/ article behind a DDoS-Guard proxy
+DDOS_GUARD_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>%s</p></article>'
+                      '<script type="text/javascript" src="/.well-known/ddos-guard/check"></script></body></html>'
+                      % PROSE)
+RECAPTCHA_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>%s</p></article>'
+                     '<form action="/comment" method="post"><textarea name="text"></textarea>'
+                     '<div class="g-recaptcha" data-sitekey="k"></div></form>'
+                     '<script src="https://www.google.com/recaptcha/api.js"></script></body></html>' % PROSE)
+ARTICLE = '<html><head><title>Story</title></head><body><article><p>%s</p></article></body></html>' % PROSE
+SMALL_PAGE = ('<html><head><title>Hours</title></head><body><p>%s</p></body></html>'
+              % ("Opening hours and contact details for the reading room. " * 7))
+SMARTCAPTCHA_MENTION = ('<html><head><title>Forms</title></head><body>'
+                        '<p>Our feedback form uses Yandex SmartCaptcha to stop spam.</p></body></html>')
+SCRIPTED_NOTE = ('<html><head><title>Note</title></head><body><p>Short note.</p>'
+                 '<script src="/analytics.js"></script></body></html>')
+CLOUDFLARE_SCRIPT_ARTICLE = ('<html><head><title>News</title></head><body><article><p>%s</p></article>'
+                             '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></body></html>'
+                             % PROSE)
+MOMENT_ARTICLE = ('<html><head><title>Just a moment...</title></head><body><article><p>%s</p></article>'
+                  "</body></html>" % PROSE)
+SIGN_IN_LINKS = ('<html><head><title>Sign in</title></head><body><p>Continue with your '
+                 '<a href="https://id.example/">identity provider</a>.</p></body></html>')
+RECAPTCHA_V3 = "https://www.google.com/recaptcha/api.js?render=k"
+GENERIC_SHELL = ('<html><head><title>App</title></head><body><div id="root"></div><p>Checking your browser before '
+                 'you reach the app.</p><script src="/app.js"></script></body></html>')
+DDOS_GUARD_SHELL = ('<html><head><title>App</title></head><body><div id="root"></div>'
+                    '<script src="/.well-known/ddos-guard/check"></script></body></html>')
+# Review R4: 500 visible chars beside an empty comment-widget mount, and 900 beside an enable-JS message.
+APP_WIDGET_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>%s</p></article><div id="app"></div>'
+                      '<script src="/widget.js"></script></body></html>' % ("x" * 500))
+ENABLE_JS_NOTE = ('<html><head><title>Story</title></head><body><p>%s</p><noscript>Please enable JavaScript to see '
+                  'the comments.</noscript><script src="/comments.js"></script></body></html>' % ("x" * 900))
+
+
+def rooted(text):
+    """Return an app page with an empty `#root`, one script and `text` as its only visible text."""
+    return ('<html><head><title>App</title></head><body><div id="root"></div><p>%s</p>'
+            '<script src="/app.js"></script></body></html>' % text)
+
+
+def captcha_shell(source):
+    """Return an SPA shell with an empty `#root` that also loads the captcha script at `source`."""
+    return ('<html><head><title>Shop</title><script src="%s"></script></head><body><div id="root"></div>'
+            '<script src="/static/js/main.js"></script></body></html>' % source)
+
+
+def page_hop(html, *headers):
+    """Return one successful UTF-8 HTML response carrying `headers` after its media type."""
+    return ok((HTML_TYPE, *headers), html.encode())
+
+
+def static_page(url, body, snapshot):
+    """Return the exact static acquisition of one converted UTF-8 HTML page."""
+    return document_acquisition(url, url, body, snapshot) | {
+        "effective_base_url": url, "charset": "UTF-8", "charset_source": "default",
+        "snapshot": {"kind": "static_html", "bytes": len(snapshot), "sha256": sha256(snapshot)}}
+
+
+def js_page(url, body, snapshot, render_js):
+    """Return the exact acquisition of one page rendered by the settled capture double."""
+    return static_page(url, body, snapshot) | JS_ENVELOPE | {
+        "engine": RAN_ENGINE, "capture_status": "settled", "pending": SETTLED,
+        "counts": {"requests": 1, "promise_jobs": 2, "timer_callbacks": 1},
+        "snapshot": {"kind": "javascript_dom", "bytes": len(snapshot), "sha256": sha256(snapshot)},
+        "render_js": render_js}
+
+
+def page_refused(shown, body, stage, reason, *, redirect_count=0, **changes):
+    """Return the exact refusal of a 2xx HTML page from PAGE stopped after decoding."""
+    response = {"entity_bytes": len(body), "entity_sha256": sha256(body),
+                "body_bytes": len(body), "body_sha256": sha256(body)}
+    counts = {"requests": redirect_count + 1, "promise_jobs": 0, "timer_callbacks": 0}
+    return dict(refused(ROUTES[".html"], PAGE, PAGE, stage, shown, **({
+        "final_url": shown, "response": response, "http_status": 200, "redirect_count": redirect_count,
+        "counts": counts, "charset": "UTF-8", "charset_source": "default"} | changes)), reason=reason)
+
+
+def scripted(htmlurl, monkeypatch, hops, html):
+    """Serve `hops`, a ready JS runtime and a settled capture of `html`; return the ordered event log."""
+    from brewdoc import htmljs
+
+    events = []
+    monkeypatch.setattr(htmlurl, "_request", lambda url, *args, **options: (events.append(url), dict(hops[url]))[1])
+    monkeypatch.setattr(htmljs, "_check_runtime", lambda **options: events.append("runtime"))
+    monkeypatch.setattr(htmljs, "render", lambda source, final_url, *args, **options: (
+        events.append(("render", source, final_url)),
+        {"html": html, "capture_status": "settled", "errors": [], "error_count": 0, "pending": dict(SETTLED),
+         "counts": {"promise_jobs": 2, "timer_callbacks": 1}})[1])
+    return events
+
+
+@pytest.mark.parametrize("html,challenge,reason", [
+    (CLOUDFLARE, "cloudflare", CAPTCHA % ("cloudflare", 200)),
+    (CLOUDFLARE_BLOCK, "cloudflare", CAPTCHA % ("cloudflare", 200)),
+    (LOGIN_FORM % "Login", "login", LOGIN),
+    (LOGIN_FORM % "Log in", "login", LOGIN),
+    (LOGIN_FORM % " Sign In ", "login", LOGIN),
+], ids=["cloudflare-just-a-moment", "cloudflare-attention-required", "login", "log-in", "sign-in-padded"])
+def test_existing_challenge_rule_refuses_titled_cloudflare_and_login_pages_at_the_challenge_stage(
+        htmlurl, monkeypatch, html, challenge, reason):
+    # GIVEN a 200 page carrying both halves of the existing Cloudflare or login evidence
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
+    expected = page_refused(PAGE, html.encode(), "challenge", reason, challenge=challenge)
+    assert calls == [], "acquisition starts without a request"
+    # WHEN static URL acquisition checks the page
+    result = htmlurl._run_url(PAGE)
+    # THEN it still refuses at the challenge stage after one request with the exact receipt
+    assert (result, calls) == ((1, expected, ""), [PAGE]), \
+        "the page check must keep refusing every page the old challenge rule refused"
+
+
+@pytest.mark.parametrize("html", [
+    CLOUDFLARE_SCRIPT_ARTICLE, MOMENT_ARTICLE, LOGIN_FORM % "Account settings", SIGN_IN_LINKS,
+], ids=["cloudflare-script-without-title", "title-without-cloudflare-marker", "password-form-other-title",
+        "login-title-without-password"])
+def test_existing_challenge_rule_converts_pages_with_only_half_of_its_evidence(htmlurl, monkeypatch, tmp_path, html):
+    # GIVEN a 200 page with only one half of the existing Cloudflare or login evidence, in canonical markup
+    body = html.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", body)
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
+    assert code == 0, "the page must convert as a local file"
+    # WHEN static URL acquisition checks the page
+    result = htmlurl._run_url(PAGE)
+    # THEN it converts with the exact static receipt
+    assert (result, calls) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=static_page(PAGE, body, body)), markdown), [PAGE],
+    ), "half of the challenge or login evidence must not refuse a page"
+
+
+@pytest.mark.parametrize("hops,final,shown,challenge,reason,redirect_count,charset_source", [
+    ({PAGE: moved("/showcaptcha?cc=1"), CAPTCHA_URL: page_hop(SMARTCAPTCHA)}, CAPTCHA_URL,
+     "https://example.com/showcaptcha?cc=[redacted]", "yandex-smartcaptcha",
+     CAPTCHA % ("yandex-smartcaptcha", 200), 1, "meta"),
+    ({PAGE: page_hop(SMARTCAPTCHA)}, PAGE, PAGE, "yandex-smartcaptcha", CAPTCHA % ("yandex-smartcaptcha", 200), 0,
+     "meta"),
+    ({PAGE: page_hop(CLOUDFLARE)}, PAGE, PAGE, "cloudflare", CAPTCHA % ("cloudflare", 200), 0, "default"),
+    ({PAGE: page_hop(BROWSER_CHECK)}, PAGE, PAGE, "generic", CAPTCHA % ("generic", 200), 0, "default"),
+    ({PAGE: moved("/anti-ddos/check"), ANTI_DDOS_URL: page_hop(ANTI_DDOS)}, ANTI_DDOS_URL, ANTI_DDOS_URL,
+     "generic", CAPTCHA % ("generic", 200), 1, "meta"),
+    ({PAGE: page_hop(DDOS_GUARD, ("Server", "ddos-guard"))}, PAGE, PAGE, "ddos-guard",
+     CAPTCHA % ("ddos-guard", 200), 0, "default"),
+    ({PAGE: page_hop(HCAPTCHA)}, PAGE, PAGE, "hcaptcha", CAPTCHA % ("hcaptcha", 200), 0, "default"),
+    ({PAGE: page_hop(RECAPTCHA)}, PAGE, PAGE, "recaptcha", CAPTCHA % ("recaptcha", 200), 0, "default"),
+    ({PAGE: page_hop(TURNSTILE)}, PAGE, PAGE, "cloudflare", CAPTCHA % ("cloudflare", 200), 0, "default"),
+    ({PAGE: page_hop(LOGIN_FORM % "Sign in")}, PAGE, PAGE, "login", LOGIN, 0, "default"),
+    ({PAGE: page_hop(GENERIC_SHELL)}, PAGE, PAGE, "generic", CAPTCHA % ("generic", 200), 0, "default"),
+    ({PAGE: page_hop(DDOS_GUARD_SHELL)}, PAGE, PAGE, "ddos-guard", CAPTCHA % ("ddos-guard", 200), 0, "default"),
+], ids=["smartcaptcha-showcaptcha-redirect", "smartcaptcha-checkcaptcha-form", "cloudflare-200",
+        "generic-russian-browser-check", "generic-anti-ddos-redirect", "ddos-guard-server-on-tiny-page",
+        "hcaptcha-host-on-tiny-page", "recaptcha-host-on-tiny-page", "turnstile-host-on-tiny-page", "login",
+        "generic-text-beats-shell", "ddos-guard-path-beats-shell"])
+def test_static_page_check_refuses_captcha_challenge_and_login_pages_with_a_plain_reason(
+        htmlurl, monkeypatch, hops, final, shown, challenge, reason, redirect_count, charset_source):
+    # GIVEN a captcha, bot challenge or login page answered with HTTP 200
+    calls = serve(htmlurl, monkeypatch, hops)
+    expected = page_refused(shown, hops[final]["body"], "challenge", reason, redirect_count=redirect_count,
+                            challenge=challenge, charset_source=charset_source)
+    assert calls == [], "acquisition starts without a request"
+    # WHEN static URL acquisition checks the decoded page
+    result = htmlurl._run_url(PAGE)
+    # THEN it refuses at challenge, names the challenge and keeps the main-document status
+    assert (result, calls) == ((1, expected, ""), list(hops)), \
+        "a captcha or login page must refuse with its name instead of converting as content"
+
+
+@pytest.mark.parametrize("status,headers,html,stage,challenge,reason", [
+    (403, (HTML_TYPE, ("Server", "cloudflare"), ("cf-mitigated", "challenge")), CLOUDFLARE, "challenge",
+     "cloudflare", CAPTCHA % ("cloudflare", 403)),
+    (403, (HTML_TYPE, ("cf-mitigated", "challenge")), "<p>blocked</p>", "challenge", "cloudflare",
+     CAPTCHA % ("cloudflare", 403)),
+    (401, (HTML_TYPE, ("x-datadome", "protected")), DATADOME, "challenge", "datadome", CAPTCHA % ("datadome", 401)),
+    (403, (HTML_TYPE, ("x-datadome", "protected")), DATADOME, "challenge", "datadome", CAPTCHA % ("datadome", 403)),
+    (403, (HTML_TYPE,), DATADOME, "challenge", "datadome", CAPTCHA % ("datadome", 403)),
+    (403, (HTML_TYPE, ("Server", "nginx")), PROOF_OF_WORK, "challenge", "generic", CAPTCHA % ("generic", 403)),
+    (404, (HTML_TYPE,), NEXT_SHELL, "status", None, "URL HTTP status refused: 404"),
+    (403, (("Content-Type", "text/html; charset=x-bogus"), ("cf-mitigated", "challenge")), CLOUDFLARE,
+     "status", None, "URL HTTP status refused: 403"),
+    (439, (HTML_TYPE, ("Server", "QRATOR")), QRATOR_POW, "challenge", "qrator", CAPTCHA % ("qrator", 439)),
+    (439, (HTML_TYPE,), "<p>blocked</p>", "challenge", "qrator", CAPTCHA % ("qrator", 439)),
+    (429, (HTML_TYPE, ("Server", "qrator")), "<p>Too Many Requests</p>", "challenge", "qrator",
+     CAPTCHA % ("qrator", 429)),
+], ids=["cloudflare-managed-403", "cloudflare-mitigated-header", "datadome-401", "datadome-403",
+        "datadome-script-host-403", "generic-proof-of-work-403", "shell-404-stays-status",
+        "undecodable-403-stays-status", "qrator-avito-439", "qrator-status-439-without-server",
+        "qrator-lowercase-server-429"])
+def test_non_success_html_names_a_recognized_challenge_and_otherwise_keeps_the_status_refusal(
+        htmlurl, monkeypatch, status, headers, html, stage, challenge, reason):
+    # GIVEN a non-2xx HTML answer to the main document
+    calls = serve(htmlurl, monkeypatch, {PAGE: dict(ok(headers, html.encode()), status=status)})
+    expected = dict(refused(ROUTES[".html"], PAGE, PAGE, stage, PAGE, http_status=status, challenge=challenge),
+                    reason=reason)
+    assert calls == [], "acquisition starts without a request"
+    # WHEN static URL acquisition receives it
+    result = htmlurl._run_url(PAGE)
+    # THEN a recognized challenge refuses at challenge; anything else keeps the plain status refusal
+    assert (result, calls) == ((1, expected, ""), [PAGE]), \
+        "non-2xx pages must name a recognized challenge with the HTTP status, never a page shell"
+
+
+def test_non_success_html_on_an_unsupported_html_runtime_keeps_the_status_refusal(htmlurl, monkeypatch):
+    # GIVEN a Cloudflare 403 challenge while the HTML runtime is unsupported but the parser imported
+    from brewdoc import htmltext
+
+    calls = serve(htmlurl, monkeypatch, {PAGE: dict(ok((HTML_TYPE, ("cf-mitigated", "challenge")),
+                                                       CLOUDFLARE.encode()), status=403)})
+    monkeypatch.setattr(htmltext, "_SUPPORTED_RUNTIME", False)
+    expected = dict(refused(ROUTES[".html"], PAGE, PAGE, "status", PAGE, http_status=403),
+                    reason="URL HTTP status refused: 403")
+    assert (calls, htmltext.LexborHTMLParser is None) == ([], False), \
+        "the parser stays importable; only runtime support is off"
+    # WHEN static URL acquisition receives it
+    result = htmlurl._run_url(PAGE)
+    # THEN the 2xx runtime guard also gates the error page check, so the plain status refusal stays
+    assert (result, calls) == ((1, expected, ""), [PAGE]), \
+        "an unsupported HTML runtime must never parse a non-2xx page to name its challenge"
+
+
+def test_success_html_on_an_unsupported_html_runtime_refuses_at_prerequisites_before_decoding(htmlurl, monkeypatch):
+    # GIVEN an ordinary 200 article while the HTML runtime is unsupported but the parser imported
+    from brewdoc import htmltext
+
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(ARTICLE)})
+    monkeypatch.setattr(htmltext, "_SUPPORTED_RUNTIME", False)
+    expected = page_refused(PAGE, ARTICLE.encode(), "prerequisites", "URL acquisition refused during prerequisites",
+                            charset=None, charset_source=None)
+    assert (calls, htmltext.LexborHTMLParser is None) == ([], False), \
+        "the parser stays importable; only runtime support is off"
+    # WHEN static URL acquisition receives it
+    result = htmlurl._run_url(PAGE)
+    # THEN the "URL HTML parser unavailable" guard refuses after the response and before charset decoding
+    assert (result, calls) == ((1, expected, ""), [PAGE]), \
+        "an unsupported HTML runtime must refuse a 2xx page at prerequisites, never parse or convert it"
+
+
+@pytest.mark.parametrize("html", [
+    CRATES_SHELL, HN_SHELL, VUE_SHELL, NEXT_SHELL, rooted("x" * 150), rooted("x" * 199), ENABLE_JS_NOTE,
+    captcha_shell(RECAPTCHA_V3), captcha_shell("https://js.hcaptcha.com/1/api.js?render=explicit"),
+    captcha_shell("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"),
+], ids=["crates-enable-javascript", "hn-empty-root", "vue-russian-message", "next-empty-root",
+        "empty-root-150-visible", "empty-root-199-visible", "enable-javascript-900-visible",
+        "recaptcha-v3-host-on-shell", "hcaptcha-host-on-shell", "turnstile-host-on-shell"])
+def test_static_shell_page_refuses_at_javascript_required_and_names_the_auto_retry(htmlurl, monkeypatch, html):
+    # GIVEN a 200 JavaScript shell: little visible text, a script and an empty root or enable-JS message
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
+    expected = page_refused(PAGE, html.encode(), "javascript_required", STATIC_SHELL)
+    assert calls == [], "acquisition starts without a request"
+    # WHEN static URL acquisition checks the decoded page
+    result = htmlurl._run_url(PAGE)
+    # THEN it refuses instead of reporting the empty shell as converted content
+    assert (result, calls) == ((1, expected, ""), [PAGE]), \
+        "a static JavaScript shell must refuse and point at --render-js auto"
+
+
+@pytest.mark.parametrize("headers,html", [
+    ((("Server", "ddos-guard"),), DDOS_GUARD_ARTICLE),
+    ((("x-datadome", "protected"),), ARTICLE),
+    ((("Server", "QRATOR"),), ARTICLE),
+    ((), RECAPTCHA_ARTICLE),
+    ((), SMALL_PAGE),
+    ((), SMARTCAPTCHA_MENTION),
+    ((), SCRIPTED_NOTE),
+    ((), rooted("x" * 1000)),
+    ((), rooted("x" * 999)),
+    ((), rooted("x" * 200)),
+    ((), APP_WIDGET_ARTICLE),
+], ids=["ddos-guard-server-on-long-article", "datadome-header-on-200-article", "qrator-server-on-200-article",
+        "comment-form-recaptcha",
+        "small-page-without-script", "smartcaptcha-mentioned-in-text", "small-page-with-analytics-script",
+        "empty-root-1000-visible", "empty-root-999-visible", "empty-root-200-visible",
+        "empty-app-widget-500-visible"])
+def test_page_check_converts_ordinary_pages_with_weak_markers_or_little_text(
+        htmlurl, monkeypatch, tmp_path, headers, html):
+    # GIVEN an ordinary 200 page written in its own canonical snapshot markup
+    body = html.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", body)
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html, *headers)})
+    assert code == 0, "the page must convert as a local file"
+    # WHEN static URL acquisition checks and converts it
+    result = htmlurl._run_url(PAGE)
+    # THEN it converts with the exact static receipt
+    assert (result, calls) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=static_page(PAGE, body, body)), markdown), [PAGE],
+    ), "weak markers on long pages and short pages without shell evidence must not refuse"
+
+
+@pytest.mark.parametrize("render_js,recorded", [("auto", "auto"), (True, "always"), ("always", "always")],
+                         ids=["auto", "bare-flag", "always"])
+def test_javascript_modes_render_a_static_shell_once_from_the_decoded_source(
+        htmlurl, monkeypatch, tmp_path, render_js, recorded):
+    # GIVEN a static shell whose JS capture produces content
+    body = HN_SHELL.encode()
+    snapshot = RENDERED_HN.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", snapshot)
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(HN_SHELL)}, RENDERED_HN)
+    assert code == 0, "the rendered snapshot must convert as a local file"
+    # WHEN URL acquisition runs in auto or always mode
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN JS runs once on the decoded source, with no second request, and the receipt names the mode
+    assert (result, events) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=js_page(PAGE, body, snapshot, recorded)), markdown),
+        ["runtime", PAGE, ("render", HN_SHELL, PAGE)],
+    ), "JS must run from the already decoded page and record render_js"
+
+
+def test_auto_renders_a_shell_that_also_loads_a_recaptcha_script(htmlurl, monkeypatch, tmp_path):
+    # GIVEN an SPA shell with an empty root that also loads reCAPTCHA v3, and a capture that fills it
+    html = captcha_shell(RECAPTCHA_V3)
+    body = html.encode()
+    snapshot = RENDERED_HN.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", snapshot)
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(html)}, RENDERED_HN)
+    assert code == 0, "the rendered snapshot must convert as a local file"
+    # WHEN URL acquisition runs in auto mode
+    result = htmlurl._run_url(PAGE, render_js="auto")
+    # THEN shell evidence beats the captcha script host, so JS runs once and the capture converts
+    assert (result, events) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=js_page(PAGE, body, snapshot, "auto")), markdown),
+        ["runtime", PAGE, ("render", html, PAGE)],
+    ), "a captcha script host on a JavaScript shell must not stop auto mode from rendering"
+
+
+def test_auto_keeps_an_ordinary_page_static_after_checking_js_prerequisites_first(htmlurl, monkeypatch, tmp_path):
+    # GIVEN an ordinary page and an observable JS runtime
+    body = SMALL_PAGE.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", body)
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(SMALL_PAGE)}, RENDERED_HN)
+    assert code == 0, "the page must convert as a local file"
+    # WHEN URL acquisition runs in auto mode
+    result = htmlurl._run_url(PAGE, render_js="auto")
+    # THEN prerequisites run before the request, no script runs and the static receipt says auto
+    assert (result, events) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=static_page(PAGE, body, body) | {"render_js": "auto"}), markdown),
+        ["runtime", PAGE],
+    ), "auto must stay static when the page is not a JavaScript shell"
+
+
+@pytest.mark.parametrize("render_js,recorded", [("auto", "auto"), (True, "always")], ids=["auto", "always"])
+def test_javascript_modes_refuse_a_shell_that_the_engine_did_not_fill(htmlurl, monkeypatch, render_js, recorded):
+    # GIVEN a static shell whose JS capture is still a shell
+    body = HN_SHELL.encode()
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(HN_SHELL)}, HN_SHELL)
+    expected = page_refused(PAGE, body, "javascript_required", JS_SHELL, **(JS_ENVELOPE | {
+        "engine": RAN_ENGINE, "pending": SETTLED, "render_js": recorded,
+        "counts": {"requests": 1, "promise_jobs": 2, "timer_callbacks": 1}}))
+    assert events == [], "acquisition starts without events"
+    # WHEN URL acquisition runs JS on it
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN it refuses with the JS shell reason and keeps the run's engine and work counts
+    assert (result, events) == ((1, expected, ""), ["runtime", PAGE, ("render", HN_SHELL, PAGE)]), \
+        "an empty JS capture must refuse instead of converting the shell"
+
+
+@pytest.mark.parametrize("render_js,envelope", [("auto", {"render_js": "auto"}), (True, JS_ENVELOPE)],
+                         ids=["auto", "always"])
+def test_javascript_modes_refuse_a_challenge_before_running_any_script(htmlurl, monkeypatch, render_js, envelope):
+    # GIVEN a generic browser-check page and an observable JS runtime
+    body = BROWSER_CHECK.encode()
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(BROWSER_CHECK)}, RENDERED_HN)
+    expected = page_refused(PAGE, body, "challenge", CAPTCHA % ("generic", 200), challenge="generic",
+                            **envelope)
+    assert events == [], "acquisition starts without events"
+    # WHEN URL acquisition runs in auto or always mode
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN the challenge refuses before any script runs
+    assert (result, events) == ((1, expected, ""), ["runtime", PAGE]), \
+        "a challenge page must refuse before JS execution in both modes"
+
+
+@pytest.mark.parametrize("render_js,envelope", [
+    ("auto", {"render_js": "auto"}), (True, JS_ENVELOPE), ("always", JS_ENVELOPE),
+], ids=["auto", "bare-flag", "always"])
+def test_javascript_modes_check_the_runtime_before_any_request(htmlurl, monkeypatch, render_js, envelope):
+    # GIVEN a missing JS runtime and an observable request seam
+    from brewdoc import htmljs
+
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(HN_SHELL)})
+    monkeypatch.setattr(htmljs, "_check_runtime", failing(lambda: BrewdocError("JS runtime unavailable")))
+    expected = refused(ROUTES[".html"], PAGE, PAGE, "prerequisites", None,
+                       counts={"requests": 0, "promise_jobs": 0, "timer_callbacks": 0}, **envelope)
+    assert calls == [], "acquisition starts without a request"
+    # WHEN URL acquisition runs in auto or always mode
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN it refuses at prerequisites without any HTTP request
+    assert (result, calls) == ((1, expected, ""), []), "JS prerequisites must refuse before HTTP in both modes"
+
+
+@pytest.mark.parametrize("render_js", ["never", "AUTO", "", ["auto"]],
+                         ids=["never", "upper-case-auto", "empty-string", "list"])
+def test_unknown_render_js_mode_refuses_at_options_before_any_request(htmlurl, monkeypatch, render_js):
+    # GIVEN a render_js value outside None, False, True, "auto" and "always", and an observable runtime
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(HN_SHELL)}, RENDERED_HN)
+    expected = dict(refused(ROUTES[".html"], PAGE, PAGE, "options", None, requested_url=None, url_sha256=None,
+                            counts={"requests": 0, "promise_jobs": 0, "timer_callbacks": 0}), reason=RENDER_JS_MODES)
+    assert events == [], "acquisition starts without events"
+    # WHEN a Python caller passes it to URL acquisition
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN it refuses at options before prerequisites or HTTP, and the receipt never echoes the value
+    assert (result, events) == ((1, expected, ""), []), \
+        "an unknown render_js mode must refuse instead of behaving like auto"
+
+
+def test_auto_on_a_document_keeps_the_static_receipt_and_runs_no_script(htmlurl, monkeypatch, tmp_path):
+    # GIVEN a PDF response and an observable JS runtime
+    url = "https://example.com/files/report"
+    body = pdf_bytes(tmp_path)
+    _, (code, receipt, markdown) = converted(tmp_path, url, ".pdf", body)
+    events = scripted(htmlurl, monkeypatch, {url: ok((("Content-Type", "application/pdf"),), body)}, RENDERED_HN)
+    assert code == 0, "the synthetic PDF must convert as a local file"
+    # WHEN URL acquisition runs in auto mode
+    result = htmlurl._run_url(url, render_js="auto")
+    # THEN the document converts with the static receipt and render_js auto
+    assert (result, events) == (
+        (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
+                 acquisition=document_acquisition(url, url, body, body) | {"render_js": "auto"}), markdown),
+        ["runtime", url],
+    ), "auto on a document must keep capture_status static and run no script"

@@ -3,7 +3,7 @@
 Link version-specific INSTALL.md for practical lifecycle instructions; historical
 0.2.0/0.3.0/0.3.1 tags lack that file and link their own README instead. Never change
 release tags/package bytes merely to revise notes.
-Current installation examples select 0.6.0. List a channel as available only after
+Current installation examples select 0.7.0. List a channel as available only after
 its publication and consumer acceptance.
 
 ## Release format
@@ -45,14 +45,14 @@ Put one `---` between Release notes and Installation. Every release body keeps
 concise, complete installation, downloads and documentation sections:
 
 - Installation states the Python prerequisite and all three exact-version choices:
-  `python -m pip install "brewdoc==0.6.0"` in an active virtual environment,
-  `uv tool install --python 3.12 "brewdoc==0.6.0"` and
-  `pipx install --python 3.12 "brewdoc==0.6.0"`. Replace 0.6.0 with the release
+  `python -m pip install "brewdoc==0.7.0"` in an active virtual environment,
+  `uv tool install --python 3.12 "brewdoc==0.7.0"` and
+  `pipx install --python 3.12 "brewdoc==0.7.0"`. Replace 0.7.0 with the release
   version and state its declared Python compatibility. Include
   `brewdoc --self-check` and `brewdoc file.pdf --out file.md`.
 - Public npm/npx commands require admission and consumer acceptance on Linux
-  x64/glibc and macOS ARM64. Use `npm install --global brewdoc@0.6.0` and
-  `npx --yes --package brewdoc@0.6.0 brewdoc --self-check` with the release version.
+  x64/glibc and macOS ARM64. Use `npm install --global brewdoc@0.7.0` and
+  `npx --yes --package brewdoc@0.7.0 brewdoc --self-check` with the release version.
   Staged notes keep their conditional-publication statement and omit npm commands.
   Homebrew stays pending until public formula readback and both-host acceptance;
   support metadata alone does not establish availability.

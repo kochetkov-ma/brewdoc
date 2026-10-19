@@ -10,7 +10,7 @@ import time
 import pytest
 
 from brewdoc.common import BrewdocError
-from brewdoc.htmljs import render
+from brewdoc.htmljs import OMISSIONS, render
 
 try:
     ENGINE_AVAILABLE = importlib.metadata.version("quickjs-ng") == "0.17.0.1"
@@ -174,13 +174,19 @@ document.querySelector('#result').textContent=JSON.stringify({
     pytest.param("Object.defineProperty(document.body,Symbol.toPrimitive,{value:()=> 'forged'})", id="element-coercion"),
     pytest.param("Object.defineProperty(document,'childNodes',{value:['forged']})", id="document-child-list"),
 ])
-def test_dom_serializer_tampering_still_refuses_capture(mutation):
+def test_dom_serializer_tampering_publishes_only_labelled_initial_html(mutation):
     # GIVEN a page-owned forged serialization capability on a real node or attribute.
     source = '<html><body><p id="result">pending</p><script>' + mutation + '</script></body></html>'
     # WHEN the trusted snapshot examines the actual DOM tree.
-    with pytest.raises(BrewdocError, match="resource"):
-        render(source, "https://fixture.test/", lambda request: None, time.monotonic() + 10, soft_window=1)
-    # THEN no forged snapshot reaches the static converter.
+    captured = render(source, "https://fixture.test/", lambda request: None, time.monotonic() + 10, soft_window=1)
+    # THEN only the acquired page reaches the static converter, labelled with the DOM-guard cause.
+    assert captured == {
+        "html": source, "snapshot_kind": "initial_html_dom_fallback", "capture_status": "partial",
+        "errors": [{"category": "initial_html_dom_fallback", "resource_url": None}], "error_count": 1,
+        "pending": dict.fromkeys(("requests", "timers", "modules", "promises", "jobs")),
+        "counts": {"promise_jobs": None, "timer_callbacks": None}, "engine": "QuickJS-ng 0.17.0",
+        "dom_bundle": "LinkeDOM 0.18.13", "soft_window_seconds": 1, "unsupported": list(OMISSIONS),
+    }, "a forged serializer must publish the initial page, never a forged snapshot of the JS DOM"
 
 
 def _capture_page(script):

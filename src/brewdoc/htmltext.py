@@ -32,6 +32,7 @@ _CONTROLS = frozenset({"button", "input", "select", "option", "optgroup", "datal
 ARTICLE_OMISSION = (
     "body content outside the selected article or main subtree; complete page coverage is not claimed"
 )
+LINKS_OMISSION = "link destinations: omitted by --no-links"
 _EMPHASIS = {"em": "*", "i": "*", "strong": "**", "b": "**"}
 _HEADINGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _BREAKS = _BLOCKS | _HEADINGS | {"ul", "ol", "li", "blockquote"}
@@ -178,6 +179,15 @@ def _gb18030_euro(error: UnicodeDecodeError) -> tuple[str, int]:
 
 
 codecs.register_error("brewdoc.gb18030-euro", _gb18030_euro)
+# One lone surrogate per invalid UTF-8 sequence; strict UTF-8 never decodes to a surrogate.
+_INVALID_UTF8 = "\ud800"
+codecs.register_error("brewdoc.utf8-invalid", lambda error: (_INVALID_UTF8, error.end))
+# Latin text when at most half its high bytes touch another; Cyrillic words pair them.
+_LATIN_PAIRED_SHARE = 0.5
+# Cyrillic letters are 0xC0-0xFF in windows-1251 and KOI8-R; measured CJK text stays below 0.72.
+_CYRILLIC_SHARE = 0.8
+_HIGH_RUNS = re.compile(rb"[\x80-\xff]{2,}")
+_ASCII = bytes(range(128))
 # 20 two-byte codes Python's 2005 tables decode to Private Use Area, plus WHATWG's swap of
 # A8 BC and 81 35 F4 37; Python decodes these 21 characters from no other bytes.
 _WHATWG_GB18030 = dict(zip(
@@ -243,15 +253,56 @@ def _meta_charset(source_attributes: str) -> str | None:
     return declared.group(1) if declared else ""
 
 
-def _decode_html(raw: bytes, header_charset: str | None = None) -> str:
-    """Decode by BOM, then header label, then first declaring meta in 1024 bytes, then UTF-8."""
-    label = header_charset
-    if label is None and not raw.startswith(tuple(_BOMS)):
-        label = next((declared for attributes in _meta_attributes(raw[:1024].decode("latin1"))
-                      if (declared := _meta_charset(attributes)) is not None), None)
-        if label is not None and _codec(label)[0] in ("UTF-16BE", "UTF-16LE"):
-            label = "utf-8"
-    return _decode_bytes(raw, label)
+def _meta_labels(prefix: bytes):
+    """Yield declared meta charset labels within the prefix in source order."""
+    return (declared for attributes in _meta_attributes(prefix.decode("latin1"))
+            if (declared := _meta_charset(attributes)) is not None)
+
+
+def _legacy_charset(sample: bytes) -> str | None:
+    """Name an undeclared single-byte charset: isolated high bytes mean Latin, else Cyrillic case decides.
+    Return None when paired high bytes are not mostly Cyrillic letters."""
+    paired, high = sum(map(len, _HIGH_RUNS.findall(sample))), len(sample.translate(None, _ASCII))
+    if paired <= high * _LATIN_PAIRED_SHARE:
+        return "windows-1252"
+    letters = sample.translate(None, bytes(range(0xC0)))
+    if len(letters) < high * _CYRILLIC_SHARE:
+        return None
+    lower = len(letters.translate(None, bytes(range(0xE0))))
+    return "windows-1251" if 2 * lower >= len(letters) else "KOI8-R"
+
+
+def _decode_html(raw: bytes, header_charset: str | None = None) -> tuple[str, str, str]:
+    """Decode by BOM, header, meta in 1024 bytes, then UTF-8; return text, WHATWG name and its source.
+    Failing UTF-8 stays lossy if valid non-ASCII outnumbers invalid, else uses a 16 KiB meta or statistics."""
+    bom = next((label for bom, label in _BOMS.items() if raw.startswith(bom)), None)
+    label, source = (bom, "bom") if bom else (header_charset, "header")
+    if label is None:
+        label, source = next(_meta_labels(raw[:1024]), None), "meta"
+    if label is None:
+        label, source = "utf-8", "default"
+    name, codec = _codec(label)
+    if source == "meta" and codec in ("utf-16-be", "utf-16-le"):
+        name, codec = "UTF-8", "utf-8"
+    if codec not in _STRICT_CODECS and not raw.isascii():
+        try:
+            return raw.decode("utf-8"), "UTF-8", "fallback"
+        except UnicodeDecodeError:
+            pass
+    if codec != "utf-8" or source == "bom":
+        return _decode_bytes(raw, label), name, source
+    text = raw.decode("utf-8", "brewdoc.utf8-invalid")
+    if (invalid := text.count(_INVALID_UTF8)) == 0:
+        return text, name, source
+    # Invalid sequences never take an ASCII byte, so each ASCII byte stays one character.
+    if len(text) - invalid - len(raw.translate(None, bytes(range(128, 256)))) > invalid:
+        return text.replace(_INVALID_UTF8, "\ufffd"), "UTF-8", "fallback"
+    del text
+    late = next((declared for label in _meta_labels(raw[:16384])
+                 if (declared := _codec(label)[0]) not in ("UTF-8", "UTF-16BE", "UTF-16LE")), None)
+    name = late or _legacy_charset(raw[:65536])
+    # No name repeats strict UTF-8, which refuses these bytes.
+    return _decode_bytes(raw, name), name, "meta" if late else "fallback"
 
 
 def _node_text(node) -> str:
@@ -362,20 +413,26 @@ def _target(source: str | None) -> tuple[str, str | None]:
     return "external", source
 
 
+def _link_line(anchor) -> str | None:
+    """Write a safe anchor whose text a fence consumed as one link; blank text shows the target."""
+    target, literal = _target(anchor.attributes.get("href"))[1], _literal_text(anchor)
+    if target is None or not literal:
+        return None
+    label = _SPACE.sub(" ", literal).strip() or target
+    return "[%s](%s)" % (_escape_markdown_text(label, preserve_unicode=True), _url_target(target))
+
+
 def _literal_links(node) -> list[str]:
-    """Retain each included safe anchor inside consumed literal content in DOM order."""
-    records, pending = [], [node]
+    """Write each included safe anchor inside consumed literal content as a link, in DOM order."""
+    links, pending = [], [node]
     while pending:
         current = pending.pop()
         if current.tag in ("-text", "-comment") or _dropped(current):
             continue
-        if current.tag == "a":
-            target = _target(current.attributes.get("href"))[1]
-            if target is not None and (label := _literal_text(current)):
-                label = _escape_markdown_text(label, preserve_unicode=True, literal=True)
-                records.append('[Link target](%s); text="%s"' % (_url_target(target), label))
+        if current.tag == "a" and (line := _link_line(current)):
+            links.append(line)
         pending.extend(reversed(_children(current)))
-    return records
+    return links
 
 
 def _image(node) -> str:
@@ -652,9 +709,9 @@ def _html_blocks(body, tally: dict, tables: dict, landmarks: dict) -> list[tuple
                 context = contexts.pop()
                 if context["active"]:
                     fragments.append(context["closing"])
-                if tag == "a" and context["fallback"] and not context["text"] and context["target"] is not None:
+                if tag == "a" and context["fallback"] and not context["text"] and (line := _link_line(node)):
                     flush()
-                    blocks.append(("text", ["[Link target](%s)" % context["target"]], prefix))
+                    blocks.append(("text", [line], prefix))
                     tally["text_regions"] += 1
             elif tag in ("li", "blockquote"):
                 flush()
@@ -689,12 +746,16 @@ def _html_blocks(body, tally: dict, tables: dict, landmarks: dict) -> list[tuple
                 tally["text_regions"] += 1
                 for context in contexts:
                     context["fallback"] = True
-                for record in _literal_links(node):
-                    blocks.append(("text", [record], prefix))
+                for line in _literal_links(node):
+                    blocks.append(("text", [line], prefix))
                     tally["text_regions"] += 1
             continue
         if tag == "img":
-            if image := _image(node):
+            # An image opening a safe link is its content; after link text it stays a block, as in EPUB.
+            if (image := _image(node)) and any(context["target"] and not context["text"] for context in contexts):
+                _open(contexts, fragments)
+                fragments.append(" %s " % image)
+            elif image:
                 flush()
                 blocks.append(("text", [image], prefix))
                 tally["text_regions"] += 1
@@ -750,8 +811,9 @@ def _article_roots(body, landmarks: dict) -> list:
     return mains or articles
 
 
-def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> tuple[str, list]:
-    """Render bounded decoded HTML without applying source charset declarations."""
+def _html_content(decoded_text: str, tally: dict, *, article: bool = False,
+                  links: bool = True) -> tuple[str, list]:
+    """Render bounded decoded HTML without applying source charset declarations; no links drops each href."""
     if not _SUPPORTED_RUNTIME:
         raise BrewdocError("HTML requires CPython 3.12-3.14")
     if LexborHTMLParser is None:
@@ -760,6 +822,9 @@ def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> t
         raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
     parser = LexborHTMLParser(decoded_text)
     _validate_html(parser)
+    if not links:
+        for anchor in parser.css("a[href]"):
+            del anchor.attrs["href"]
     body = parser.body
     landmarks = {}
     visible = not any(_hidden(parent) for parent in _ancestors(body))
@@ -777,7 +842,7 @@ def _html_content(decoded_text: str, tally: dict, *, article: bool = False) -> t
     return title, blocks
 
 
-def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered:
+def _render_html(path: Path, _sheets=None, *, article: bool = False, links: bool = True) -> Rendered:
     """Render one static chapter, or explicitly refuse an unavailable HTML prerequisite."""
     tally = new_tally()
     with reading(path, "HTML"):
@@ -785,11 +850,14 @@ def _render_html(path: Path, _sheets=None, *, article: bool = False) -> Rendered
             raw = source.read(_INPUT_BYTE_LIMIT + 1)
         if len(raw) > _INPUT_BYTE_LIMIT:
             raise BrewdocError("HTML input byte limit exceeded: %d" % _INPUT_BYTE_LIMIT)
-        title, blocks = _html_content(_decode_html(raw), tally, article=article)
+        text, charset, source = _decode_html(raw)
+        if source == "fallback":
+            tally["charset_fallback"] = charset
+        title, blocks = _html_content(text, tally, article=article, links=links)
     selected = article and "article_fallback" not in tally
+    omissions = ((ARTICLE_OMISSION,) if selected else ()) + (() if links else (LINKS_OMISSION,))
     rendered = _assemble(path, ROUTE.name, ROUTE.unit_kind, 1, [(1, title, blocks)], tally,
-                         not_carried=ROUTE.not_carried + ((ARTICLE_OMISSION,) if selected else ()),
-                         preserve_unicode=True)
+                         not_carried=ROUTE.not_carried + omissions, preserve_unicode=True)
     if len(rendered[0].encode("utf-8")) > _MARKDOWN_BYTE_LIMIT:
         raise BrewdocError("HTML Markdown byte limit exceeded: %d" % _MARKDOWN_BYTE_LIMIT)
     return rendered
@@ -806,6 +874,6 @@ ROUTE = Route("html", "chapter", (".html",), _render_html,
                "navigation, header, footer and aside landmarks outside main or article content"))
 
 
-def render_html(path, *, article: bool = False) -> tuple[str, dict]:
-    """Return Markdown and tally for static HTML, optionally keeping only visible main or article content."""
-    return _render_html(Path(path), article=article)[:2]
+def render_html(path, *, article: bool = False, links: bool = True) -> tuple[str, dict]:
+    """Return Markdown and tally for static HTML; options keep only main or article content or drop links."""
+    return _render_html(Path(path), article=article, links=links)[:2]

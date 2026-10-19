@@ -336,6 +336,10 @@ def test_eml_html_scripts_are_omitted_and_external_image_stays_inert(tmp_path, m
                  "\nQ&\n\na&amp;amp;\n", 2, id="node-final-ampersand-escaped-only-when-joining"),
     pytest.param('<p>Hi!<a href="https://x.test/t">x</a></p>', "\nHi\\![x](https://x.test/t)\n", 1,
                  id="bang-before-link-escaped"),
+    pytest.param('<p>Logo <a href="https://x.test/"><img alt="Logo" src="https://x.test/l.png"></a></p>',
+                 "\nLogo [![Logo](https://x.test/l.png)](https://x.test/)\n", 1, id="image-only-link-wraps-image"),
+    pytest.param('<pre><a href="https://x.test/d">Docs</a></pre>',
+                 "\n```\nDocs\n```\n\n[Docs](https://x.test/d)\n", 2, id="code-consumed-link-after-fence"),
 ])
 def test_eml_html_body_uses_the_clean_html_profile(tmp_path, payload, content, regions):
     # GIVEN HTML-only mail whose body carries one clean-profile feature
@@ -354,6 +358,23 @@ def test_eml_html_body_uses_the_clean_html_profile(tmp_path, payload, content, r
     assert conversion == (0, _receipt(source, regions), _markdown(source, content, regions)), (
         "EML HTML bodies must render exactly as the clean static HTML profile"
     )
+
+
+def test_eml_html_body_refuses_no_links_at_options_before_output(tmp_path, capsys):
+    # GIVEN linked HTML-only mail and an existing destination
+    source, out = tmp_path / "source.eml", tmp_path / "output.md"
+    source.write_bytes(b'Content-Type: text/html; charset=utf-8\n\n<p><a href="https://x.test/">x</a></p>')
+    out.write_bytes(b"keep")
+    assert run(source)[0] == 0, "the linked mail must otherwise convert successfully"
+    expected = _refusal(source, "--no-links is an HTML-only option")
+    # WHEN public API and CLI request --no-links for the EML route
+    result = run(source, out, links=False)
+    code = main([str(source), "--no-links", "--out", str(out)])
+    captured = capsys.readouterr()
+    # THEN both refuse at options because EML keeps its link destinations, and the output stays intact
+    assert (result, code, captured.out, captured.err, out.read_bytes()) == (
+        (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", b"keep",
+    ), "EML must refuse the HTML-only --no-links option before output publication"
 
 
 def test_eml_html_body_refuses_when_html_parser_is_unavailable(tmp_path, monkeypatch):

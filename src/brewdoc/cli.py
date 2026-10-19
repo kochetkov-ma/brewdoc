@@ -62,11 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=_timeout_seconds, metavar="SECONDS",
                         help="maximum waiting for one --url call and JS; positive finite seconds "
                              "within supported clock range, default 30")
-    parser.add_argument("--render-js", action="store_true",
-                        help="execute the optional bounded JS subset for --url; requires brewdoc[render-js]")
+    parser.add_argument("--render-js", nargs="?", const="always", choices=("auto", "always"),
+                        help="execute the optional bounded JS subset for --url, always (bare flag) or auto "
+                             "only for a JavaScript shell page; requires brewdoc[render-js]")
     parser.add_argument("--article", action="store_true",
                         help="keep main or article content; with none, render the whole clean page "
                              "and set receipt article_fallback: true")
+    parser.add_argument("--no-links", dest="links", action="store_false",
+                        help="HTML only: keep link text, omit destinations and disclose it in the receipt")
     parser.add_argument("--body-only", action="store_true",
                         help="omit the title, metadata, omissions, contents and unit anchors; "
                              "keep unit headings only for several units")
@@ -93,6 +96,8 @@ def main(argv=None) -> int:
         parser.error("--timeout requires --url")
     if args.article and args.self_check:
         parser.error("--article cannot be combined with --self-check")
+    if not args.links and args.self_check:
+        parser.error("--no-links cannot be combined with --self-check")
     if args.body_only and args.self_check:
         parser.error("--body-only cannot be combined with --self-check")
     if args.self_check:
@@ -104,7 +109,7 @@ def main(argv=None) -> int:
             args.url, args.out, render_js=args.render_js,
             timeout=_DEFAULT_TIMEOUT if args.timeout is None else args.timeout,
             sheets=args.sheet, artifact_outputs=args.artifact, article=args.article,
-            body_only=args.body_only)
+            body_only=args.body_only, links=args.links)
     elif not args.document:
         parser.print_usage()
         return EXIT_USAGE
@@ -113,13 +118,13 @@ def main(argv=None) -> int:
             artifact_outputs = _artifact_assignments(args.artifact)
         except BrewdocError as exc:
             route = _route(Path(args.document))
-            if args.article and route.name == "html":
-                route = _html_receipt_route(args.article)
+            if route.name == "html":
+                route = _html_receipt_route(args.article, args.links)
             rc, line, markdown = EXIT_FAIL, _line(route, False, str(exc), args.document), ""
         else:
             rc, line, markdown = run(
                 args.document, args.out, sheets=args.sheet, artifact_outputs=artifact_outputs,
-                article=args.article, body_only=args.body_only)
+                article=args.article, body_only=args.body_only, links=args.links)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
         encoding = _markdown_encoding(line["route"])

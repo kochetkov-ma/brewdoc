@@ -296,7 +296,7 @@
   "receipt_schema": "brewdoc.receipt/1",
   "route": "html",
   "tables": 2,
-  "text_regions": 43,
+  "text_regions": 41,
   "unit_keys": [
    "chapter/000001"
   ],
