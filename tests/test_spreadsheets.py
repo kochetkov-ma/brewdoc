@@ -237,7 +237,6 @@ def rewrite_member(path: Path, member: str, old: bytes, new: bytes) -> None:
             target.writestr(name, data.replace(old, new) if name == member else data)
 
 
-
 def rewrite_member_headers(path: Path, member: str, local: int, central: int, value: bytes) -> None:
     """Overwrite one field in a synthetic ZIP member's local and central headers."""
     data = bytearray(path.read_bytes())
@@ -676,8 +675,6 @@ def test_absolute_opc_relationship_targets_render_like_relative_ones(
         expected.replace(source_identity_rows(reference), source_identity_rows(path)),
         expected_tally,
     ), "absolute OPC part names are legal relationship targets and must resolve from the root"
-
-
 
 
 @pytest.mark.corpus

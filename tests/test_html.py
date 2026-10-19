@@ -11,7 +11,8 @@ import sys
 
 import pytest
 
-from brewdoc import htmltext, service
+from brewdoc import cli, htmltext, render_html, service
+from brewdoc.common import BrewdocError
 from test_contract import NOT_APPLICABLE, SCHEMA_TWO, docx, schema_two, zero_tally
 from test_epub import BANG_BEFORE_LINK, CODE_SPLIT_IMAGE_AND_BLANK_LINK, INLINE_BOUNDARY_WHITESPACE
 
@@ -29,6 +30,10 @@ HTML_OMISSIONS = [
     "navigation, header, footer and aside landmarks outside main or article content",
 ]
 CHAPTER = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Untitled"\n\n'
+LINKS_OMISSION = "link destinations: omitted by --no-links"
+ARTICLE_OMISSION = (
+    "body content outside the selected article or main subtree; complete page coverage is not claimed"
+)
 
 
 @pytest.fixture
@@ -276,6 +281,8 @@ def test_utf8_preflight_retains_raw_source_hash_and_unicode_bytes(tmp_path, payl
 
 
 CHARSET_REFUSED = "HTML charset declaration refused"
+VALID_EQUALS_INVALID = "<p>яя".encode("utf-8") + b"\xff\xff</p>"
+UTF8_FAILED = "HTML UTF-8 decoding failed: 'utf-8' codec can't decode byte "
 WINDOW_END = b'<meta charset="latin1">'
 
 
@@ -342,8 +349,6 @@ def test_legacy_charsets_decode_local_html_with_raw_source_hash(tmp_path, payloa
 
 @supported_html
 @pytest.mark.parametrize(("payload", "reason"), [
-    pytest.param(b'<p>bad \xff</p>', "HTML UTF-8 decoding failed: 'utf-8' codec can't decode byte 0xff "
-                 "in position 7: invalid start byte", id="invalid-utf8-without-declaration"),
     pytest.param(b'<meta charset="unknown"><p>text</p>', CHARSET_REFUSED, id="charset-unknown-label"),
     pytest.param(b'<meta charset=""><p>text</p>', CHARSET_REFUSED, id="charset-empty-label"),
     pytest.param(b'<meta charset="  "><p>text</p>', CHARSET_REFUSED, id="charset-whitespace-label"),
@@ -359,9 +364,14 @@ def test_legacy_charsets_decode_local_html_with_raw_source_hash(tmp_path, payloa
                  id="charset-multibyte-invalid-bytes"),
     pytest.param(b'\xff\xfe' + '<p>x</p>'.encode("utf-16-le") + b'\x00',
                  "HTML UTF-16LE encoding refused: invalid bytes", id="charset-utf16le-truncated"),
-    pytest.param(b' ' * (1025 - len(WINDOW_END)) + WINDOW_END + b'<p>caf\xe9</p>',
-                 "HTML UTF-8 decoding failed: 'utf-8' codec can't decode byte 0xe9 in position 1031: "
-                 "invalid continuation byte", id="charset-meta-ending-at-byte-1025-ignored"),
+    pytest.param("<p>中文网页的简体内容，这是一个测试段落。</p>".encode("gbk"),
+                 UTF8_FAILED + "0xd6 in position 3: invalid continuation byte", id="undeclared-gbk"),
+    pytest.param("<p>한국어 웹 페이지의 본문입니다. 시험 문단.</p>".encode("euc_kr"),
+                 UTF8_FAILED + "0xc7 in position 3: invalid continuation byte", id="undeclared-euc-kr"),
+    pytest.param("<p>日本語のウェブページの本文です。テスト段落。</p>".encode("shift_jis"),
+                 UTF8_FAILED + "0x93 in position 3: invalid start byte", id="undeclared-shift-jis"),
+    pytest.param(VALID_EQUALS_INVALID, UTF8_FAILED + "0xff in position 7: invalid start byte",
+                 id="utf8-valid-equal-invalid-without-cyrillic-majority"),
 ])
 def test_charset_refusals_keep_exact_reason_and_atomic_failure_receipt(tmp_path, payload, reason):
     # GIVEN undecodable bytes or an unusable label and an existing output that must survive
@@ -374,6 +384,124 @@ def test_charset_refusals_keep_exact_reason_and_atomic_failure_receipt(tmp_path,
     # THEN the designed reason, zero counts and the untouched destination are exact
     assert (result, out.read_bytes()) == ((1, expected_refusal(reason), ""), b"keep existing output\n"), (
         "charset refusals must carry the designed reason and the complete atomic failure envelope")
+
+
+RUSSIAN = "Привет, как дела? Это простой текст."
+WESTERN = "Le café est déjà prêt à Noël."
+LATE_META = '<meta charset="windows-1251">'
+LOSSY_UTF8 = ("<p>" + "мир " * 50).encode("utf-8") + b"\xff</p>"
+VALID_OVER_INVALID = "<p>яяя".encode("utf-8") + b"\xff\xff</p>"
+BOUNDARY_META = (" " * 1024 + LATE_META).encode("ascii")
+MIXED_PAGE = ("<p>" + RUSSIAN * 150 + " ad ").encode("utf-8") + ("Скидка " * 18 + "</p>").encode("cp1251")
+MIXED_TEXT = "<p>" + RUSSIAN * 150 + " ad " + "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd " * 18 + "</p>"
+PURE_1251_TEXT = "<p>" + RUSSIAN * 150 + " ad " + "Скидка " * 18 + "</p>"
+
+
+def late_meta(end):
+    """Return source whose windows-1251 meta ends at byte `end`, followed by uppercase Cyrillic."""
+    return " " * (end - len(LATE_META)) + LATE_META + "<p>ПРИВЕТ МИР</p>"
+
+
+@pytest.mark.parametrize(("payload", "header", "expected"), [
+    pytest.param(b"\xef\xbb\xbf<p>x</p>", None, ("<p>x</p>", "UTF-8", "bom"), id="bom"),
+    pytest.param(b"<p>x</p>", "koi8-r", ("<p>x</p>", "KOI8-R", "header"), id="header"),
+    pytest.param(b'<meta charset="windows-1251"><p>\xcf</p>', None,
+                 ('<meta charset="windows-1251"><p>П</p>', "windows-1251", "meta"), id="meta"),
+    pytest.param(b"<p>x</p>", None, ("<p>x</p>", "UTF-8", "default"), id="default"),
+    pytest.param(b"<p>x</p>", "windows-1251", ("<p>x</p>", "windows-1251", "header"),
+                 id="single-byte-label-on-ascii-body-is-kept"),
+    pytest.param(("<p>%s</p>" % RUSSIAN).encode("cp1251"), None,
+                 ("<p>%s</p>" % RUSSIAN, "windows-1251", "fallback"), id="undeclared-windows-1251"),
+    pytest.param(("<p>%s</p>" % RUSSIAN).encode("koi8_r"), None,
+                 ("<p>%s</p>" % RUSSIAN, "KOI8-R", "fallback"), id="undeclared-koi8-r"),
+    pytest.param(("<p>%s</p>" % WESTERN).encode("cp1252"), None,
+                 ("<p>%s</p>" % WESTERN, "windows-1252", "fallback"), id="undeclared-windows-1252"),
+    pytest.param(("<p>%s</p>" % ("аА" * 20)).encode("cp1251"), None,
+                 ("<p>%s</p>" % ("аА" * 20), "windows-1251", "fallback"), id="equal-cyrillic-halves-prefer-1251"),
+    pytest.param(VALID_OVER_INVALID, None, ("<p>яяя\ufffd\ufffd</p>", "UTF-8", "fallback"),
+                 id="utf8-valid-one-over-invalid-stays-lossy-utf8"),
+    pytest.param(BOUNDARY_META + VALID_EQUALS_INVALID, None,
+                 ((BOUNDARY_META + VALID_EQUALS_INVALID).decode("cp1251"), "windows-1251", "meta"),
+                 id="utf8-valid-equal-invalid-uses-late-meta"),
+    pytest.param(BOUNDARY_META + VALID_OVER_INVALID, None,
+                 (" " * 1024 + LATE_META + "<p>яяя\ufffd\ufffd</p>", "UTF-8", "fallback"),
+                 id="utf8-valid-one-over-invalid-beats-late-meta"),
+    pytest.param(MIXED_PAGE, None, (MIXED_TEXT, "UTF-8", "fallback"),
+                 id="mostly-utf8-page-with-windows-1251-ad-stays-lossy-utf8"),
+    pytest.param(PURE_1251_TEXT.encode("cp1251"), None, (PURE_1251_TEXT, "windows-1251", "fallback"),
+                 id="same-page-all-windows-1251-uses-byte-statistics"),
+    pytest.param(("<p>%s</p>" % RUSSIAN).encode("cp1251"), "utf-8",
+                 ("<p>%s</p>" % RUSSIAN, "windows-1251", "fallback"), id="header-utf8-on-windows-1251-body"),
+    pytest.param(('<meta charset="utf-8"><p>%s</p>' % RUSSIAN).encode("cp1251"), None,
+                 ('<meta charset="utf-8"><p>%s</p>' % RUSSIAN, "windows-1251", "fallback"),
+                 id="meta-utf8-on-windows-1251-body"),
+    pytest.param("<p>Привет</p>".encode("utf-8"), "windows-1251", ("<p>Привет</p>", "UTF-8", "fallback"),
+                 id="header-windows-1251-on-utf8-body"),
+    pytest.param('<meta charset="koi8-r"><p>Привет</p>'.encode("utf-8"), None,
+                 ('<meta charset="koi8-r"><p>Привет</p>', "UTF-8", "fallback"), id="meta-koi8-r-on-utf8-body"),
+    pytest.param(late_meta(16384).encode("cp1251"), None, (late_meta(16384), "windows-1251", "meta"),
+                 id="late-meta-ending-at-16384-applies"),
+    pytest.param(late_meta(16385).encode("cp1251"), None,
+                 (late_meta(16385).encode("cp1251").decode("koi8_r"), "KOI8-R", "fallback"),
+                 id="late-meta-ending-at-16385-ignored"),
+])
+def test_decode_html_reports_text_charset_and_source_with_fallback_after_strict_failure(payload, header, expected):
+    # GIVEN raw bytes, an optional header label and the exact decoded triple
+    assert type(payload) is bytes, "decoding must start from raw source bytes"
+    # WHEN the HTML decoder resolves BOM, header, meta, default or fallback
+    decoded = htmltext._decode_html(payload, header)
+    # THEN the text, WHATWG charset name and its source are exact
+    assert decoded == expected, "charset precedence and the fallback rules must give the exact triple"
+
+
+def test_decode_bytes_keeps_its_strict_utf8_refusal_without_fallback():
+    # GIVEN undeclared windows-1251 bytes that the HTML decoder recovers by fallback
+    payload = ("<p>%s</p>" % RUSSIAN).encode("cp1251")
+    assert payload[3:5] == b"\xcf\xf0", "the first Cyrillic byte must start an invalid UTF-8 sequence"
+    # WHEN the shared text decoder reads them without a label
+    with pytest.raises(BrewdocError) as refusal:
+        htmltext._decode_bytes(payload, None)
+    # THEN text snapshots still refuse with the strict UTF-8 reason
+    assert str(refusal.value) == ("HTML UTF-8 decoding failed: 'utf-8' codec can't decode byte 0xcf in "
+                                  "position 3: invalid continuation byte"), "_decode_bytes must not fall back"
+
+
+@supported_html
+@pytest.mark.parametrize(("payload", "content", "title", "disclosed"), [
+    pytest.param(("<title>Новости</title><p>%s</p>" % RUSSIAN).encode("cp1251"), RUSSIAN + "\n", "Новости",
+                 {"charset_fallback": "windows-1251"}, id="undeclared-windows-1251"),
+    pytest.param(("<title>Новости</title><p>%s</p>" % RUSSIAN).encode("koi8_r"), RUSSIAN + "\n", "Новости",
+                 {"charset_fallback": "KOI8-R"}, id="undeclared-koi8-r"),
+    pytest.param(("<p>%s</p>" % WESTERN).encode("cp1252"), WESTERN + "\n", "Untitled",
+                 {"charset_fallback": "windows-1252"}, id="undeclared-windows-1252"),
+    pytest.param(b"<p>bad \xff</p>", "bad ÿ\n", "Untitled", {"charset_fallback": "windows-1252"},
+                 id="undeclared-lone-invalid-byte"),
+    pytest.param(LOSSY_UTF8, "мир " * 50 + "\ufffd\n", "Untitled", {"charset_fallback": "UTF-8"},
+                 id="utf8-with-a-few-invalid-bytes"),
+    pytest.param(MIXED_PAGE, MIXED_TEXT[3:-5] + "\n", "Untitled", {"charset_fallback": "UTF-8"},
+                 id="mostly-utf8-page-with-windows-1251-ad"),
+    pytest.param(('<meta charset="utf-8"><p>%s</p>' % RUSSIAN).encode("cp1251"), RUSSIAN + "\n", "Untitled",
+                 {"charset_fallback": "windows-1251"}, id="meta-utf8-on-windows-1251-body"),
+    pytest.param('<meta charset="windows-1251"><p>Привет</p>'.encode("utf-8"), "Привет\n", "Untitled",
+                 {"charset_fallback": "UTF-8"}, id="meta-windows-1251-on-utf8-body"),
+    pytest.param(late_meta(16384).encode("cp1251"), "ПРИВЕТ МИР\n", "Untitled", {},
+                 id="late-meta-within-16-kib-is-no-fallback"),
+    pytest.param(b' ' * (1025 - len(WINDOW_END)) + WINDOW_END + b'<p>caf\xe9</p>', "café\n", "Untitled", {},
+                 id="meta-ending-at-byte-1025-applies-after-utf8-fails"),
+])
+def test_charset_fallback_decodes_local_html_and_discloses_only_fallback_codecs(
+        tmp_path, payload, content, title, disclosed):
+    # GIVEN source bytes that the declared or default charset does not decode strictly
+    path, out = tmp_path / "sample.html", tmp_path / "fallback.md"
+    path.write_bytes(payload)
+    assert path.read_bytes() == payload, "the source bytes must reach decoding unchanged"
+    expected = expected_document(path, content, 1, title=title)
+    # WHEN local HTML conversion decodes them
+    rc, receipt, markdown = service.run(path, out)
+    # THEN text is exact and only a fallback-sourced charset adds charset_fallback to receipt/1
+    assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1) | disclosed, expected), (
+        "charset fallback must recover exact text and disclose only statistical or lossy decoding")
+    assert out.read_bytes() == expected.encode("utf-8"), "fallback file and API bytes must match"
 
 
 @supported_html
@@ -906,8 +1034,8 @@ def test_table_cells_drop_controls_and_inline_alt_images_without_extra_regions(t
                  '[**Before*Inner***](/safe)\n\n```\nliteral\n```\n\n[***After*Tail**](/safe)\n',
                  3, 0, id="nested-strong-emphasis-link-segments-balanced"),
     pytest.param('<a href="a_(b)"><code>café &amp; &lt;x&gt;</code></a>',
-                 '```\ncafé & <x>\n```\n\n[Link target](a_%28b%29)\n',
-                 2, 0, id="code-only-safe-link-target-once"),
+                 '```\ncafé & <x>\n```\n\n[café & &lt;x>](a_%28b%29)\n',
+                 2, 0, id="code-only-safe-link-after-fence-once"),
     pytest.param('<em><code>literal</code></em>', '```\nliteral\n```\n',
                  1, 0, id="code-only-emphasis-no-phantom-delimiters"),
     pytest.param('<ul><li><p>First</p><p>Second</p></li></ul>',
@@ -1197,24 +1325,37 @@ def test_native_initialization_failures_preserve_package_legacy_and_html_refusal
 @supported_html
 @pytest.mark.parametrize("source,content,regions,tables", [
     pytest.param('<code><a href="../mod/core.html#traceenable">TraceEnable</a></code>',
-                 '```\nTraceEnable\n```\n\n'
-                 '[Link target](../mod/core.html#traceenable); text="TraceEnable"\n',
+                 '```\nTraceEnable\n```\n\n[TraceEnable](../mod/core.html#traceenable)\n',
                  2, 0, id="body-code-descendant-anchor"),
     pytest.param('<pre><a href="/multi">café "quoted"\n\t  東京 &amp;#10;</a></pre>',
-                 '```\ncafé "quoted"\n\t  東京 &#10;\n```\n\n'
-                 '[Link target](/multi); text="café &quot;quoted&quot;&#10;&#9;  東京 &amp;#10;"\n',
-                 2, 0, id="body-pre-lossless-descendant-label"),
+                 '```\ncafé "quoted"\n\t  東京 &#10;\n```\n\n[café "quoted" 東京 &amp;#10;](/multi)\n',
+                 2, 0, id="body-pre-descendant-label-as-inline-link-text"),
     pytest.param('<code><a href="/same">First</a> / <a href="/same">Second</a></code>',
-                 '```\nFirst / Second\n```\n\n[Link target](/same); text="First"\n\n'
-                 '[Link target](/same); text="Second"\n',
+                 '```\nFirst / Second\n```\n\n[First](/same)\n\n[Second](/same)\n',
                  3, 0, id="repeated-url-anchors-remain-distinct"),
     pytest.param('<a href="./"><img src="back" alt="Back"></a>'
                  '<a href="#page-header"><img src="top" alt="Top"></a>',
-                 '![Back](back)\n\n[Link target](./)\n\n![Top](top)\n\n[Link target](#page-header)\n',
-                 4, 0, id="image-only-links-keep-target-records"),
+                 '[![Back](back)](./) [![Top](top)](#page-header)\n',
+                 1, 0, id="image-only-links-wrap-their-images"),
+    pytest.param('<p>See <a href="/x"><img alt="I" src="p"></a> here</p>',
+                 'See [![I](p)](/x) here\n', 1, 0, id="image-only-link-stays-inline-in-paragraph"),
+    pytest.param('<p><a href="/x"><img alt="I" src="p"> cap</a></p>',
+                 '[![I](p) cap](/x)\n', 1, 0, id="image-and-text-share-one-link"),
+    pytest.param('<p><a href="/x"><img alt="A" src="a"><img alt="B" src="b"></a></p>',
+                 '[![A](a)](/x)\n\n![B](b)\n', 2, 0, id="second-image-in-one-link-stays-a-block"),
+    pytest.param('<p><a href="/x"><b><img alt="I" src="p"></b></a></p>',
+                 '[**![I](p)**](/x)\n', 1, 0, id="image-inside-strong-link-keeps-balanced-contexts"),
+    pytest.param('<p>A<img alt="I" src="p">B</p>', 'A\n\n![I](p)\n\nB\n', 3, 0,
+                 id="unlinked-image-stays-a-block"),
+    pytest.param('<p>A<a href="javascript:x"><img alt="I" src="p"></a>B</p>', 'A\n\n![I](p)\n\nB\n', 3, 0,
+                 id="unsafe-link-image-stays-an-unlinked-block"),
+    pytest.param('<a href="/none"><img src="pic"></a><p>Kept</p>', 'Kept\n', 1, 0,
+                 id="alt-less-image-link-writes-no-empty-link"),
     pytest.param('<a href="/wrap"><code>literal</code></a>',
-                 '```\nliteral\n```\n\n[Link target](/wrap)\n',
-                 2, 0, id="existing-enclosing-code-target-once"),
+                 '```\nliteral\n```\n\n[literal](/wrap)\n',
+                 2, 0, id="existing-enclosing-code-link-once"),
+    pytest.param('<a href="/w"><code> </code></a>', '```\n \n```\n\n[/w](/w)\n',
+                 2, 0, id="enclosing-whitespace-code-keeps-destination-as-label"),
     pytest.param('<code><a hidden href="/hidden">Hidden</a><span hidden>'
                  '<a href="/ancestor">Lost</a></span><a href="javascript:go">Unsafe</a>'
                  '<a>Missing</a><a href="/empty"></a></code>',
@@ -1224,39 +1365,170 @@ def test_native_initialization_failures_preserve_package_legacy_and_html_refusal
                  'Kept\n', 1, 0, id="excluded-enclosing-image-no-fabricated-target"),
     pytest.param('<table><tr><td>Before <code><a href="/same">café</a> / '
                  '<a href="/same">東京</a></code> After</td></tr></table>',
-                 '| Before Code: text="café / 東京" [Link target](/same); text="café" '
-                 '[Link target](/same); text="東京" After |\n| --- |\n',
-                 0, 1, id="cell-descendant-records-zero-regions"),
+                 '| Before Code: text="café / 東京" [café](/same) [東京](/same) After |\n| --- |\n',
+                 0, 1, id="cell-descendant-links-zero-regions"),
     pytest.param('<table><tr><td><a href="/image"><img src="pic" alt="Icon"></a> ; '
                  '<a href="/code"><code>x</code></a></td></tr></table>',
                  '| [![Icon](pic)](/image) ; [Code: text="x"](/code) |\n| --- |\n',
                  0, 1, id="image-cell-inside-link-and-code-once"),
     pytest.param('<pre>Before<code><a href="/nested">Linked</a></code>After</pre>',
-                 '```\nBeforeLinkedAfter\n```\n\n[Link target](/nested); text="Linked"\n',
+                 '```\nBeforeLinkedAfter\n```\n\n[Linked](/nested)\n',
                  2, 0, id="nested-consumed-code-pre-collect-once"),
     pytest.param('<pre><a href="/first">One<a href="/second">Two</a></pre>',
-                 '```\nOneTwo\n```\n\n[Link target](/first); text="One"\n\n'
-                 '[Link target](/second); text="Two"\n',
+                 '```\nOneTwo\n```\n\n[One](/first)\n\n[Two](/second)\n',
                  3, 0, id="recovered-malformed-anchors-once-in-dom-order"),
     pytest.param('<code><a href="/whitespace"> \n\t </a></code>',
-                 '```\n \n\t \n```\n\n[Link target](/whitespace); text=" &#10;&#9; "\n',
-                 2, 0, id="retained-literal-whitespace-is-not-an-empty-label"),
+                 '```\n \n\t \n```\n\n[/whitespace](/whitespace)\n', 2, 0,
+                 id="retained-literal-whitespace-is-not-an-empty-label"),
 ])
 def test_consumed_literal_and_image_anchors_preserve_each_safe_target_once(
     tmp_path, source, content, regions, tables,
 ):
-    # GIVEN consumed literal/image content with exact included-anchor records and control cases
+    # GIVEN consumed literal or linked image content and unlinked, unsafe or empty control cases
     path, out = tmp_path / "sample.html", tmp_path / "targets.md"
     path.write_bytes(source.encode("utf-8"))
     assert out.exists() is False, "link-target output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN body or cell rendering preserves targets without modifying consumed literal text
     rc, receipt, markdown = service.run(path, out)
-    # THEN every included source anchor retains its own destination, label, position and count
+    # THEN each safe anchor is one standard Markdown link at its position, without records
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "consumed content must preserve each safe anchor occurrence without fabricated or duplicate records"
     assert out.read_bytes() == expected.encode("utf-8"), "target-preserving file and API bytes must agree"
+
+
+def disclosed_document(path, content, regions, omissions, *, tables=0):
+    """Append extra Known omissions lines to the independent default document."""
+    return expected_document(path, content, regions, tables=tables).replace(
+        "- " + HTML_OMISSIONS[-1] + "\n", "".join("- %s\n" % item for item in [HTML_OMISSIONS[-1], *omissions]))
+
+
+@supported_html
+@pytest.mark.parametrize("source,content,regions,tables", [
+    pytest.param('<p>See <a href="https://example.com/docs">docs</a> now</p>', 'See docs now\n', 1, 0,
+                 id="paragraph-link-keeps-text"),
+    pytest.param('<p><a href="#top">Top</a> <a href="mailto:a@b.test">Mail</a></p>', 'Top Mail\n', 1, 0,
+                 id="fragment-and-mailto-links-keep-text"),
+    pytest.param('<p><a href="/e"><em>Em</em> tail</a></p>', '*Em* tail\n', 1, 0,
+                 id="emphasis-inside-link-stays"),
+    pytest.param('<a href="/home"><img alt="Home" src="h.png"></a>', '![Home](h.png)\n', 1, 0,
+                 id="image-only-link-keeps-unlinked-image"),
+    pytest.param('<pre><a href="/z">code</a></pre>', '```\ncode\n```\n', 1, 0,
+                 id="code-consumed-link-writes-no-link-line"),
+    pytest.param('<a href="/wrap"><code>literal</code></a>', '```\nliteral\n```\n', 1, 0,
+                 id="code-enclosing-link-writes-no-link-line"),
+    pytest.param('<table><tr><td><a href="/c">cell</a> <code><a href="/d">x</a></code></td></tr></table>',
+                 '| cell Code: text="x" |\n| --- |\n', 0, 1, id="cell-links-keep-text"),
+])
+def test_no_links_keeps_anchor_text_and_discloses_omitted_destinations(tmp_path, source, content, regions, tables):
+    # GIVEN HTML whose anchors carry safe destinations in prose, images, code and cells
+    path, out = tmp_path / "sample.html", tmp_path / "plain.md"
+    path.write_bytes(source.encode("utf-8"))
+    assert out.exists() is False, "no-links output must start absent"
+    expected = disclosed_document(path, content, regions, [LINKS_OMISSION], tables=tables)
+    # WHEN the public service renders without link destinations
+    result = service.run(path, out, links=False)
+    # THEN anchor text stays, no link syntax appears and both receipt and document disclose the omission
+    assert (result, out.read_bytes()) == ((0, dict(
+        expected_receipt(path, out, regions, tables=tables), not_carried=[*HTML_OMISSIONS, LINKS_OMISSION]),
+        expected), expected.encode("utf-8")), "--no-links must keep anchor text and disclose omitted destinations"
+
+
+@supported_html
+@pytest.mark.parametrize("source,content,omissions,fallback", [
+    pytest.param('<p>Out</p><article><p><a href="/k">Kept</a></p></article>', 'Kept\n',
+                 [ARTICLE_OMISSION, LINKS_OMISSION], {}, id="selected-article"),
+    pytest.param('<p><a href="/o">Only</a></p>', 'Only\n', [LINKS_OMISSION],
+                 {"article_fallback": True}, id="article-fallback"),
+])
+def test_no_links_omission_survives_article_selection_and_fallback(tmp_path, source, content, omissions, fallback):
+    # GIVEN a linked article page or a page without an article candidate
+    path = tmp_path / "sample.html"
+    path.write_bytes(source.encode("utf-8"))
+    assert path.read_bytes() == source.encode("utf-8"), "the linked source must exist unchanged"
+    # WHEN article mode and --no-links are combined
+    result = service.run(path, article=True, links=False)
+    # THEN the links omission follows any article omission, also when article mode falls back
+    assert result == (0, dict(expected_receipt(path, None, 1), out=None,
+                              not_carried=[*HTML_OMISSIONS, *omissions], **fallback),
+                      disclosed_document(path, content, 1, omissions)), (
+        "--no-links disclosure must not be dropped by article selection or its fallback")
+
+
+@supported_html
+def test_no_links_strips_destinations_after_attribute_limits_are_checked(tmp_path, monkeypatch):
+    # GIVEN an anchor whose href alone exceeds a lowered attribute byte limit and an existing destination
+    path, out = tmp_path / "sample.html", tmp_path / "preserved.md"
+    path.write_bytes(b'<p><a href="/toolong">x</a></p>')
+    out.write_bytes(b"preserved")
+    monkeypatch.setattr(htmltext, "_ATTRIBUTE_BYTE_LIMIT", 4)
+    assert out.read_bytes() == b"preserved", "limit refusal output must start intact"
+    # WHEN --no-links rendering validates the recovered tree
+    result = service.run(path, out, links=False)
+    # THEN the unchanged limit refuses with the links omission and the destination stays intact
+    assert (result, out.read_bytes()) == ((1, dict(
+        expected_refusal("HTML attribute byte limit exceeded: 4"),
+        not_carried=[*HTML_OMISSIONS, LINKS_OMISSION]), ""), b"preserved"), (
+        "href stripping must run after validation so --no-links never weakens resource limits")
+
+
+@supported_html
+def test_no_links_cli_writes_plain_anchor_text_and_prints_the_disclosing_receipt(tmp_path, capsys):
+    # GIVEN a linked HTML page and an existing destination
+    path, out = tmp_path / "sample.html", tmp_path / "replaced.md"
+    path.write_bytes('<p>See <a href="/docs">café 東京</a></p>'.encode("utf-8"))
+    out.write_bytes(b"replaced")
+    expected = disclosed_document(path, "See café 東京\n", 1, [LINKS_OMISSION])
+    assert out.read_bytes() == b"replaced", "CLI destination must start populated"
+    # WHEN the CLI converts with --no-links
+    code = cli.main([str(path), "--no-links", "--out", str(out)])
+    captured = capsys.readouterr()
+    # THEN stdout is the disclosing receipt and the file holds plain anchor text
+    receipt = dict(expected_receipt(path, out, 1), not_carried=[*HTML_OMISSIONS, LINKS_OMISSION])
+    assert (code, captured.out, captured.err, out.read_bytes()) == (
+        0, json.dumps(receipt, ensure_ascii=True, sort_keys=True) + "\n", "", expected.encode("utf-8"),
+    ), "--no-links CLI must publish plain anchor text with the omission in the receipt"
+
+
+@supported_html
+def test_render_html_without_links_matches_run_without_links(tmp_path):
+    # GIVEN a page whose anchor carries a safe destination
+    path = tmp_path / "sample.html"
+    path.write_bytes(b'<p>See <a href="https://example.com/docs">docs</a> now</p>')
+    expected = disclosed_document(path, "See docs now\n", 1, [LINKS_OMISSION])
+    assert path.read_bytes() == b'<p>See <a href="https://example.com/docs">docs</a> now</p>', "source must exist"
+    # WHEN the public renderer and the service both drop link destinations
+    rendered = render_html(path, links=False)
+    result = service.run(path, links=False)
+    # THEN both keep anchor text, omit the destination and disclose the omission
+    assert (rendered, result) == (
+        (expected, dict(zero_tally(), chapters=1, text_regions=1)),
+        (0, dict(expected_receipt(path, None, 1), out=None, not_carried=[*HTML_OMISSIONS, LINKS_OMISSION]),
+         expected),
+    ), "render_html(links=False) must give the same no-links Markdown as run(links=False)"
+
+
+@supported_html
+def test_non_html_no_links_api_and_cli_return_normal_refusal_before_output(tmp_path, capsys):
+    # GIVEN a readable synthetic DOCX and existing destination
+    path, out = tmp_path / "sample.docx", tmp_path / "preserved.md"
+    docx(path, '<w:p><w:r><w:t>Ordinary document</w:t></w:r></w:p>')
+    out.write_bytes(b"preserved")
+    assert service.run(path)[0] == 0, "the non-HTML source must otherwise convert successfully"
+    expected = dict(expected_refusal("--no-links is an HTML-only option"), route="doc", source="sample.docx",
+                    not_carried=["images, charts and the text drawn inside them",
+                                 "tracked changes, comments, footnotes, headers and footers",
+                                 "a table's own formatting - only its cells, row by row"])
+    # WHEN public API and CLI request --no-links for a non-HTML document
+    result = service.run(path, out, links=False)
+    code = cli.main([str(path), "--no-links", "--out", str(out)])
+    captured = capsys.readouterr()
+    # THEN both refuse at options with the HTML-only message and preserve the destination
+    assert (result, code, captured.out, captured.err, out.read_bytes()) == (
+        (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n",
+        "", b"preserved",
+    ), "non-HTML --no-links requests must fail with a normal receipt before output publication"
 
 
 CELL_BLOCKS = [

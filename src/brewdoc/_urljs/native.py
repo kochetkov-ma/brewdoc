@@ -10,11 +10,12 @@ from urllib.parse import urljoin, urlsplit
 
 
 class NativeError(RuntimeError):
-    """Distinguish trusted timing stops, resource refusal and script exceptions."""
+    """Distinguish trusted timing stops, resource refusal, typed fallbacks and script exceptions."""
 
-    def __init__(self, message, *, resource=False, timing=False):
+    def __init__(self, message, *, resource=False, timing=False, fallback=None):
         self.resource = resource
         self.timing = timing and not resource
+        self.fallback = fallback
         super().__init__('resource: ' + message if resource else message)
 
 
@@ -325,12 +326,12 @@ class Context:
     def _check_limits(self):
         """Keep sticky heap and authoritative host failures ahead of timing."""
         if self.heap_exhausted:
-            raise NativeError('native heap limit exceeded', resource=True)
+            raise NativeError('native heap limit exceeded', resource=True, fallback='heap')
         if self.host_error is not None:
             error, self.host_error = self.host_error, None
             raise error
         if self.snapshot_refused:
-            raise NativeError('native snapshot inspection refused', resource=True)
+            raise NativeError('native snapshot inspection refused', resource=True, fallback='dom')
 
     def _begin(self, *, recovery=False):
         """Enforce trusted cutoffs before any page effect and retain hard precedence."""
@@ -481,7 +482,7 @@ class Context:
     def _refuse_snapshot(self):
         """Latch a source-guard refusal before a later timing stop can mask it."""
         self.snapshot_refused = True
-        raise NativeError('native snapshot inspection refused', resource=True)
+        raise NativeError('native snapshot inspection refused', resource=True, fallback='dom')
 
     def own_descriptor(self, value, key):
         """Return an owned descriptor or None, rejecting Proxy and key coercion."""
@@ -829,8 +830,9 @@ class Context:
                             constructor(selected('@svg'), clone_fields + ('ownerSVGElement',))
                         else:
                             name = data(current, key_map['localName'])
-                            if not any(same(name, data(selected(tag), '0'))
-                                       for tag in ('script', 'style', 'title', 'textarea')):
+                            # LinkeDOM keeps createElement case; its class registry holds both cases.
+                            if not any(same(name, data(selected(tag), '0')) for tag in
+                                       ('script', 'style', 'title', 'textarea', 'SCRIPT', 'STYLE', 'TITLE', 'TEXTAREA')):
                                 self._refuse_snapshot()
                             row = selected(name)
                             constructor(row, clone_fields + ('SHEET',))

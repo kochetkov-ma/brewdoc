@@ -19,6 +19,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Timeout guard p
 INITIAL = b"<html><body><p>Initial article</p></body></html>"
 FALLBACK = {"category": "initial_html_timeout_fallback", "resource_url": None}
 TIMING = {"category": "capture_timeout", "resource_url": None}
+DOM_FALLBACK = {"category": "initial_html_dom_fallback", "resource_url": None}
 ANCILLARY = [{"category": "ancillary_transport_failed", "resource_url": "https://fixture.test/data-%d" % index}
              for index in range(15)]
 WORKER_BOOT = """
@@ -210,12 +211,12 @@ def test_first_group_permission_refusal_cannot_claim_owned_timeout_fallback(monk
     monkeypatch.setattr(htmljs.os, "killpg", refuse)
     assert (process.returncode, kills) == (None, []), "no earlier successful signal may justify fallback"
     # WHEN the main loop reaches an already expired recovery deadline.
-    with pytest.raises(PermissionError) as rejected:
+    with pytest.raises(BrewdocError) as rejected:
         htmljs.render(INITIAL.decode(), URL, lambda request: None, 98.5, soft_window=0.5)
-    # THEN the exact syscall error survives and the final zero exit does not prove cancellation.
-    assert (rejected.value, process.returncode, kills) == (
-        refusal, 0, [(process.pid, signal.SIGKILL)],
-    ), "PermissionError must stay observable instead of being masked as eligible fallback"
+    # THEN the refused signal leaves the zero exit uncancelled, so it refuses as a crash, not as fallback.
+    assert (str(rejected.value), process.returncode, kills) == (
+        "JS child crash refused", 0, [(process.pid, signal.SIGKILL)],
+    ), "a refused group signal must never become cancellation provenance for the owned timeout fallback"
 
 
 def test_concurrent_cancellers_signal_one_owned_group_before_status_becomes_visible(monkeypatch):
@@ -405,21 +406,38 @@ const original=document.body.toString;const parent=Object.create(Object.getProto
 Object.defineProperty(parent,'toString',{get(){document.querySelector('p').textContent='Getter callback';return original;}});
 Object.setPrototypeOf(document.body,parent);while(true){}
 """, id="inherited-serializer-getter"),
-    pytest.param("throw new InternalError('page-created intrinsic error');", id="noninterrupted-intrinsic-internal-error"),
 ])
-def test_recovery_cannot_soften_serializer_tampering_or_intrinsic_internal_error(script, monkeypatch, tmp_path):
-    # GIVEN acquired content and actual tampering or a noninterrupted intrinsic error.
+def test_recovery_keeps_dom_fallback_cause_for_serializer_tampering(script, monkeypatch, tmp_path):
+    # GIVEN acquired content, actual serializer tampering and a looping page.
+    body = ('<html><body><p>Initial article</p><script>' + script + '</script></body></html>').encode()
+    output = tmp_path / "article.md"
+    output.write_bytes(b"previous output\n")
+    monkeypatch.setattr(htmlurl, "_fetch", lambda url, **options: _html_response(body, **options))
+    assert output.read_bytes() == b"previous output\n", "prior output must exist before the fallback replaces it"
+    # WHEN trusted recovery encounters the forged capability after the timing stop.
+    code, receipt, markdown = htmlurl._run_url(URL, output, render_js=True, timeout=2)
+    acquisition = receipt["acquisition"]
+    # THEN only the initial article is published under the DOM-guard cause, never a timing fallback.
+    assert (code, _chapter_body(markdown), acquisition["capture_status"], acquisition["errors"],
+            acquisition["snapshot"]["kind"], output.read_bytes()) == (
+        0, "Initial article\n", "partial", [DOM_FALLBACK], "initial_html_dom_fallback", markdown.encode(),
+    ), "a looping constructor or inherited getter must not soften the DOM-guard cause or publish its edits"
+
+
+def test_recovery_cannot_soften_noninterrupted_intrinsic_internal_error(monkeypatch, tmp_path):
+    # GIVEN acquired content and a noninterrupted intrinsic error.
+    script = "throw new InternalError('page-created intrinsic error');"
     body = ('<html><body><p>Initial article</p><script>' + script + '</script></body></html>').encode()
     output = tmp_path / "article.md"
     output.write_bytes(b"previous output\n")
     monkeypatch.setattr(htmlurl, "_fetch", lambda url, **options: _html_response(body, **options))
     assert output.read_bytes() == b"previous output\n", "hard recovery checks start with existing output"
-    # WHEN trusted recovery encounters the forged capability or native error class.
+    # WHEN trusted recovery encounters the native error class.
     code, receipt, markdown = htmlurl._run_url(URL, output, render_js=True, timeout=2)
-    # THEN neither a looping page constructor nor inherited getter permits fallback.
+    # THEN the intrinsic error keeps hard refusal and the previous output.
     assert (code, markdown, receipt["acquisition"]["capture_status"], output.read_bytes()) == (
         1, "", "refused", b"previous output\n",
-    ), "tamper and intrinsic InternalError must retain hard priority over recovery timing"
+    ), "intrinsic InternalError must retain hard priority over recovery timing"
 
 
 def test_second_runtime_preflight_timeout_preserves_already_acquired_html_without_starting_a_child(monkeypatch):

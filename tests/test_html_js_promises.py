@@ -10,7 +10,7 @@ import time
 import pytest
 
 from brewdoc.common import BrewdocError
-from brewdoc.htmljs import render
+from brewdoc.htmljs import OMISSIONS, render
 
 try:
     ENGINE_AVAILABLE = importlib.metadata.version("quickjs-ng") == "0.17.0.1"
@@ -25,12 +25,16 @@ pytestmark = pytest.mark.skipif(
 UNKNOWN = "promise_completion_unobservable"
 
 
+def _page(script, script_type=""):
+    """Wrap a synthetic strict script in the acquired page the capture receives."""
+    return ('<html><body><p id="result">pending</p><script type="' + script_type + '">'
+            "'use strict';const emit=value=>document.querySelector('#result').textContent=JSON.stringify(value);"
+            + script + '</script></body></html>')
+
+
 def _capture(script, fetch=lambda request: None, *, script_type=""):
     """Run a synthetic strict script through the real installed capture boundary."""
-    source = ('<html><body><p id="result">pending</p><script type="' + script_type + '">'
-              "'use strict';const emit=value=>document.querySelector('#result').textContent=JSON.stringify(value);"
-              + script + '</script></body></html>')
-    return render(source, "https://fixture.test/", fetch, time.monotonic() + 10, soft_window=1)
+    return render(_page(script, script_type), "https://fixture.test/", fetch, time.monotonic() + 10, soft_window=1)
 
 
 def _assert_capture(captured, expected, *, status="settled", categories=(), promises=0, modules=0):
@@ -454,13 +458,19 @@ def test_page_native_promises_refuse_one_over_the_cumulative_job_limit():
     "Object.defineProperty(document.body,'toString',{value:()=> 'forged'})",
     "Object.defineProperty(document.querySelector('p').firstChild,'toString',{value:()=> 'forged'})",
 ])
-def test_promise_unknown_never_downgrades_dom_serializer_hard_refusal(mutation):
+def test_promise_unknown_never_changes_dom_serializer_fallback_cause(mutation):
     # GIVEN unknown page promise behavior and a real forged DOM serializer.
     script = "globalThis.Promise=function Replacement(){};" + mutation
     # WHEN the trusted serializer examines the actual tree.
-    with pytest.raises(BrewdocError, match="resource"):
-        _capture(script)
-    # THEN unknown completion cannot permit a forged partial snapshot.
+    captured = _capture(script)
+    # THEN only the initial page is published under the sole DOM-guard cause, never a forged snapshot.
+    assert captured == {
+        "html": _page(script), "snapshot_kind": "initial_html_dom_fallback", "capture_status": "partial",
+        "errors": [{"category": "initial_html_dom_fallback", "resource_url": None}], "error_count": 1,
+        "pending": dict.fromkeys(("requests", "timers", "modules", "promises", "jobs")),
+        "counts": {"promise_jobs": None, "timer_callbacks": None}, "engine": "QuickJS-ng 0.17.0",
+        "dom_bundle": "LinkeDOM 0.18.13", "soft_window_seconds": 1, "unsupported": list(OMISSIONS),
+    }, "unknown promise completion must neither add provenance nor replace the DOM-guard fallback"
 
 
 def test_parent_accepts_the_exact_promise_unknown_category_with_existing_metadata_shape():

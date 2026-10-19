@@ -157,7 +157,6 @@ def test_other_search_profiles_and_options_make_zero_acquisition_calls(changes, 
 
 @pytest.mark.parametrize("url", [
     pytest.param(SEARCH.replace(".net/", ".net:444/"), id="globally-forbidden-port"),
-    pytest.param(SEARCH.replace("https:", "ftp:"), id="globally-forbidden-scheme"),
     pytest.param(SEARCH.replace("https://", "https://synthetic-user@"), id="globally-forbidden-userinfo"),
 ])
 def test_search_does_not_soften_the_existing_global_url_policy(url, trusted_search_key):
@@ -168,6 +167,16 @@ def test_search_does_not_soften_the_existing_global_url_policy(url, trusted_sear
         htmljs._host_response(search_record(url=url), requested.append, DOCUMENT, DOCUMENT)
     # THEN search permission cannot convert a global security refusal into partial input.
     assert requested == [], "globally forbidden POST destinations must retain hard refusal before acquisition"
+
+
+def test_search_to_a_non_http_scheme_fails_alone_without_acquisition(trusted_search_key):
+    # GIVEN a search XHR whose destination uses a non-HTTP(S) scheme.
+    requested = []
+    # WHEN the parent resolves the page-controlled URL before POST permission.
+    response = htmljs._host_response(search_record(url=SEARCH.replace("https:", "ftp:")), requested.append, DOCUMENT, DOCUMENT)
+    # THEN only that request fails like a browser network error and nothing is acquired.
+    assert (response, requested) == ({"error": "ancillary_transport_failed"}, []), (
+        "a non-HTTP(S) search destination must fail alone without acquisition, not refuse the capture")
 
 
 @pytest.mark.parametrize("headers,conflict", [

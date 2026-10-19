@@ -12,7 +12,7 @@ from brewdoc.common import (MARKDOWN_SCHEMA, RECEIPT_SCHEMA, BrewdocError, Route
 from brewdoc.docx import ROUTE as DOC_ROUTE
 from brewdoc.eml import ROUTE as EML_ROUTE
 from brewdoc.epub import ROUTE as EPUB_ROUTE
-from brewdoc.htmltext import ARTICLE_OMISSION, ROUTE as HTML_ROUTE, _html_content
+from brewdoc.htmltext import ARTICLE_OMISSION, LINKS_OMISSION, ROUTE as HTML_ROUTE, _html_content
 from brewdoc.odf import ODP_ROUTE, ODT_ROUTE
 from brewdoc.output import _output_targets, _write_outputs
 from brewdoc.pdf import ROUTE as PDF_ROUTE
@@ -41,6 +41,7 @@ ROUTES = _route_map(PDF_ROUTE, DOC_ROUTE, PRESENTATION_ROUTE, SHEET_ROUTE, HTML_
 SUFFIXES = " ".join(sorted(ROUTES))
 NO_ROUTE = Route("none", "none", (), None, ())
 HTML_ONLY = "--article is an HTML-only option"
+LINKS_HTML_ONLY = "--no-links is an HTML-only option"
 WORKBOOK_ONLY = "--sheet and --artifact are workbook-only options"
 
 
@@ -48,18 +49,17 @@ def _route(path: Path) -> Route:
     return ROUTES.get(path.suffix.lower(), NO_ROUTE)
 
 
-def _html_receipt_route(article: bool) -> Route:
-    """Keep article disclosure on an unregistered copy of the HTML receipt route."""
-    if not article:
-        return HTML_ROUTE
-    return replace(HTML_ROUTE, not_carried=HTML_ROUTE.not_carried + (ARTICLE_OMISSION,))
+def _html_receipt_route(article: bool, links: bool = True) -> Route:
+    """Keep article, then links, disclosure on an unregistered copy of the HTML receipt route."""
+    omissions = ((ARTICLE_OMISSION,) if article else ()) + (() if links else (LINKS_OMISSION,))
+    return replace(HTML_ROUTE, not_carried=HTML_ROUTE.not_carried + omissions) if omissions else HTML_ROUTE
 
 
 def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = None,
           out=None, unit_keys: tuple[str, ...] = (), artifacts: tuple[dict, ...] = (),
           selected_sheets=None) -> dict:
     """Copy loss counters into a receipt; success adds Markdown schema, unit keys and artifacts.
-    Selected sheets and the article fallback flag appear only on success when present."""
+    Selected sheets and the article and charset fallbacks appear only on success when present."""
     tally = tally or new_tally()
     line = {"file_ok": file_ok, "route": route.name, "reason": reason,
             "source": Path(path).name, "out": str(out) if out else None,
@@ -76,6 +76,8 @@ def _line(route: Route, file_ok: bool, reason: str, path, tally: dict | None = N
             line["selected_sheets"] = list(selected_sheets)
         if "article_fallback" in tally:
             line["article_fallback"] = True
+        if "charset_fallback" in tally:
+            line["charset_fallback"] = tally["charset_fallback"]
     return line
 
 
@@ -95,21 +97,21 @@ def _artifact_output_pairs(artifact_outputs) -> tuple[tuple[str, Path, str], ...
 
 
 def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = False,
-        body_only: bool = False) -> tuple[int, dict, str]:
+        body_only: bool = False, links: bool = True) -> tuple[int, dict, str]:
     """(exit code, receipt, Markdown); every path returns a receipt, a refusal names what and where.
     Body-only derives its Markdown from the full rendering, so limits and receipts stay the same."""
     path = Path(path)
     route = _route(path)
-    if route.name == "html" and article:
-        route = _html_receipt_route(article)
+    if route.name == "html":
+        route = _html_receipt_route(article, links)
     if route.render is None:
         return EXIT_FAIL, _line(route, False, "unsupported suffix '%s' in %s: brewdoc reads %s"
                                 % (path.suffix.lower(), path, SUFFIXES), path), ""
     if not path.is_file():
         return EXIT_FAIL, _line(route, False, "no such file: %s" % path, path), ""
     try:
-        if article and route.name != "html":
-            raise BrewdocError(HTML_ONLY)
+        if route.name != "html" and (article or not links):
+            raise BrewdocError(HTML_ONLY if article else LINKS_HTML_ONLY)
         sheets = _sheet_selection(sheets)
         pairs = _artifact_output_pairs(artifact_outputs)
         if route.name != "sheet" and (sheets is not None or pairs):
@@ -120,11 +122,13 @@ def run(path, out=None, *, sheets=None, artifact_outputs=None, article: bool = F
             rendered = route.render(path, sheets, _zip_budget=zip_budget)
         elif route.name == "eml":
             rendered = route.render(path, sheets, _html_content=_html_content)
+        elif route.name == "html":
+            rendered = route.render(path, sheets, article=article, links=links)
         else:
-            rendered = route.render(path, sheets, article=True) if article else route.render(path, sheets)
+            rendered = route.render(path, sheets)
         markdown, tally, unit_keys, references = rendered
         if "article_fallback" in tally:
-            route = HTML_ROUTE
+            route = _html_receipt_route(False, links)
         if body_only and route.markdown_schema == MARKDOWN_SCHEMA:
             markdown = _body_only(markdown, unit_keys)
         keys = tuple(key for key, _target, _shown in pairs)

@@ -454,7 +454,8 @@ def frozen_url(monkeypatch, source, render_js):
         """Record one successful guarded acquisition at the external I/O seam."""
         calls.append(url)
         budget["accepted_requests"] += 1
-        return {"final_url": url, "body": body, "entity": body, "headers": (("Content-Type", "text/html"),),
+        return {"status": 200, "redirects": (), "final_url": url, "body": body, "entity": body,
+                "headers": (("Content-Type", "text/html"),),
                 "body_sha256": hashlib.sha256(body).hexdigest(),
                 "entity_sha256": hashlib.sha256(body).hexdigest()}
 
@@ -491,7 +492,9 @@ def url_acquisition(body, snapshot, render_js):
                 snapshot={"kind": {False: "static_html", True: "javascript_dom"}[render_js],
                           "bytes": len(snapshot), "sha256": hashlib.sha256(snapshot).hexdigest()},
                 counts={"requests": 1, "promise_jobs": 0, "timer_callbacks": 0},
-                refusal_stage=None, timeout_seconds=30.0)
+                refusal_stage=None, timeout_seconds=30.0, http_status=200, redirect_count=0,
+                challenge=None, charset="UTF-8", charset_source="default",
+                render_js={False: None, True: "always"}[render_js])
 
 
 @supported_html

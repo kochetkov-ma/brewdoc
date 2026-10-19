@@ -52,27 +52,25 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Write clean Markdown by default: minimal escaping, images as ![alt](src), no form-control or list-item records and no page landmark chrome.",
-    "Add opt-in --body-only output.",
-    "Accept PDF, DOCX, XLSX and other supported documents through --url.",
-    "Decode legacy HTML charsets such as koi8-r and windows-1251, and request gzip responses.",
-    "Finish JavaScript capture when the page becomes quiet."
+    "Add --render-js auto, the recommended mode for unknown pages: acquire statically and run JavaScript only on a JavaScript shell page; bare --render-js still means always. Pages that need browser APIs outside the bounded engine, such as crates.io, refuse at javascript_required.",
+    "Refuse captcha, bot challenge, login and JavaScript shell pages with a plain reason at stage challenge or javascript_required, instead of near-empty successes. Challenges are named, such as cloudflare, datadome or qrator, never solved.",
+    "Report http_status, redirect_count, challenge, charset, charset_source and render_js in URL receipts; brewdoc.receipt/2 changes only by adding keys.",
+    "Add --no-links for HTML: keep link text, omit destinations and disclose it in the receipt.",
+    "Decode mislabelled HTML charsets and undeclared Latin or Cyrillic HTML by fallback instead of refusing, disclosed as charset_fallback in local receipts.",
+    "Write links inside code and around images as standard Markdown links instead of [Link target] records; local HTML Markdown changes for these links."
   ],
   "release_fixes": [
-    "Fix PDF word spacing in tightly kerned text, such as LaTeX output.",
-    "Keep rotated watermark text out of PDF prose.",
-    "Decode entities in HTML titles.",
-    "Fall back to the full page when --article finds no article, instead of refusing.",
-    "Follow URL redirects whose location contains raw spaces.",
-    "Report the real refusal stage and resource_url.",
-    "Try the next address before any request bytes are sent.",
-    "Keep a JavaScript capture when one sub-request fails."
+    "Keep the HTTP status and the redirect reason in URL refusals instead of a generic stage message.",
+    "Fall back to the acquired HTML when the JavaScript heap runs out, the DOM snapshot check fails or a page runs more than 200 timer callbacks, instead of refusing.",
+    "Start no script or module fetch after the JavaScript soft window, so script-heavy pages stop sooner.",
+    "Run scripts served or typed with any WHATWG JavaScript MIME type, such as application/x-javascript.",
+    "Let a non-HTTP(S) sub-request fail alone and ignore a non-HTTP(S) base URL, instead of refusing the JavaScript capture.",
+    "Convert pages that create upper-case STYLE, TITLE or TEXTAREA elements during JavaScript capture.",
+    "Offer ALPN http/1.1 over HTTPS, so WordPress.com sites that answered 403 to brewdoc, such as acloserlisten.com, now load."
   ],
-  "release_pr": 65,
   "release_examples": [
-    "brewdoc --body-only paper.pdf --out paper.md",
-    "brewdoc --url https://arxiv.org/pdf/1706.03762 --out attention.md",
-    "brewdoc koi8r-page.html --out page.md"
+    "brewdoc --url \"https://hn.algolia.com/?q=rust\" --render-js auto --out search.md",
+    "brewdoc page.html --no-links --out page.md"
   ],
   "releases": {
     "0.2.0": {

@@ -278,9 +278,11 @@ def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tm
                  ("sheets", inspect.Parameter.KEYWORD_ONLY, None),
                  ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None),
                  ("article", inspect.Parameter.KEYWORD_ONLY, False),
-                 ("body_only", inspect.Parameter.KEYWORD_ONLY, False))),
+                 ("body_only", inspect.Parameter.KEYWORD_ONLY, False),
+                 ("links", inspect.Parameter.KEYWORD_ONLY, True))),
         ("render_html", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
-                         ("article", inspect.Parameter.KEYWORD_ONLY, False))),
+                         ("article", inspect.Parameter.KEYWORD_ONLY, False),
+                         ("links", inspect.Parameter.KEYWORD_ONLY, True))),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
           for name in ("render_pdf", "render_doc", "render_presentation", "render_epub")),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
@@ -590,8 +592,8 @@ def test_the_cli_usage_states_its_contract(monkeypatch, capsys):
     usage = capsys.readouterr().out.partition("\n")[0]
     # THEN it exits 0 and usage lists exactly the documented options
     assert (raised.value.code, usage) == (
-        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--body-only] [--out OUT] "
-           "[--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]",
+        0, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js [{auto,always}]] [--article] [--no-links] "
+           "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]",
     ), "the CLI surface must expose repeatable sheet and artifact requests"
 
 
@@ -604,8 +606,8 @@ def test_cli_without_a_document_returns_usage_two_on_stdout(monkeypatch, capsys)
     captured = capsys.readouterr()
     # THEN usage is the entire stdout, stderr is empty and the return value is two
     assert (code, captured.out, captured.err) == (
-        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] [--body-only] [--out OUT] "
-           "[--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]\n", "",
+        2, "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js [{auto,always}]] [--article] [--no-links] "
+           "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] [document]\n", "",
     ), "an omitted document must keep the non-raising stdout usage contract"
 
 

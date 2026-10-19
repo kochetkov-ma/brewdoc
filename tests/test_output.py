@@ -662,7 +662,7 @@ def test_cli_refuses_body_only_with_self_check(monkeypatch, capsys):
     captured = capsys.readouterr()
     # THEN argparse exits 2 with usage and the exact conflict on stderr
     assert (raised.value.code, captured.out, captured.err) == (
-        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] "
+        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js [{auto,always}]] [--article] [--no-links] "
                "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] "
                "[document]\nbrewdoc: error: --body-only cannot be combined with --self-check\n",
     ), "--body-only has no meaning for the self-check and must be a usage error"
@@ -678,10 +678,29 @@ def test_cli_reports_the_article_conflict_first_with_body_only_and_self_check(mo
     captured = capsys.readouterr()
     # THEN the earlier article conflict is the one reported
     assert (raised.value.code, captured.out, captured.err) == (
-        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js] [--article] "
+        2, "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js [{auto,always}]] [--article] [--no-links] "
                "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] "
                "[document]\nbrewdoc: error: --article cannot be combined with --self-check\n",
     ), "conflicts must be reported in their existing order"
+
+
+def test_cli_refuses_no_links_with_self_check(monkeypatch, capsys):
+    # GIVEN a wide, colourless terminal and an observable self-check boundary
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("PYTHON_COLORS", "0")
+    calls = []
+    monkeypatch.setattr(importlib.import_module("brewdoc.cli"), "self_check", lambda: calls.append("checked"))
+    assert calls == [], "self-check must start idle"
+    # WHEN --no-links is combined with the self-check
+    with pytest.raises(SystemExit) as raised:
+        main(["--no-links", "--self-check"])
+    captured = capsys.readouterr()
+    # THEN argparse exits 2 with usage and the exact conflict on stderr before any check runs
+    assert (raised.value.code, calls, captured.out, captured.err) == (
+        2, [], "", "usage: brewdoc [-h] [--url URL] [--timeout SECONDS] [--render-js [{auto,always}]] [--article] [--no-links] "
+                   "[--body-only] [--out OUT] [--sheet SHEET] [--artifact ARTIFACT] [--self-check] "
+                   "[document]\nbrewdoc: error: --no-links cannot be combined with --self-check\n",
+    ), "--no-links has no meaning for the self-check and must be a usage error"
 
 
 @HTML_ONLY

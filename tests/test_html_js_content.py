@@ -1,5 +1,6 @@
 """Check the finite compatibility surfaces required by frozen content cases."""
 
+import hashlib
 import importlib.util
 import platform
 import time
@@ -7,6 +8,7 @@ import time
 import pytest
 
 from brewdoc import htmljs, htmlurl
+from brewdoc.common import BrewdocError
 
 
 native_supported = pytest.mark.skipif(
@@ -14,6 +16,7 @@ native_supported = pytest.mark.skipif(
     or (platform.system() == 'Darwin' and platform.machine() != 'arm64'),
     reason='Optional native capture requires a proved platform ABI.',
 )
+IDLE = {'requests': 0, 'timers': 0, 'modules': 0, 'promises': 0, 'jobs': False}
 
 
 @native_supported
@@ -23,9 +26,9 @@ def test_inline_style_access_retains_content_with_explicit_partial_status():
     # WHEN the finite accessor reads declarations without CSS or layout.
     captured = htmljs.render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.1)
     # THEN content survives and inline-only style behavior is explicit.
-    assert '<p id="result" style="display:block;color:red">red:block</p>' in captured['html'], 'The accessor must read exact inline declarations.'
-    assert captured['capture_status'] == 'partial', 'Inline declarations cannot establish computed stylesheet or layout behavior.'
-    assert captured['errors'] == [{'category': 'inline_style_only', 'resource_url': None}], 'The partial reason must name the finite style surface.'
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
+        source.replace('>pending<', '>red:block<'), 'partial', [{'category': 'inline_style_only', 'resource_url': None}], IDLE,
+    ), 'The accessor must read exact inline declarations and name the finite style surface as partial.'
 
 
 @native_supported
@@ -35,7 +38,9 @@ def test_history_read_surface_has_one_ephemeral_entry_and_no_navigation():
     # WHEN initial history is read without any navigation.
     captured = htmljs.render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=0.1)
     # THEN only the finite initial read surface exists.
-    assert '<p>1:null:undefined:undefined</p>' in captured['html'], 'History must expose one initial entry and no navigation methods.'
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
+        source.replace('>pending<', '>1:null:undefined:undefined<'), 'settled', [], IDLE,
+    ), 'History must expose one initial entry and no navigation methods.'
 
 
 @native_supported
@@ -52,10 +57,12 @@ def test_anchor_url_components_are_data_only_and_resolve_against_document_base(t
     source = '<html><body><p>pending</p><script>const a=document.createElement("a");a.href=' + repr(target) + ';document.querySelector("p").textContent=[a.protocol,a.host,a.hostname,a.port,a.pathname,a.search,a.hash].join("|")</script></body></html>'
     requests = []
     # WHEN the URL components are read without following the anchor.
-    captured = htmljs.render(source, 'https://fixture.test/path/page', lambda request: requests.append(request), time.monotonic() + 10, soft_window=0.1)
+    # Soft window spans the deadline: a stray request is served and recorded, never hidden by start-up time.
+    captured = htmljs.render(source, 'https://fixture.test/path/page', lambda request: requests.append(request), time.monotonic() + 10, soft_window=10)
     # THEN the finite adapter resolves components and performs no acquisition.
-    assert '<p>' + expected + '</p>' in captured['html'], 'Anchor components must describe the exact resolved HTTP(S) URL.'
-    assert requests == [], 'Reading anchor components must never request the target.'
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending'], requests) == (
+        source.replace('>pending<', '>' + expected + '<'), 'settled', [], IDLE, [],
+    ), 'Anchor components must describe the exact resolved HTTP(S) URL without requesting the target.'
 
 
 @pytest.mark.parametrize('accept', ['*/*', 'application/json, text/plain, */*'])
@@ -169,11 +176,12 @@ def test_anchor_adapter_reports_unsupported_url_forms_without_acquisition(target
     source = '<html><body><p>pending</p><script>const a=document.createElement("a");a.setAttribute("href",' + repr(target) + ');document.querySelector("p").textContent=a.pathname</script></body></html>'
     requested = []
     # WHEN the unsupported component getter is used.
-    captured = htmljs.render(source, 'https://fixture.test/', lambda record: requested.append(record), time.monotonic() + 10, soft_window=0.1)
+    # Soft window spans the deadline: a stray request is served and recorded, never hidden by start-up time.
+    captured = htmljs.render(source, 'https://fixture.test/', lambda record: requested.append(record), time.monotonic() + 10, soft_window=10)
     # THEN the failure is partial and never becomes a network request.
-    assert captured['errors'] == [{'category': 'script_execution_failed', 'resource_url': None}], 'Unsupported URL forms must produce an observable script failure.'
-    assert captured['capture_status'] == 'partial', 'The finite adapter must not invent browser URL behavior.'
-    assert requested == [], 'Component access must remain data-only.'
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending'], requested) == (
+        source, 'partial', [{'category': 'script_execution_failed', 'resource_url': None}], IDLE, [],
+    ), 'Unsupported URL forms must fail observably without inventing browser URL behavior or acquisition.'
 
 
 @native_supported
@@ -187,10 +195,13 @@ def test_xhr_response_header_callback_observes_only_host_exposed_fields():
                 'headers': (('Content-Type', 'text/plain'), ('Set-Cookie', 'secret=1'), ('Set-Cookie2', 'secret=2'))}
 
     # WHEN the native callback reads the already filtered response record.
-    captured = htmljs.render(source, 'https://fixture.test/', fetch, time.monotonic() + 10, soft_window=0.1)
+    # Soft window spans the whole deadline: only engine settle ends capture, never child start-up time.
+    captured = htmljs.render(source, 'https://fixture.test/', fetch, time.monotonic() + 10, soft_window=10)
     # THEN the missing-header-method failure is fixed without exposing cookies.
-    assert '<p>article:content-type: text/plain\r\n</p>' in captured['html'], 'XHR completion must expose only the finite filtered header record.'
-    assert captured['capture_status'] == 'settled', 'The finite response callback should drain successfully.'
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
+        source.replace('<p>pending</p>', '<p>article:content-type: text/plain\r\n</p>'), 'settled', [],
+        IDLE,
+    ), 'XHR completion must drain and expose only the finite filtered header record.'
 
 
 def test_cookie_response_headers_remain_forbidden_even_when_exposure_is_requested():
@@ -205,3 +216,80 @@ def test_cookie_response_headers_remain_forbidden_even_when_exposure_is_requeste
     response = htmljs._host_response({'url': 'https://elsewhere.test/data'}, fetch, 'https://fixture.test/', 'https://fixture.test/')
     # THEN no cookie-setting header crosses the host boundary.
     assert response['headers'] == {'content-type': 'text/plain'}, 'CORS exposure must never disclose cookie-setting fields.'
+
+
+JAVASCRIPT_ESSENCES = [
+    'application/ecmascript', 'application/javascript', 'application/x-ecmascript', 'application/x-javascript',
+    'text/ecmascript', 'text/javascript', 'text/javascript1.0', 'text/javascript1.1', 'text/javascript1.2',
+    'text/javascript1.3', 'text/javascript1.4', 'text/javascript1.5', 'text/jscript', 'text/livescript',
+    'text/x-ecmascript', 'text/x-javascript',
+]
+SCRIPT_URL = 'https://fixture.test/app.js'
+SCRIPT_BODY = b'window.loaded=1'
+
+
+def _serve_script(monkeypatch, media):
+    """Answer one script request with the given Content-Type below real media validation."""
+    monkeypatch.setattr(htmlurl, '_request', lambda *args: {
+        'status': 200, 'headers': (('Content-Type', media),), 'entity': SCRIPT_BODY, 'body': SCRIPT_BODY})
+
+
+@pytest.mark.parametrize('kind', ['script', 'module'])
+@pytest.mark.parametrize('media', JAVASCRIPT_ESSENCES)
+def test_script_fetch_accepts_every_javascript_mime_essence(monkeypatch, media, kind):
+    # GIVEN a script response labelled with one WHATWG JavaScript MIME type essence.
+    _serve_script(monkeypatch, media + '; charset=utf-8')
+    # WHEN the shared acquisition validates script media.
+    response = htmlurl._fetch(SCRIPT_URL, kind=kind)
+    # THEN the script bytes are accepted unchanged with the bounded header record.
+    assert response == {
+        'status': 200, 'headers': (('Content-Type', media + '; charset=utf-8'), ('Content-Length', '15')),
+        'entity': SCRIPT_BODY, 'body': SCRIPT_BODY, 'requested_url': SCRIPT_URL, 'final_url': SCRIPT_URL,
+        'entity_sha256': hashlib.sha256(SCRIPT_BODY).hexdigest(), 'body_sha256': hashlib.sha256(SCRIPT_BODY).hexdigest(),
+        'redirects': (),
+    }, 'every JavaScript MIME essence must be accepted for classic and module scripts like a browser'
+
+
+@pytest.mark.parametrize('kind', ['script', 'module'])
+@pytest.mark.parametrize('media', ['text/plain', 'application/json', 'text/html', 'application/octet-stream',
+                                   'text/javascript1.6', 'text/vbscript', 'application/x-javascript-module'])
+def test_script_fetch_refuses_media_outside_the_javascript_essences(monkeypatch, media, kind):
+    # GIVEN a script response labelled with a non-JavaScript media type.
+    _serve_script(monkeypatch, media)
+    # WHEN the shared acquisition validates script media.
+    with pytest.raises(BrewdocError) as refused:
+        htmlurl._fetch(SCRIPT_URL, kind=kind)
+    # THEN the script is refused at the media stage with its URL.
+    assert (type(refused.value), str(refused.value), refused.value.acquisition_stage, refused.value.resource_url) == (
+        BrewdocError, 'URL %s content type refused' % kind, 'media', SCRIPT_URL,
+    ), 'media outside the JavaScript essences must stay refused for scripts'
+
+
+@native_supported
+@pytest.mark.parametrize('media', JAVASCRIPT_ESSENCES + ['TEXT/JavaScript'])
+def test_script_element_with_javascript_mime_type_runs(media):
+    # GIVEN an inline script whose type attribute is a JavaScript MIME type essence.
+    source = ('<html><body><p id="result">pending</p><script type="' + media + '">'
+              'document.querySelector("#result").textContent="ran"</script></body></html>')
+    # WHEN capture discovers and classifies the script element.
+    captured = htmljs.render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=10)
+    # THEN the script runs and the capture settles.
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
+        source.replace('>pending<', '>ran<'), 'settled', [],
+        IDLE,
+    ), 'a script type matching a JavaScript MIME essence case-insensitively must run like a browser'
+
+
+@native_supported
+@pytest.mark.parametrize('media', ['text/plain', 'application/json', 'text/template', 'text/javascript1.6',
+                                   'text/vbscript'])
+def test_script_element_with_non_javascript_type_stays_inert(media):
+    # GIVEN an inline script whose type attribute names a non-JavaScript data block.
+    source = ('<html><body><p id="result">pending</p><script type="' + media + '">'
+              'document.querySelector("#result").textContent="ran"</script></body></html>')
+    # WHEN capture discovers and classifies the script element.
+    captured = htmljs.render(source, 'https://fixture.test/', lambda request: None, time.monotonic() + 10, soft_window=10)
+    # THEN the data block never runs and the capture settles unchanged.
+    assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
+        source, 'settled', [], IDLE,
+    ), 'a non-JavaScript script type must stay an inert data block'

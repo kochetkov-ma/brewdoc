@@ -1,5 +1,6 @@
 """Capture the finite installed JavaScript subset in an isolated child."""
 
+import contextlib
 import importlib.metadata
 import ctypes
 import json
@@ -25,6 +26,21 @@ SETTLE_MS = 500
 STACK_LIMIT = 1048576
 _SIGNAL_PREREQUISITE = False
 _CHILD_ONLY = False
+# Typed child stop causes -> parent-labelled original HTML; any other error refuses.
+_FALLBACKS = {'timing': 'initial_html_timeout_fallback', 'heap': 'initial_html_heap_fallback',
+              'dom': 'initial_html_dom_fallback', 'timers': 'initial_html_timer_fallback'}
+
+
+def _capture_errors(errors: list[dict], limit: int) -> list[dict]:
+    """Reserve one bounded diagnostic slot for the actual recovery cause."""
+    causes = {'capture_timeout', *_FALLBACKS.values()}
+    cause = next((error for error in errors if error['category'] in causes), None)
+    if cause is None:
+        return errors[:limit]
+    ordinary = [error for error in errors if error['category'] not in causes]
+    return ordinary[:limit - 1] + [cause]
+
+
 OMISSIONS = (
     'whole_document_parsed_before_scripts', 'no_layout_or_intersection_observer',
     'no_cookies_or_credentials', 'no_browser_csp_enforcement',
@@ -265,10 +281,11 @@ def _guarded_call(function, *, protect=False, probe=False):
 
 
 def _page_url(base_url, value):
-    """Resolve one page-controlled URL; None when it cannot parse, like a browser TypeError."""
+    """Resolve one page-controlled URL; None when unparseable or non-HTTP(S), like a browser network error."""
     from .htmlurl import URLSyntaxError, _validate_url
     try:
-        return _validate_url(urljoin(base_url, value))
+        url = urljoin(base_url, value)
+        return _validate_url(url) if urlsplit(url).scheme in ('http', 'https') else None
     except (ValueError, URLSyntaxError):
         return None
 
@@ -359,7 +376,7 @@ def _host_response(request, fetch, document_url, base_url):
 
 def render(source, final_url, fetch, deadline, *, soft_window):
     """Acquire child-requested resources and return a bounded frozen DOM."""
-    from .htmlurl import URLPolicyError, URLResourceError, URLTimeoutError, _capture_errors
+    from .htmlurl import URLPolicyError, URLResourceError, URLTimeoutError
     _check_runtime(deadline=deadline)
     if len(source.encode('utf-8')) > BYTE_LIMIT:
         raise BrewdocError('JS resource main source byte limit exceeded')
@@ -377,7 +394,7 @@ def render(source, final_url, fetch, deadline, *, soft_window):
     cancelled = False
     cancellation_lock = threading.Lock()
     fallback = False
-    timing_error = False
+    reported = False
     timing_stop = False
     notified = False
     parent_errors = []
@@ -411,6 +428,8 @@ def render(source, final_url, fetch, deadline, *, soft_window):
                     raise BrewdocError('JS child crash refused')
                 if now >= recovery_deadline:
                     terminate()
+                    if not cancelled and process.poll() is None:
+                        raise BrewdocError('JS child cancellation unproved')
                 continue
             try:
                 message = _receive(parent)
@@ -479,11 +498,11 @@ def render(source, final_url, fetch, deadline, *, soft_window):
                                   error_count=parent_error_count + result['error_count'])
                 return result
             elif message.get('kind') == 'error':
-                if message == {'kind': 'error', 'cause': 'timing'}:
-                    timing_error = True
-                    fallback = True
-                    return _initial_capture(source, soft_window, parent_errors, parent_error_count)
-                raise BrewdocError('JS resource execution refused')
+                cause = next((name for wire, name in _FALLBACKS.items() if message == {'kind': 'error', 'cause': wire}), None)
+                if cause is None:
+                    raise BrewdocError('JS resource execution refused')
+                reported = fallback = True
+                return _initial_capture(source, soft_window, parent_errors, parent_error_count, cause)
             else:
                 raise BrewdocError('JS resource IPC kind invalid')
     finally:
@@ -493,8 +512,11 @@ def render(source, final_url, fetch, deadline, *, soft_window):
             process.wait(0.1)
         except subprocess.TimeoutExpired:
             terminate()
-            process.wait(1)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(1)
         try:
+            if process.returncode is None:
+                raise BrewdocError('JS child cancellation unproved')
             if fallback:
                 for _ in range(100):
                     if not parent.poll(0):
@@ -509,17 +531,16 @@ def render(source, final_url, fetch, deadline, *, soft_window):
                         raise BrewdocError('JS resource terminal refusal prohibits fallback')
             if process.returncode != 0 and not (cancelled and process.returncode == -signal.SIGKILL):
                 raise BrewdocError('JS child crash refused')
-            if fallback and not timing_error and not (cancelled and process.returncode == -signal.SIGKILL):
+            if fallback and not reported and not (cancelled and process.returncode == -signal.SIGKILL):
                 raise BrewdocError('JS child cancellation unproved')
         finally:
             parent.close()
 
 
-def _initial_capture(source, soft_window, errors=(), error_count=0):
+def _initial_capture(source, soft_window, errors=(), error_count=0, cause='initial_html_timeout_fallback'):
     """Label original acquired HTML without claiming observed JavaScript completion."""
-    from .htmlurl import _capture_errors
-    recorded = _capture_errors([*errors, {'category': 'initial_html_timeout_fallback', 'resource_url': None}], 20)
-    return {'html': source, 'snapshot_kind': 'initial_html_timeout_fallback',
+    recorded = _capture_errors([*errors, {'category': cause, 'resource_url': None}], 20)
+    return {'html': source, 'snapshot_kind': cause,
             'capture_status': 'partial',
             'errors': recorded,
             'error_count': error_count + 1, 'pending': dict.fromkeys(('requests', 'timers', 'modules', 'promises', 'jobs')),
@@ -594,7 +615,8 @@ def _worker(channel, parent_pid):
         from ._urljs.native import NativeError
         try:
             timing = isinstance(exc, URLTimeoutError) or isinstance(exc, NativeError) and exc.timing
-            _send(channel, {'kind': 'error', 'cause': 'timing' if timing else 'hard'})
+            fallback = isinstance(exc, NativeError) and exc.fallback
+            _send(channel, {'kind': 'error', 'cause': fallback or ('timing' if timing else 'hard')})
         except (OSError, BrewdocError):
             pass
     finally:
@@ -604,11 +626,13 @@ def _worker(channel, parent_pid):
 def _capture(source, url, channel, soft_window, deadline=None):
     """Pump proved scripts, native modules, host requests, jobs and finite timers."""
     from ._urljs.native import Context, NativeError
-    from .htmlurl import URLTimeoutError, _capture_errors
+    from .htmlurl import URLTimeoutError, _SCRIPT_TYPES
     import resource
     started = time.monotonic()
+    soft_end = started + soft_window
     errors = []
     unknown_modules = False
+    unfetched = 0
     counts = {'promise_jobs': 0, 'timer_callbacks': 0}
     def request(record):
         """Ask the authoritative parent for one bounded resource."""
@@ -618,9 +642,13 @@ def _capture(source, url, channel, soft_window, deadline=None):
             raise URLTimeoutError('JS loading deadline exceeded')
         return response
     def module_source(name):
-        """Retain redirected module identity and unknown graph completion."""
-        nonlocal unknown_modules
+        """Retain redirected module identity and unknown graph completion; no fetch after the soft window."""
+        nonlocal unknown_modules, unfetched
         unknown_modules = True
+        if time.monotonic() >= soft_end:
+            # Plain error fails only the import, like an unloadable module; the import stays a pending request.
+            unfetched += 1
+            raise BrewdocError('JS module fetch after soft window refused')
         response = request({'url': name, 'kind': 'module'})
         if response.get('error') or not 200 <= response['status'] < 300:
             raise BrewdocError('JS module resource failed')
@@ -656,7 +684,7 @@ def _capture(source, url, channel, soft_window, deadline=None):
         def inspect_pending():
             """Observe actual pending work without running completion callbacks."""
             modules = native.pending_modules
-            return {'requests': int(call('Pending')), 'timers': len(json.loads(call('Timers'))),
+            return {'requests': int(call('Pending')) + unfetched, 'timers': len(json.loads(call('Timers'))),
                     'modules': modules if modules else None if unknown_modules else 0,
                     'promises': native.pending_promises, 'jobs': bool(native.lib.JS_IsJobPending(native.runtime))}
         def finish(pending, *, timed=False):
@@ -704,22 +732,30 @@ def _capture(source, url, channel, soft_window, deadline=None):
             finally:
                 counts['promise_jobs'] = native.job_count
         def scripts():
-            """Execute each discovered accepted script exactly once."""
+            """Execute each discovered accepted script once; no source fetch starts after the soft window."""
+            nonlocal unfetched
             found = json.loads(call('Scripts'))
-            for script in sorted(found, key=lambda item: bool(item['defer']) or item['type'] == 'module'):
-                if script['type'] not in ('', 'text/javascript', 'application/javascript', 'module'):
-                    continue
+            for script in found:
+                script['type'] = script['type'].strip('\t\n\f\r ').lower()
+            accepted = [script for script in sorted(found, key=lambda item: bool(item['defer']) or item['type'] == 'module')
+                        if script['type'] in ('', 'module') or script['type'] in _SCRIPT_TYPES]
+            for position, script in enumerate(accepted):
                 text = script['text']
                 name = urlunsplit(parsed._replace(fragment='')) + '#inline-' + str(script['index'])
                 success = False
                 aborted = False
                 if script['src']:
+                    if time.monotonic() >= soft_end:
+                        # Unfetched sources stay pending requests; later scripts never run out of order.
+                        unfetched += sum(bool(item['src']) for item in accepted[position:])
+                        break
                     response = request({'url': script['src'], 'kind': 'module' if script['type'] == 'module' else 'script'})
                     if response.get('error') or not 200 <= response['status'] < 300:
                         errors.append({'category': 'script_resource_failed', 'resource_url': None})
                         call('ScriptDone', script['index'], 0)
                         continue
                     text, name = response['body'], response['url']
+                unfetched_before = unfetched
                 try:
                     call('StartScript', script['index'])
                     native.eval(text, name, module=script['type'] == 'module',
@@ -727,12 +763,11 @@ def _capture(source, url, channel, soft_window, deadline=None):
                     drain()
                     success = True
                 except NativeError as exc:
-                    if exc.timing:
-                        aborted = True
+                    aborted = exc.timing
+                    if exc.timing or exc.resource:
                         raise
-                    if exc.resource:
-                        raise BrewdocError('JS resource native limit exceeded') from exc
-                    errors.append({'category': 'script_execution_failed', 'resource_url': None})
+                    if unfetched == unfetched_before:
+                        errors.append({'category': 'script_execution_failed', 'resource_url': None})
                 except URLTimeoutError:
                     aborted = True
                     raise
@@ -746,7 +781,6 @@ def _capture(source, url, channel, soft_window, deadline=None):
         drain()
         call('Loaded')
         drain()
-        soft_end = started + soft_window
         while True:
             if deadline is not None and time.monotonic() >= deadline:
                 raise URLTimeoutError('JS loading deadline exceeded')
@@ -767,7 +801,7 @@ def _capture(source, url, channel, soft_window, deadline=None):
                 # Animation frames stay bounded by the soft window, not the callback cap.
                 counts['timer_callbacks'] += not timer['frame']
                 if counts['timer_callbacks'] > 200:
-                    raise BrewdocError('JS resource timer callback limit exceeded')
+                    raise NativeError('timer callback limit exceeded', resource=True, fallback='timers')
                 call('RunTimer', timer['id'], int(now))
                 drain()
             pending = inspect_pending()
