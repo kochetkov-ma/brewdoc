@@ -213,9 +213,9 @@ def test_first_group_permission_refusal_cannot_claim_owned_timeout_fallback(monk
     # WHEN the main loop reaches an already expired recovery deadline.
     with pytest.raises(BrewdocError) as rejected:
         htmljs.render(INITIAL.decode(), URL, lambda request: None, 98.5, soft_window=0.5)
-    # THEN the refused signal leaves the zero exit uncancelled, so it refuses as a crash, not as fallback.
+    # THEN the refused signal leaves cancellation unproved, so it refuses instead of claiming fallback.
     assert (str(rejected.value), process.returncode, kills) == (
-        "JS child crash refused", 0, [(process.pid, signal.SIGKILL)],
+        "JS child cancellation unproved", 0, [(process.pid, signal.SIGKILL)],
     ), "a refused group signal must never become cancellation provenance for the owned timeout fallback"
 
 
