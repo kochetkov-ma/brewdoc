@@ -533,20 +533,25 @@ def verify_release(input_dir: Path) -> dict:
     return manifest
 
 
+def registry_read(url: str, timeout: float, limit: int | None = None) -> bytes | None:
+    """Read one registry response; None means a 404, which the CDN may cache after publish."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return response.read(limit)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
+
 def public_record(record: dict, *, deadline: float | None = None) -> bool:
     """Accept an existing version only after registry metadata and actual bytes agree."""
     metadata = record["metadata"]
     url = f"{REGISTRY}/{metadata['name']}/{metadata['version']}"
     timeout = 30 if deadline is None else min(30, deadline - time.monotonic())
-    if timeout <= 0:
+    if timeout <= 0 or (body := registry_read(url, timeout)) is None:
         return False
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            public = json.load(response)
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        raise
+    public = json.loads(body)
     preserved = {"name", "version", "description", "license", "repository", "homepage", "bin", "engines",
                  "optionalDependencies", "os", "cpu", "libc"}
     if any(public.get(key) != metadata[key] for key in preserved & metadata.keys()):
@@ -557,10 +562,8 @@ def public_record(record: dict, *, deadline: float | None = None) -> bool:
     if public["dist"]["integrity"] != record["integrity"]:
         raise ValueError("Existing npm version integrity differs")
     timeout = 60 if deadline is None else min(60, deadline - time.monotonic())
-    if timeout <= 0:
+    if timeout <= 0 or (payload := registry_read(location.geturl(), timeout, record["bytes"] + 1)) is None:
         return False
-    with urllib.request.urlopen(location.geturl(), timeout=timeout) as response:
-        payload = response.read(record["bytes"] + 1)
     if (len(payload), digest(payload), integrity(payload), public["dist"]["integrity"]) != (
             record["bytes"], record["sha256"], record["integrity"], record["integrity"]):
         raise ValueError("Existing npm version integrity differs")
