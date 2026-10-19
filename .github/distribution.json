@@ -68,6 +68,7 @@
     "Convert pages that create upper-case STYLE, TITLE or TEXTAREA elements during JavaScript capture.",
     "Offer ALPN http/1.1 over HTTPS, so WordPress.com sites that answered 403 to brewdoc, such as acloserlisten.com, now load."
   ],
+  "release_pr": 67,
   "release_examples": [
     "brewdoc --url \"https://hn.algolia.com/?q=rust\" --render-js auto --out search.md",
     "brewdoc page.html --no-links --out page.md"
