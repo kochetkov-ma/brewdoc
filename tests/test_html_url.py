@@ -11,6 +11,7 @@ import zipfile
 from html.parser import HTMLParser
 
 import pytest
+import truststore
 
 from brewdoc import run, selfcheck
 from brewdoc.common import BrewdocError
@@ -538,8 +539,9 @@ def test_pinned_https_connection_verifies_hostname_and_keeps_tls_required(htmlur
     stream = Socket()
     tls = []
     monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: stream)
-    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, *, server_hostname, **options:
-                        (tls.append((server_hostname, context.check_hostname, context.verify_mode)), sock)[1])
+    monkeypatch.setattr(truststore.SSLContext, "wrap_socket", lambda context, sock, *, server_hostname, **options:
+                        (tls.append((server_hostname, type(context), context.check_hostname, context.verify_mode)),
+                         sock)[1])
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
     assert stream.connections == [], "pinning test must start without a socket connection"
     # WHEN the transport opens the approved numeric endpoint
@@ -547,19 +549,20 @@ def test_pinned_https_connection_verifies_hostname_and_keeps_tls_required(htmlur
     connection.close()
     # THEN the peer is pinned while original-host SNI and certificate verification remain enabled
     assert (stream.connections, stream.timeouts, tls, stream.closed) == (
-        [("93.184.216.34", 443)], [30.0, 30.0, 30.0], [("example.com", True, ssl.CERT_REQUIRED)], True
-    ), "numeric connection must retain verified original-host TLS and close its socket"
+        [("93.184.216.34", 443)], [30.0, 30.0, 30.0], [("example.com", truststore.SSLContext, True, ssl.CERT_REQUIRED)],
+        True,
+    ), "numeric connection must verify the original host against the OS trust store and close its socket"
 
 
 def test_https_connection_offers_exactly_http11_alpn_on_the_context_it_wraps_with(htmlurl, monkeypatch):
     # GIVEN an approved address and recorders for ALPN offers and the wrapping TLS context
     stream = Socket()
     offers, wrapped = [], []
-    offer = ssl.SSLContext.set_alpn_protocols
+    offer = truststore.SSLContext.set_alpn_protocols
     monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: stream)
-    monkeypatch.setattr(ssl.SSLContext, "set_alpn_protocols", lambda context, protocols:
+    monkeypatch.setattr(truststore.SSLContext, "set_alpn_protocols", lambda context, protocols:
                         (offers.append((context, list(protocols))), offer(context, protocols))[1])
-    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options:
+    monkeypatch.setattr(truststore.SSLContext, "wrap_socket", lambda context, sock, **options:
                         (wrapped.append(context), sock)[1])
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
     assert (offers, wrapped) == ([], []), "ALPN test must start before any TLS context exists"
@@ -699,7 +702,7 @@ def test_tls_handshake_receives_only_the_deadline_remaining_after_connect(htmlur
     monkeypatch.setattr(stream, "connect", slow_connect)
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: clock["now"])
     monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: stream)
-    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options:
+    monkeypatch.setattr(truststore.SSLContext, "wrap_socket", lambda context, sock, **options:
                         (tls_options.append(options), sock)[1])
     assert clock["now"] == 100.0, "deadline regression must start with the complete five-second budget"
     # WHEN connect succeeds and production transport starts the TLS handshake
@@ -1270,7 +1273,7 @@ def test_tcp_connect_timeout_on_the_first_address_falls_back_to_the_second_withi
     monkeypatch.setattr(dead, "connect", time_out)
     monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: next(sockets))
     monkeypatch.setattr(htmlurl.http.client, "HTTPConnection", lambda *args, **options: connection)
-    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options: sock)
+    monkeypatch.setattr(truststore.SSLContext, "wrap_socket", lambda context, sock, **options: sock)
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(htmlurl, "_dns_lookup", lambda *args: ("93.184.216.34", "8.8.8.8"))
     assert (dead.connections, alive.connections) == ([], []), "no connect precedes the request"
@@ -1407,7 +1410,7 @@ def test_connect_slice_bounds_only_tcp_connect_while_tls_keeps_the_remaining_dea
     # GIVEN an approved address, a 3 s connect slice and a 30 s overall budget
     stream = Socket()
     monkeypatch.setattr(htmlurl.socket, "socket", lambda *args: stream)
-    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", lambda context, sock, **options: sock)
+    monkeypatch.setattr(truststore.SSLContext, "wrap_socket", lambda context, sock, **options: sock)
     monkeypatch.setattr(htmlurl.time, "monotonic", lambda: 100.0)
     assert stream.timeouts == [], "connect starts without a socket timeout"
     # WHEN the transport connects and starts TLS
@@ -1639,6 +1642,74 @@ APP_WIDGET_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>
                       '<script src="/widget.js"></script></body></html>' % ("x" * 500))
 ENABLE_JS_NOTE = ('<html><head><title>Story</title></head><body><p>%s</p><noscript>Please enable JavaScript to see '
                   'the comments.</noscript><script src="/comments.js"></script></body></html>' % ("x" * 900))
+CABIN = ("A stunning, hand crafted cabin with your own private jacuzzi hot tub located in the beautiful "
+         "North Georgia mountains.")
+CABIN_REVIEW = ("Finley's Fort was spotless and quiet, the hot tub was warm every night and the host answered "
+                "within minutes.")
+# https://www.airbnb.com/rooms/ listing shell: page text only in Product JSON-LD, captured 2026-10-19
+AIRBNB_SHELL = (
+    '<html><head><title>Cabin</title><meta name="description" content="Tiny home">'
+    '<script type="application/ld+json">{"@type": "Product", "name": "Cabin", "description": "<p>%s</p>", '
+    '"review": [{"@type": "Review", "reviewBody": "%s"}]}</script><script type="application/ld+json">'
+    '{"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "name": "Homes in Georgia"}]}</script>'
+    '</head><body><div id="root"></div><script src="/a.js"></script></body></html>' % (CABIN, CABIN_REVIEW))
+AIRBNB_DATA = ('<html><head><title>Cabin</title></head><body><h1>Cabin</h1><p>Tiny home</p><p>%s</p><p>%s</p>'
+               '</body></html>' % (CABIN, CABIN_REVIEW))
+TRACK = ("From the Soulhack album, released on Bad Panda Records in 2008 and shared under a Creative Commons license, "
+         "this ambient electronic track has been streamed by listeners all over the world.")
+# https://soundcloud.com/ track shell: page text only in noscript blocks, captured 2026-10-19
+SOUNDCLOUD_SHELL = (
+    '<html><head><meta property="og:title" content="Flickermood by Forss"><meta property="og:description" '
+    'content="Stream Flickermood by Forss on desktop and mobile."></head><body><noscript><p>JavaScript is disabled. '
+    'You need to enable JavaScript to use SoundCloud.</p></noscript><div id="app"></div><noscript><article>'
+    '<h1>Flickermood by Forss</h1><p>%s</p><dl><dt>Genre</dt><dd>Electronic</dd></dl>'
+    '<ul><li>Comment by breakoutt: flow!!!</li></ul></article></noscript><script src="/a.js"></script></body></html>'
+    % TRACK)
+SOUNDCLOUD_DATA = ('<html><head><title>Flickermood by Forss</title></head><body><h1>Flickermood by Forss</h1>'
+                   '<p>Stream Flickermood by Forss on desktop and mobile.</p><p>%s</p><p>Genre</p><p>Electronic</p>'
+                   '<p>Comment by breakoutt: flow!!!</p></body></html>' % TRACK)
+TAGLINE = "The Rust community's crate registry. " * 6
+# https://crates.io/crates/serde shell: only a site tagline and an enable-JavaScript block, captured 2026-10-19
+SLOGAN_SHELL = (
+    '<html><head><title>crates.io: Rust Package Registry</title><meta name="description" content="%s">'
+    '<meta property="og:description" content="%s"></head><body><noscript><p>%s</p></noscript><div id="root"></div>'
+    '<script src="/a.js"></script></body></html>' % (TAGLINE, TAGLINE, "For full use enable JavaScript. " * 7))
+NOISE_SHELL = (
+    '<html><head><title>Shop</title><script type="application/ld+json">[{"@type": "WebSite", "name": "Shop", '
+    '"potentialAction": {"@type": "SearchAction", "target": "/s?q={q}"}}, {"@type": "Organization", '
+    '"name": "Shop Inc", "description": "%s"}]</script><script type="application/json">{"i18n": {"report": "%s"}}'
+    '</script></head><body><div id="root"></div><script src="/a.js"></script></body></html>'
+    % ("We sell things. " * 15, "Please provide details about your experience with this ad. " * 4))
+BROKEN_LD_SHELL = ('<html><head><title>App</title><script type="application/ld+json">{bad</script></head><body>'
+                   '<div id="root"></div><script src="/a.js"></script></body></html>')
+AWS_WAF_TOKEN = '<script src="https://a1b2.c3d4.us-east-1.token.awswaf.com/a1b2/c3d4/challenge.js"></script>'
+AWS_WAF_GOKU = '<script>window.gokuProps = {"key": "k", "iv": "i", "context": "c"};</script>'
+AWS_WAF_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>%s</p></article>'
+                   '<script src="https://a1b2.c3d4.us-east-1.token.awswaf.com/a1b2/c3d4/jsapi.js"></script>'
+                   '</body></html>' % PROSE)
+
+
+# https://www.imdb.com/ title page answered by an HTTP 202 AWS WAF challenge, captured 2026-10-19
+def aws_waf(evidence):
+    """Return an AWS WAF challenge shell whose only AWS evidence is the `evidence` script."""
+    return ('<!DOCTYPE html><html lang="en"><head><title></title>%s</head><body><div id="challenge-container"></div>'
+            "<noscript><h1>JavaScript is disabled</h1>In order to continue, we need to verify that you're not a "
+            "robot. This requires JavaScript. Enable JavaScript and then reload the page.</noscript></body></html>"
+            % evidence)
+
+
+def article_shell(text):
+    """Return an SPA shell whose embedded data is one broken and one Article JSON-LD block carrying `text`."""
+    return ('<html><head><title>Notes</title><script type="application/ld+json">{bad</script>'
+            '<script type="application/ld+json">{"@type": "Article", "articleBody": "%s"}</script></head><body>'
+            '<div id="root"></div><script src="/a.js"></script></body></html>' % text)
+
+
+def embedded(acquisition, snapshot):
+    """Return `acquisition` as a partial embedded-data capture that keeps its javascript_required error."""
+    return acquisition | {"capture_status": "partial", "error_count": 1,
+                          "errors": [{"category": "javascript_required", "resource_url": PAGE}],
+                          "snapshot": {"kind": "embedded_data", "bytes": len(snapshot), "sha256": sha256(snapshot)}}
 
 
 def rooted(text):
@@ -1846,9 +1917,12 @@ def test_success_html_on_an_unsupported_html_runtime_refuses_at_prerequisites_be
     CRATES_SHELL, HN_SHELL, VUE_SHELL, NEXT_SHELL, rooted("x" * 150), rooted("x" * 199), ENABLE_JS_NOTE,
     captcha_shell(RECAPTCHA_V3), captcha_shell("https://js.hcaptcha.com/1/api.js?render=explicit"),
     captcha_shell("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"),
+    SLOGAN_SHELL, NOISE_SHELL, BROKEN_LD_SHELL, article_shell("x" * 199),
 ], ids=["crates-enable-javascript", "hn-empty-root", "vue-russian-message", "next-empty-root",
         "empty-root-150-visible", "empty-root-199-visible", "enable-javascript-900-visible",
-        "recaptcha-v3-host-on-shell", "hcaptcha-host-on-shell", "turnstile-host-on-shell"])
+        "recaptcha-v3-host-on-shell", "hcaptcha-host-on-shell", "turnstile-host-on-shell",
+        "embedded-tagline-and-javascript-block-only", "embedded-site-noise-only", "embedded-broken-json-ld",
+        "embedded-199-chars"])
 def test_static_shell_page_refuses_at_javascript_required_and_names_the_auto_retry(htmlurl, monkeypatch, html):
     # GIVEN a 200 JavaScript shell: little visible text, a script and an empty root or enable-JS message
     calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
@@ -1873,11 +1947,12 @@ def test_static_shell_page_refuses_at_javascript_required_and_names_the_auto_ret
     ((), rooted("x" * 999)),
     ((), rooted("x" * 200)),
     ((), APP_WIDGET_ARTICLE),
+    ((), AWS_WAF_ARTICLE),
 ], ids=["ddos-guard-server-on-long-article", "datadome-header-on-200-article", "qrator-server-on-200-article",
         "comment-form-recaptcha",
         "small-page-without-script", "smartcaptcha-mentioned-in-text", "small-page-with-analytics-script",
         "empty-root-1000-visible", "empty-root-999-visible", "empty-root-200-visible",
-        "empty-app-widget-500-visible"])
+        "empty-app-widget-500-visible", "aws-waf-sdk-on-long-article"])
 def test_page_check_converts_ordinary_pages_with_weak_markers_or_little_text(
         htmlurl, monkeypatch, tmp_path, headers, html):
     # GIVEN an ordinary 200 page written in its own canonical snapshot markup
@@ -1962,6 +2037,68 @@ def test_javascript_modes_refuse_a_shell_that_the_engine_did_not_fill(htmlurl, m
     # THEN it refuses with the JS shell reason and keeps the run's engine and work counts
     assert (result, events) == ((1, expected, ""), ["runtime", PAGE, ("render", HN_SHELL, PAGE)]), \
         "an empty JS capture must refuse instead of converting the shell"
+
+
+@pytest.mark.parametrize("html,snapshot", [
+    (AIRBNB_SHELL, AIRBNB_DATA), (SOUNDCLOUD_SHELL, SOUNDCLOUD_DATA),
+    (article_shell("x" * 200), '<html><head><title>Notes</title></head><body><h1>Notes</h1><p>%s</p></body></html>'
+     % ("x" * 200)),
+], ids=["json-ld-listing", "noscript-track", "json-ld-200-chars-beside-broken-block"])
+def test_static_shell_with_embedded_page_text_converts_a_partial_embedded_data_snapshot(
+        htmlurl, monkeypatch, tmp_path, html, snapshot):
+    # GIVEN a static shell whose JSON-LD or noscript blocks carry at least 200 chars of page text
+    body = html.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", snapshot.encode())
+    calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
+    assert code == 0, "the embedded-data snapshot must convert as a local file"
+    # WHEN static URL acquisition checks the decoded page
+    result = htmlurl._run_url(PAGE)
+    # THEN it converts title, description and body items as a partial capture that keeps the JS error
+    assert (result, calls) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=embedded(static_page(PAGE, body, snapshot.encode()), snapshot.encode())), markdown),
+        [PAGE],
+    ), "a shell with enough embedded page text must convert that text instead of refusing"
+
+
+@pytest.mark.parametrize("render_js,recorded", [("auto", "auto"), (True, "always")], ids=["auto", "always"])
+def test_javascript_modes_build_embedded_data_from_the_static_source_when_the_capture_is_still_a_shell(
+        htmlurl, monkeypatch, tmp_path, render_js, recorded):
+    # GIVEN a static JSON-LD shell whose JS capture is a different shell without embedded data
+    body = AIRBNB_SHELL.encode()
+    snapshot = AIRBNB_DATA.encode()
+    _, (code, receipt, markdown) = converted(tmp_path, PAGE, ".html", snapshot)
+    events = scripted(htmlurl, monkeypatch, {PAGE: page_hop(AIRBNB_SHELL)}, HN_SHELL)
+    assert code == 0, "the embedded-data snapshot must convert as a local file"
+    # WHEN URL acquisition runs JS on it
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN one request and one render run, and the static source supplies the partial embedded-data snapshot
+    assert (result, events) == (
+        (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
+                 acquisition=embedded(js_page(PAGE, body, snapshot, recorded), snapshot)), markdown),
+        ["runtime", PAGE, ("render", AIRBNB_SHELL, PAGE)],
+    ), "a shell JS capture must fall back to embedded data from the static page, not the rendered DOM"
+
+
+@pytest.mark.parametrize("evidence,render_js,changes,events", [
+    (AWS_WAF_TOKEN + AWS_WAF_GOKU, None, {}, [PAGE]),
+    (AWS_WAF_TOKEN, None, {}, [PAGE]),
+    (AWS_WAF_GOKU, None, {}, [PAGE]),
+    (AWS_WAF_TOKEN + AWS_WAF_GOKU, "auto", {"render_js": "auto"}, ["runtime", PAGE]),
+], ids=["token-host-and-goku-props", "token-host-only", "goku-props-only", "auto-before-any-script"])
+def test_aws_waf_202_challenge_refuses_at_the_challenge_stage_instead_of_javascript_required(
+        htmlurl, monkeypatch, evidence, render_js, changes, events):
+    # GIVEN an AWS WAF challenge shell answered with HTTP 202 and an observable JS runtime
+    html = aws_waf(evidence)
+    log = scripted(htmlurl, monkeypatch, {PAGE: dict(page_hop(html), status=202)}, RENDERED_HN)
+    expected = page_refused(PAGE, html.encode(), "challenge", CAPTCHA % ("aws-waf", 202), challenge="aws-waf",
+                            http_status=202, **changes)
+    assert log == [], "acquisition starts without events"
+    # WHEN URL acquisition checks the decoded page
+    result = htmlurl._run_url(PAGE, render_js=render_js)
+    # THEN it names the AWS WAF challenge with HTTP 202 and runs no script
+    assert (result, log) == ((1, expected, ""), events), \
+        "an AWS WAF challenge must refuse as a named challenge, never as a JavaScript shell"
 
 
 @pytest.mark.parametrize("render_js,envelope", [("auto", {"render_js": "auto"}), (True, JS_ENVELOPE)],

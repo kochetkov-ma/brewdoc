@@ -52,26 +52,14 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Add --render-js auto, the recommended mode for unknown pages: acquire statically and run JavaScript only on a JavaScript shell page; bare --render-js still means always. Pages that need browser APIs outside the bounded engine, such as crates.io, refuse at javascript_required.",
-    "Refuse captcha, bot challenge, login and JavaScript shell pages with a plain reason at stage challenge or javascript_required, instead of near-empty successes. Challenges are named, such as cloudflare, datadome or qrator, never solved.",
-    "Report http_status, redirect_count, challenge, charset, charset_source and render_js in URL receipts; brewdoc.receipt/2 changes only by adding keys.",
-    "Add --no-links for HTML: keep link text, omit destinations and disclose it in the receipt.",
-    "Decode mislabelled HTML charsets and undeclared Latin or Cyrillic HTML by fallback instead of refusing, disclosed as charset_fallback in local receipts.",
-    "Write links inside code and around images as standard Markdown links instead of [Link target] records; local HTML Markdown changes for these links."
+    "Convert the embedded data of a JavaScript shell page instead of refusing it: title, description, JSON-LD text and noscript text from the static HTML, when the body text reaches 200 characters. The capture is partial, snapshot kind embedded_data, with one javascript_required error. This reads pages such as an Airbnb listing, a SoundCloud track or a Bluesky profile; crates.io still refuses.",
+    "Name AWS WAF challenge pages as challenge aws-waf, such as IMDb or Binance pages answered with HTTP 202, instead of refusing them as javascript_required."
   ],
   "release_fixes": [
-    "Keep the HTTP status and the redirect reason in URL refusals instead of a generic stage message.",
-    "Fall back to the acquired HTML when the JavaScript heap runs out, the DOM snapshot check fails or a page runs more than 200 timer callbacks, instead of refusing.",
-    "Start no script or module fetch after the JavaScript soft window, so script-heavy pages stop sooner.",
-    "Run scripts served or typed with any WHATWG JavaScript MIME type, such as application/x-javascript.",
-    "Let a non-HTTP(S) sub-request fail alone and ignore a non-HTTP(S) base URL, instead of refusing the JavaScript capture.",
-    "Convert pages that create upper-case STYLE, TITLE or TEXTAREA elements during JavaScript capture.",
-    "Offer ALPN http/1.1 over HTTPS, so WordPress.com sites that answered 403 to brewdoc, such as acloserlisten.com, now load."
+    "Verify --url TLS with the operating system trust store through truststore 0.10.5, so pages whose root is only in that store, such as GlobalSign Root R46 on macOS, load instead of refusing at tls. The macOS and Windows verifiers may fetch missing intermediates themselves."
   ],
-  "release_pr": 67,
   "release_examples": [
-    "brewdoc --url \"https://hn.algolia.com/?q=rust\" --render-js auto --out search.md",
-    "brewdoc page.html --no-links --out page.md"
+    "brewdoc --url https://soundcloud.com/forss/flickermood --out track.md"
   ],
   "releases": {
     "0.2.0": {

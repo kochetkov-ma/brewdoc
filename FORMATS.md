@@ -1,8 +1,9 @@
 # Formats
 
 Supported extensions cover the profiles below, not every possible file. PDF needs a text layer;
-unreadable, malformed and unsupported input is refused by name. Base dependencies are pdfplumber
-and python-calamine; static HTML adds its conditional native parser. Other routes use those or stdlib.
+unreadable, malformed and unsupported input is refused by name. Base dependencies are pdfplumber,
+python-calamine and `truststore==0.10.5` for `--url` TLS; static HTML adds its conditional native
+parser. Other routes use those or stdlib.
 
 ## Supported
 
@@ -357,8 +358,12 @@ credentials or a non-default port refuses. The default clean body retains source
 Local files and static capture do not execute scripts.
 
 Only public destinations/default ports 80/443 pass. All DNS answers, peers and redirects are
-validated. TLS verifies certificates/hostnames against the Python runtime's default trust store,
-with no bundled CA list: a store that lacks the issuing root refuses at `tls`. HTTPS offers ALPN
+validated. Since 0.7.1, TLS verifies certificates/hostnames with the operating system verifier
+through truststore 0.10.5: Security framework on macOS, CryptoAPI on Windows, OpenSSL default
+paths on Linux. There is no bundled CA list; a root only in the OS store, such as GlobalSign Root
+R46 on macOS, now passes, and a store that lacks the issuing root refuses at `tls`. The macOS and
+Windows verifiers may fetch missing intermediates themselves, outside brewdoc's address checks.
+HTTPS offers ALPN
 `http/1.1`, the protocol actually spoken; since 0.7.0 this lets WordPress.com edges that answered
 403 to a ClientHello without ALPN serve the page. GET excludes ambient credentials/cookies/proxy
 environment. At most five redirects; downgrades, unsupported schemes/private/special-use addresses
@@ -399,17 +404,18 @@ fully. Runtimes without the HTML parser still acquire documents; an HTML respons
 Since 0.7.0, decoded URL HTML is checked before conversion. Captcha, bot challenge and login
 pages refuse at stage `challenge` with
 `URL captcha or bot challenge refused: <name> (HTTP <status>)` or `URL login page refused`;
-receipt `challenge` names cloudflare, ddos-guard, yandex-smartcaptcha, hcaptcha, recaptcha,
-datadome, qrator, generic or login. Evidence that decides alone: a `cf-mitigated: challenge`
+receipt `challenge` names cloudflare, ddos-guard, aws-waf, yandex-smartcaptcha, hcaptcha,
+recaptcha, datadome, qrator, generic or login. Evidence that decides alone: a `cf-mitigated: challenge`
 header, or a Cloudflare challenge script with a title holding "Just a moment" or "Attention
 required"; a final path `/showcaptcha` or a form posting to `/checkcaptcha`
 (yandex-smartcaptcha); a password field in a form with the exact title Login, Log in or Sign in,
 in any case. DataDome and QRATOR count only on a non-2xx answer: an `x-datadome` header or a
 captcha-delivery.com reference (datadome); HTTP 439 or a `Server: QRATOR` header (qrator). Weak
 evidence counts only when the visible body text, without script, style, noscript and template,
-is under 1,000 characters: `Server: ddos-guard`, `/.well-known/ddos-guard/`, hCaptcha, reCAPTCHA
-or Turnstile hosts, and phrases such as "checking your browser", "please enable cookies" or
-"Проверяем браузер" (generic).
+is under 1,000 characters: `Server: ddos-guard`, `/.well-known/ddos-guard/`, `token.awswaf.com`
+or `gokuProps` (aws-waf, since 0.7.1; such as IMDb or Binance pages answered with HTTP 202),
+hCaptcha, reCAPTCHA or Turnstile hosts, and phrases such as "checking your browser", "please
+enable cookies" or "Проверяем браузер" (generic).
 
 A page with that little text and at least one script is a JavaScript shell when it holds an
 enable-JavaScript message, or an empty `#root`, `#app`, `#__next` or `#__nuxt` element and under
@@ -417,7 +423,22 @@ enable-JavaScript message, or an empty `#root`, `#app`, `#__next` or `#__nuxt` e
 page is a shell, not a challenge; other weak evidence still names a challenge. Static acquisition
 refuses it at `javascript_required` with `URL page needs JavaScript; retry with --render-js auto`.
 After JS capture the same check runs on the captured DOM, and a remaining shell refuses with
-`URL page content was not produced by the bounded JavaScript engine`. A non-2xx HTML answer with
+`URL page content was not produced by the bounded JavaScript engine`.
+
+Since 0.7.1, a page that is still a shell, statically or after JS capture, first tries its static
+HTML's embedded data. The title is `head title`, else `og:title`; the description is the
+`description` meta, else `og:description`. Body text comes in document order from JSON-LD and
+noscript. JSON-LD objects with `@type` give string headline, name, description, articleBody,
+text and reviewBody fields, HTML removed; WebSite, Organization, BreadcrumbList, ListItem and
+SearchAction objects and their children are skipped, and invalid JSON-LD is ignored. Noscript
+gives h1-h4, p, li, dt, dd and blockquote text without the word "javascript". Repeated texts
+and copies of the title or description drop. With at least 200 body characters, the snapshot
+has the title as heading, then the description and body texts as paragraphs. The capture is
+partial, snapshot kind `embedded_data`, with one `javascript_required` error carrying the final
+URL; the exit code is 0. Otherwise the refusal above stands. In the 2026-10 pilot this read an
+Airbnb listing, a SoundCloud track and a Bluesky profile (static mode); crates.io and a
+dvnovosti story still refuse. Embedded data is a summary, not the rendered page.
+A non-2xx HTML answer with
 recognized challenge evidence refuses at `challenge`; otherwise, including a shell or an
 undecodable error page, it keeps `URL HTTP status refused: <status>` at `status`. The non-2xx
 check needs the HTML parser; outside CPython 3.12-3.14 every such answer refuses at `status`.
@@ -535,7 +556,8 @@ URL receipts use brewdoc.receipt/2 with acquisition: redacted requested/final/ba
 snapshot identities, mode, capture status, effective timeout_seconds and explicit omissions.
 JS snapshot kind is javascript_dom, initial_html_timeout_fallback, initial_html_heap_fallback,
 initial_html_dom_fallback or initial_html_timer_fallback; the fallbacks are original HTML, capture
-status partial, and add their own name as an error category.
+status partial, and add their own name as an error category. A static or JS capture of a shell can
+instead have kind embedded_data, described above.
 
 Since 0.7.0, acquisition also always has these keys:
 
@@ -543,7 +565,7 @@ Since 0.7.0, acquisition also always has these keys:
 |---|---|
 | `http_status` | Final main-document HTTP status, including 200; on a refusal the last received status; null without a response |
 | `redirect_count` | Main-document redirects followed, 0-5 |
-| `challenge` | cloudflare, ddos-guard, yandex-smartcaptcha, hcaptcha, recaptcha, datadome, qrator, generic or login on a `challenge` refusal; else null |
+| `challenge` | cloudflare, ddos-guard, aws-waf, yandex-smartcaptcha, hcaptcha, recaptcha, datadome, qrator, generic or login on a `challenge` refusal; else null |
 | `charset`, `charset_source` | HTML decoding charset (WHATWG name) and its source: bom, header, meta, default or fallback; null for documents and before decoding |
 | `render_js` | `auto` or `always` as requested; null for static |
 

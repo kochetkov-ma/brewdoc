@@ -20,8 +20,11 @@ import tempfile
 import threading
 import time
 import zlib
+from html import escape
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
+
+import truststore
 
 from brewdoc.common import BrewdocError
 from brewdoc._standalone import child_command
@@ -49,7 +52,8 @@ _SCRIPT_TYPES = frozenset({"application/ecmascript", "application/javascript", "
                            "text/x-javascript"})
 # Weak challenge markers and shell evidence count only below this visible text length.
 _PAGE_TEXT_LIMIT = 1000
-_WEAK_CHALLENGES = {"ddos-guard": ("/.well-known/ddos-guard/",), "hcaptcha": ("hcaptcha.com",),
+_WEAK_CHALLENGES = {"ddos-guard": ("/.well-known/ddos-guard/",), "aws-waf": ("token.awswaf.com", "gokuprops"),
+                    "hcaptcha": ("hcaptcha.com",),
                     "recaptcha": ("/recaptcha/",), "cloudflare": ("challenges.cloudflare.com/turnstile",),
                     "generic": ("checking your browser", "проверка браузера", "проверяем браузер",
                                 "проверка вашего браузера", "please enable cookies", "вы не робот",
@@ -59,6 +63,11 @@ _CAPTCHA_HOSTS = frozenset({"hcaptcha", "recaptcha", "cloudflare"})  # Script ho
 _SHELL_TEXT_LIMIT = 200
 _NO_JAVASCRIPT = ("enable javascript", "javascript enabled", "включите javascript", "отключен javascript")
 _APP_ROOTS = "#root, #app, #__next, #__nuxt"
+# A shell converts its JSON-LD and noscript text only from this many characters.
+_EMBEDDED_TEXT_LIMIT = 200
+_SITE_TYPES = frozenset({"WebSite", "Organization", "BreadcrumbList", "ListItem", "SearchAction"})
+_TEXT_FIELDS = ("headline", "name", "description", "articleBody", "text", "reviewBody")
+_NOSCRIPT_BLOCKS = "h1, h2, h3, h4, p, li, dt, dd, blockquote"
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _CONNECT_ATTEMPTS = 3
 _CONNECT_SLICE = 3.0
@@ -289,7 +298,7 @@ def _connect(url: str, address: str, deadline: float,
             raise _error("URL connection peer refused", "connect", URLPolicyError)
         if parts.scheme == "https":
             stream.settimeout(_remaining(deadline))
-            context = ssl.create_default_context()
+            context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # OS trust store; never inject_into_ssl()
             context.set_alpn_protocols(["http/1.1"])  # WordPress.com edge answers 403 to a ClientHello without ALPN
             stream = context.wrap_socket(
                 stream, server_hostname=parts.hostname, do_handshake_on_connect=False)
@@ -742,7 +751,7 @@ def _page_check(html: str, url: str, headers: tuple[tuple[str, str], ...], *, bl
         return "qrator"
     if parser.css('form input[type="password"]') and title.strip() in ("login", "log in", "sign in"):
         return "login"
-    # Collect shell evidence before stripping: Lexbor keeps noscript content as one text node.
+    # Collect shell evidence before stripping; Lexbor parses body noscript content into elements.
     scripts = parser.css("script")
     empty_root = any(not node.text(strip=True) for node in parser.css(_APP_ROOTS))
     parser.strip_tags(["script", "style", "noscript", "template"])
@@ -755,6 +764,52 @@ def _page_check(html: str, url: str, headers: tuple[tuple[str, str], ...], *, bl
                          or any(message in lowered() for message in _NO_JAVASCRIPT))
     return next((name for name, markers in _WEAK_CHALLENGES.items() if not (shell and name in _CAPTCHA_HOSTS)
                  and any(marker in lowered() for marker in markers)), "shell" if shell else None)
+
+
+def _plain(text: str) -> str:
+    """Return the visible text of an HTML fragment on one line."""
+    return " ".join(htmltext.LexborHTMLParser(text).text(separator=" ").split())
+
+
+def _json_ld_texts(value):
+    """Yield text fields of typed JSON-LD objects, skipping site navigation types."""
+    if isinstance(value, list):
+        for item in value:
+            yield from _json_ld_texts(item)
+    elif isinstance(value, dict) and str(value.get("@type")) not in _SITE_TYPES:
+        if "@type" in value:
+            yield from (_plain(value[key]) for key in _TEXT_FIELDS if isinstance(value.get(key), str))
+        for item in value.values():
+            yield from _json_ld_texts(item)
+
+
+def _embedded_snapshot(html: str) -> str | None:
+    """Build HTML from a shell's title, description, JSON-LD and noscript text, or None when too short."""
+    parser = htmltext.LexborHTMLParser(html)
+
+    def meta(selector: str) -> str:
+        """Return the first matching meta content on one line."""
+        return next((" ".join(node.attributes.get("content", "").split()) for node in parser.css(selector)), "")
+
+    title = " ".join(" ".join(node.text() for node in parser.css("head title")).split()) or meta(
+        'meta[property="og:title"]')
+    description = meta('meta[name="description"]') or meta('meta[property="og:description"]')
+    texts = []
+    for node in parser.css('script[type="application/ld+json"], noscript'):
+        if node.tag == "noscript":
+            blocks = (" ".join(block.text(separator=" ").split()) for block in node.css(_NOSCRIPT_BLOCKS))
+            texts += (text for text in blocks if "javascript" not in text.lower())
+            continue
+        try:
+            texts += _json_ld_texts(json.loads(node.text()))
+        except (ValueError, RecursionError):
+            pass  # Broken or too deep JSON-LD carries no page text.
+    body = [text for text in dict.fromkeys(texts) if text and text not in (title, description)]
+    if sum(map(len, body)) < _EMBEDDED_TEXT_LIMIT:
+        return None
+    blocks = (["<h1>%s</h1>" % escape(title)] if title else []) + [
+        "<p>%s</p>" % escape(text) for text in [description, *body] if text]
+    return "<html><head><title>%s</title></head><body>%s</body></html>" % (escape(title), "".join(blocks))
 
 
 def _page_refusal(check: str, status: int, *, rendered: bool = False) -> BrewdocError:
@@ -836,9 +891,10 @@ def _run_url(url: str, out=None, *, render_js: bool | str | None = False, sheets
             check = _page_check(source, final_url, response["headers"])
             csp = any(key.lower() == "content-security-policy" for key, _ in response["headers"])
             del response
-            if check and (check != "shell" or not render_js):
+            if check not in (None, "shell"):
                 raise _page_refusal(check, acquisition["http_status"])
-            if render_js == "always" or check:
+            static = source
+            if render_js == "always" or (check and render_js):
                 stage = "javascript"
                 acquisition.update(javascript)
 
@@ -885,11 +941,21 @@ def _run_url(url: str, out=None, *, render_js: bool | str | None = False, sheets
                     if len(acquisition["errors"]) < 16:
                         acquisition["errors"].append({"category": "csp_policy_unsupported", "resource_url": None})
                 del capture
-                if check := _page_check(source, final_url, ()):
+                if (check := _page_check(source, final_url, ())) not in (None, "shell"):
                     raise _page_refusal(check, acquisition["http_status"], rendered=True)
             else:
                 acquisition["capture_status"] = "static"
                 snapshot_kind = "static_html"
+            if check:  # The last capture is still a shell: convert static embedded data or refuse.
+                if not (source := _embedded_snapshot(static)):
+                    raise _page_refusal(check, acquisition["http_status"], rendered=acquisition["engine"] is not None)
+                acquisition["capture_status"] = "partial"
+                acquisition["error_count"] += 1
+                if len(acquisition["errors"]) < 16:
+                    acquisition["errors"].append({"category": "javascript_required",
+                                                  "resource_url": _display_url(final_url)})
+                snapshot_kind = "embedded_data"
+            del static
             stage = "snapshot"
             snapshot, base = _snapshot(source, final_url)
             del source

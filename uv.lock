@@ -22,12 +22,13 @@ wheels = [
 
 [[package]]
 name = "brewdoc"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "." }
 dependencies = [
     { name = "pdfplumber" },
     { name = "python-calamine" },
     { name = "selectolax", marker = "python_full_version < '3.15' and platform_python_implementation == 'CPython'" },
+    { name = "truststore" },
 ]
 
 [package.optional-dependencies]
@@ -52,6 +53,7 @@ requires-dist = [
     { name = "python-calamine", specifier = "==0.8.2" },
     { name = "quickjs-ng", marker = "python_full_version < '3.15' and platform_python_implementation == 'CPython' and extra == 'render-js'", specifier = "==0.17.0.1" },
     { name = "selectolax", marker = "python_full_version < '3.15' and platform_python_implementation == 'CPython'", specifier = "==0.4.13" },
+    { name = "truststore", specifier = "==0.10.5" },
 ]
 provides-extras = ["render-js"]
 
@@ -778,4 +780,13 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz", hash = "sha256:f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73", size = 1168449, upload-time = "2026-08-08T18:27:58.365Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl", hash = "sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670", size = 818216, upload-time = "2026-08-08T18:27:56.719Z" },
+]
+
+[[package]]
+name = "truststore"
+version = "0.10.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/9f/c5201d42a484c061e528825fc8e2d565f5abd50a4ced6fb7d29c4ec99b2b/truststore-0.10.5.tar.gz", hash = "sha256:30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd", size = 28091, upload-time = "2026-10-12T22:27:31.808Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl", hash = "sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c", size = 19017, upload-time = "2026-10-12T22:27:30.377Z" },
 ]

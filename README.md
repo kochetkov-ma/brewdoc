@@ -3,14 +3,14 @@
 [![PyPI](https://img.shields.io/pypi/v/brewdoc)](https://pypi.org/project/brewdoc/)
 [![CI](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kochetkov-ma/brewdoc/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/releases/latest)
-[![MIT](https://img.shields.io/github/license/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/LICENSE)
+[![MIT](https://img.shields.io/github/license/kochetkov-ma/brewdoc)](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/LICENSE)
 
 Fast, deterministic document-to-Markdown conversion for agent systems. Easy to install. No model weights, OCR or external services.
 
 Local conversion runs offline after installation, with no runtime component downloads.
 Supported documents become one Markdown file and a JSON receipt describing omissions.
-See [formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md).
-Version 0.4.1 added [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#zipxml-reader-limits)
+See [formats and limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md).
+Version 0.4.1 added [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#zipxml-reader-limits)
 for DOCX/PPTX and workbook metadata/artifacts. Excessive work refuses before output
 writes; native workbook values and total process memory remain outside those bounds.
 
@@ -21,32 +21,35 @@ It also added textless PDF page facts and selected caption, table and math-spaci
 Version 0.6.0 writes cleaner Markdown with minimal escaping, adds `--body-only`, accepts
 documents through `--url`, decodes legacy HTML charsets and falls back to the whole page in
 article mode.
-Version 0.7.0 adds `--render-js auto` and HTML `--no-links`, refuses captcha, login and
+Version 0.7.0 added `--render-js auto` and HTML `--no-links`, refuses captcha, login and
 JavaScript shell pages with a plain reason, reports HTTP status, redirects and charset in URL
 receipts, decodes mislabelled HTML charsets by fallback and writes code and image links as
 standard Markdown links.
+Version 0.7.1 checks `--url` TLS against the operating system trust store, converts the title,
+description, JSON-LD and noscript text of some JavaScript shell pages as a partial result, and
+names AWS WAF challenges.
 
 ## Install
 
-These examples select 0.7.0. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.0). Choose one method:
+These examples select 0.7.1. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.1). Choose one method:
 
 ```sh
-python -m pip install "brewdoc==0.7.0"
-uv tool install --python 3.12 "brewdoc==0.7.0"
-pipx install --python 3.12 "brewdoc==0.7.0"
+python -m pip install "brewdoc==0.7.1"
+uv tool install --python 3.12 "brewdoc==0.7.1"
+pipx install --python 3.12 "brewdoc==0.7.1"
 ```
 
 Use a virtual environment for pip. Python 3.12+ is required; local and URL HTML need CPython 3.12-3.14.
-[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/INSTALL.md) covers prerequisites, Windows, uvx, PATH, update and removal.
+[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/INSTALL.md) covers prerequisites, Windows, uvx, PATH, update and removal.
 [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest) lists actual assets and channel availability.
 
 ### Standalone downloads
 
-Use downloads listed as available in the release. Python and dependencies are bundled. Verify [SHA256SUMS](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.0/SHA256SUMS) and keep the entire extracted directory.
+Use downloads listed as available in the release. Python and dependencies are bundled. Verify [SHA256SUMS](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.1/SHA256SUMS) and keep the entire extracted directory.
 
-[![Linux x64 download](https://img.shields.io/badge/Linux_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.0/brewdoc-0.7.0-linux-x64.tar.gz)
-[![Windows x64 download](https://img.shields.io/badge/Windows_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.0/brewdoc-0.7.0-windows-x64.zip)
-[![macOS ARM64 download](https://img.shields.io/badge/macOS_ARM64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.0/brewdoc-0.7.0-macos-arm64.tar.gz)
+[![Linux x64 download](https://img.shields.io/badge/Linux_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.1/brewdoc-0.7.1-linux-x64.tar.gz)
+[![Windows x64 download](https://img.shields.io/badge/Windows_x64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.1/brewdoc-0.7.1-windows-x64.zip)
+[![macOS ARM64 download](https://img.shields.io/badge/macOS_ARM64-download-blue)](https://github.com/kochetkov-ma/brewdoc/releases/download/v0.7.1/brewdoc-0.7.1-macos-arm64.tar.gz)
 
 | Native target | Verification environment | JavaScript |
 |---|---|---|
@@ -56,21 +59,21 @@ Use downloads listed as available in the release. Python and dependencies are bu
 
 Older OSes, Linux musl/ARM64 and macOS Intel are outside this binary set.
 Windows is unsigned; macOS has an ad hoc signature without Developer ID/notarization.
-Linux archives have checksums, without a detached publisher signature. [Download and launch](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/INSTALL.md#standalone).
+Linux archives have checksums, without a detached publisher signature. [Download and launch](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/INSTALL.md#standalone).
 
 ### npm
 
 [![npm](https://img.shields.io/npm/v/brewdoc)](https://www.npmjs.com/package/brewdoc)
 
 npm targets Linux x64/glibc and macOS ARM64. Windows uses the GitHub native download or Python package.
-Use npm/npx only when listed as available in [the release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.0).
-[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/INSTALL.md#npm-and-npx) contains exact-version installation, update and removal instructions.
+Use npm/npx only when listed as available in [the release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.1).
+[INSTALL.md](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/INSTALL.md#npm-and-npx) contains exact-version installation, update and removal instructions.
 
 ### Homebrew
 
 Use `kochetkov-ma/brew/brewdoc` only when the release lists it as available.
 It installs the complete native bundle on macOS 15+ ARM64 or Linux x64 with system
-glibc 2.35+. See [installation and lifecycle](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/INSTALL.md#homebrew).
+glibc 2.35+. See [installation and lifecycle](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/INSTALL.md#homebrew).
 
 ## Usage
 
@@ -89,7 +92,7 @@ caller order retains full-workbook ordinals. Artifact keys come from the Markdow
 Requests and output collisions are validated before writes. Paths resolve against the caller's directory;
 `--out` creates parents. Refusal preserves existing output. Self-check is offline and has its own output.
 `--body-only` drops the title, metadata, omissions, contents and unit anchors; unit headings stay
-only for several units. The receipt is unchanged. See [body-only output](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#body-only-output).
+only for several units. The receipt is unchanged. See [body-only output](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#body-only-output).
 
 ## Markdown and receipts
 
@@ -97,7 +100,7 @@ Parsed document output uses `brewdoc.markdown/2`: quoted source title, Metadata,
 Known omissions, Contents, then anchored units. PDF uses `page/000001`, workbooks `sheet/000001`,
 PPTX/ODP `slide/000001`, and DOCX/EPUB/HTML/ODT/EML `chapter/000001`.
 Empty declared units remain navigable. Escaping is minimal; HTML, EPUB and EML omit form
-controls and write images with alt text as `![alt](src)`. See [Markdown escaping](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#markdown-escaping).
+controls and write images with alt text as `![alt](src)`. See [Markdown escaping](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#markdown-escaping).
 Metadata holds source/selection/content hashes, conversion tallies and artifact capabilities;
 it excludes paths, timestamps, permissions and host data. EPUB retains declared publication metadata.
 
@@ -159,19 +162,21 @@ brewdoc --url https://example.com/article --no-links --out article.md
 Bare `--render-js` means `always`; `--render-js auto` runs JS only when the static page is a JavaScript shell.
 Prefer `--render-js auto` for unknown pages: `always` runs JS on every page and can hit an engine quota on a
 page that static mode reads. Pages that need more than the bounded engine refuse, such as crates.io.
-Captcha, bot challenge, login and shell pages refuse at stage `challenge` or `javascript_required` with a plain
-reason; the receipt names the challenge and keeps the HTTP status. `--no-links` (HTML only) keeps link text,
+A shell page whose static HTML embeds at least 200 characters of JSON-LD or noscript text converts that
+text as a partial result, such as an Airbnb listing or a SoundCloud track; the receipt keeps a
+`javascript_required` error. Captcha, bot challenge, login and other shell pages refuse at stage `challenge`
+or `javascript_required` with a plain reason; the receipt names the challenge and keeps the HTTP status. `--no-links` (HTML only) keeps link text,
 omits destinations and discloses it in the receipt.
 `--timeout` is one positive finite waiting budget, default 30 seconds; cleanup/conversion can add time.
 Public destinations, DNS, redirects, TLS, requests and bytes are validated. Ordinary requests use GET;
 JS admits only the narrow credential-free HN Algolia XHR POST exception. Local HTML never fetches or runs scripts.
 Optional JS needs installed/bundled prerequisites, refuses unsupported runtimes before HTTP and downloads no engine.
-Timing-only expiry can preserve valid partial content; hard failures refuse output. [Full URL/JS limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#url-acquisition).
+Timing-only expiry can preserve valid partial content; hard failures refuse output. [Full URL/JS limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#url-acquisition).
 
 ## Article mode
 
 Introduced in 0.4.0; use a channel listed as available in the release. For Python JS capture, install
-`brewdoc[render-js]==0.7.0`; supported standalone bundles include its prerequisites.
+`brewdoc[render-js]==0.7.1`; supported standalone bundles include its prerequisites.
 
 ```sh
 brewdoc page.html --article --out article.md
@@ -194,7 +199,7 @@ without layout or inferred author/date metadata. The source title is unchanged.
 
 When content is selected, the receipt's `not_carried` and Markdown's Known omissions declare:
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
-The [article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#article-selection)
+The [article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#article-selection)
 defines selection, fallback and limits.
 
 [Earlier source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
@@ -205,10 +210,10 @@ tested patches, not a claim about newer versions. These results predate the 0.5.
 CPython 3.12.14 retains the local macOS full-suite baseline and existing CI smoke checks.
 Package evidence is separate from standalone binaries; other OS/minor combinations, free-threaded CPython and other
 architectures remain untested here.
-See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#python-package-compatibility).
+See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#python-package-compatibility).
 
-[Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/benchmarks/results/README.md)
-[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/LICENSE)
+[Format contracts](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md) | [Corpus](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/benchmarks/CATALOG.md) | [Measurements](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/benchmarks/METHODOLOGY.md) | [Results](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/benchmarks/results/README.md)
+[Releasing](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/RELEASING.md) | [Agent entry point](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/llms.txt) | [MIT license](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/LICENSE)
 
 ## Related projects
 
