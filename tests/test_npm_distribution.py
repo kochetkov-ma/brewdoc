@@ -133,6 +133,48 @@ def test_registry_visibility_wait_refuses_actual_metadata_or_integrity_differenc
     assert (str(failure.value), fixture.sleeps) == (message, [15]), "mismatches cannot consume the visibility wait budget"
 
 
+def test_registry_visibility_wait_retries_cached_tarball_404_after_publish(tmp_path, monkeypatch, npm_builder, npm_visibility):
+    # GIVEN fresh metadata whose tarball the npm CDN still serves as a cached 404 once.
+    fixture = npm_visibility
+    metadata, tarballs = iter([False, True, True]), iter([False, True])
+
+    def request(url, **options):
+        """Return absence before publish, then matching metadata with one stale tarball 404."""
+        fixture.requests.append((url, options["timeout"]))
+        if not next(tarballs if url.endswith(".tgz") else metadata):
+            raise npm_builder.urllib.error.HTTPError(url, 404, "Not Found", None, None)
+        return io.BytesIO(fixture.payload if url.endswith(".tgz") else json.dumps(fixture.public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.sleeps == [], "the fake clock starts before the first registry read"
+    # WHEN publish waits for the new version to become publicly readable.
+    npm_builder.publish(tmp_path)
+    # THEN the tarball 404 polls once inside the visibility deadline and publication is not repeated.
+    assert (fixture.sleeps, [url.rsplit("/", 1)[1] for url, timeout in fixture.requests], fixture.publications[0][0]) == (
+        [15], ["0.3.3", "0.3.3", "brewdoc-0.3.3.tgz", "0.3.3", "brewdoc-0.3.3.tgz"], "publish"), "a cached tarball 404 must wait like missing metadata"
+    assert len(fixture.publications) == 1, "polling must never repeat npm publish"
+
+
+def test_registry_tarball_error_other_than_404_fails_immediately(monkeypatch, npm_builder, npm_visibility):
+    # GIVEN matching metadata whose tarball download fails with a server error.
+    fixture = npm_visibility
+
+    def request(url, **options):
+        """Return exact metadata and a non-retryable tarball HTTP status."""
+        fixture.requests.append((url, options["timeout"]))
+        if url.endswith(".tgz"):
+            raise npm_builder.urllib.error.HTTPError(url, 500, "Server Error", None, None)
+        return io.BytesIO(json.dumps(fixture.public).encode())
+
+    monkeypatch.setattr(npm_builder.urllib.request, "urlopen", request)
+    assert fixture.sleeps == [], "the server error has not been observed"
+    # WHEN the visibility wait downloads the tarball.
+    with pytest.raises(npm_builder.urllib.error.HTTPError) as failure:
+        npm_builder.wait_public_record(fixture.record)
+    # THEN only 404 is retryable, so the error surfaces without polling.
+    assert (failure.value.code, fixture.sleeps, len(fixture.requests)) == (500, [], 2), "non-404 tarball errors cannot consume the visibility wait budget"
+
+
 def test_registry_visibility_deadline_caps_requests_and_rejects_late_success(monkeypatch, npm_builder, npm_visibility):
     # GIVEN a first absent read leaves five seconds for matching metadata and tarball transport.
     fixture = npm_visibility
