@@ -4,7 +4,7 @@
 
 Local conversion after installation is offline and downloads no runtime components.
 Supported formats and readable-file constraints are defined in FORMATS.md.
-Version 0.4.1 added [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#zipxml-reader-limits)
+Version 0.4.1 added [selected ZIP/XML reader budgets](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#zipxml-reader-limits)
 for DOCX/PPTX and workbook metadata/artifacts, with refusal before output writes.
 Native workbook values and total process memory are outside those bounds.
 
@@ -14,16 +14,19 @@ qualified DOCX Fallback-only selection. Selected PDF caption/table/math-spacing 
 textless-page facts were included.
 Version 0.6.0 writes cleaner Markdown with minimal escaping, adds --body-only, accepts
 documents through --url, decodes legacy HTML charsets and falls back to the whole page in
-article mode. Version 0.7.0 adds --render-js auto and HTML --no-links, refuses captcha,
+article mode. Version 0.7.0 added --render-js auto and HTML --no-links, refuses captcha,
 login and JavaScript shell pages with a plain reason, reports HTTP status, redirects and
 charset in URL receipts, decodes mislabelled HTML charsets by fallback and writes code and
-image links as standard Markdown links. FORMATS.md owns the limits.
+image links as standard Markdown links. Version 0.7.1 checks --url TLS against the
+operating system trust store, converts embedded title, description, JSON-LD and noscript
+text of some JavaScript shell pages as a partial result and names AWS WAF challenges.
+FORMATS.md owns the limits.
 
-- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
-- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
-- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
+- [Installation](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/INSTALL.md): pip, uv/uvx, pipx, native downloads, PATH, update and removal.
+- [CLI/API and receipts](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/README.md): deterministic Markdown and machine-readable results, including article mode introduced in 0.4.0.
+- [Format limits](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md): supported/refused inputs, omissions, resource budgets and package compatibility evidence.
 - [Latest release](https://github.com/kochetkov-ma/brewdoc/releases/latest): concise features, actual assets and channel availability.
-- Installation examples select 0.7.0. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.0). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
+- Installation examples select 0.7.1. Use a channel listed as available in [that release](https://github.com/kochetkov-ma/brewdoc/releases/tag/v0.7.1). npm targets Linux x64/glibc and macOS ARM64; Windows uses GitHub native or Python.
 - When listed as available in the release, `kochetkov-ma/brew/brewdoc` installs the complete bundle on macOS 15+ ARM64 or Linux x64/system glibc 2.35+; see installation for lifecycle commands.
 
 ## CLI and API
@@ -69,16 +72,18 @@ only the narrow credential-free HN Algolia XHR POST exception is admitted.
 Bare --render-js means always; --render-js auto runs JS only on a JavaScript shell page.
 Prefer --render-js auto for unknown pages: always runs JS on every page and can hit
 an engine quota on a page that static mode reads. Pages that need more than the
-bounded engine refuse, such as crates.io.
-Captcha, bot challenge, login and shell pages refuse at stage challenge or
-javascript_required with a plain reason; the receipt names the challenge and HTTP status.
+bounded engine refuse, such as crates.io. A shell page whose static HTML embeds at
+least 200 characters of JSON-LD or noscript text converts it as a partial result with a
+javascript_required error. Captcha, bot challenge, login and other shell pages refuse at
+stage challenge or javascript_required with a plain reason; the receipt names the challenge
+and HTTP status.
 --no-links (HTML only) keeps link text and discloses omitted destinations in the receipt.
 See the format limits for supported JS runtimes and prerequisite refusals.
 
 ## Article mode
 
 Introduced in 0.4.0; use a channel listed as available in the release. Python JS capture
-needs `brewdoc[render-js]==0.7.0`; supported standalone bundles include its prerequisites.
+needs `brewdoc[render-js]==0.7.1`; supported standalone bundles include its prerequisites.
 
 ```sh
 brewdoc page.html --article --out article.md
@@ -97,7 +102,7 @@ article. With no rendered candidate, the whole clean page renders and the receip
 replacement or inferred author/date metadata. When content is selected, receipt `not_carried`
 and Markdown Known omissions include
 `body content outside the selected article or main subtree; complete page coverage is not claimed`.
-See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#article-selection).
+See [the article contract](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#article-selection).
 
 [Earlier source-package CI](https://github.com/kochetkov-ma/brewdoc/actions/runs/38431645006) passed on
 Ubuntu 22.04 x64/glibc with CPython 3.13.15, macOS 15 ARM64 and Windows Server 2025 x64
@@ -107,7 +112,7 @@ tested patches. CPython 3.12.14 retains local macOS full-suite and existing CI s
 These results predate the 0.5.0 changes.
 Source-package checks are separate from standalone binaries; other OS/minor combinations,
 free-threaded CPython and other architectures remain untested here.
-See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.0/FORMATS.md#python-package-compatibility).
+See [package compatibility](https://github.com/kochetkov-ma/brewdoc/blob/v0.7.1/FORMATS.md#python-package-compatibility).
 
 ## Related projects
 

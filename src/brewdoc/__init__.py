@@ -11,7 +11,7 @@ from brewdoc.service import run
 from brewdoc.sheets import (CellFormula, FormulaArtifact, list_book_artifacts, read_book_artifact,
                             read_formulas, render_book)
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 __all__ = ["ArtifactRef", "BrewdocError", "CellFormula", "FormulaArtifact", "__version__",
            "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
            "render_doc", "render_epub", "render_html", "render_pdf", "render_presentation", "run", "self_check"]

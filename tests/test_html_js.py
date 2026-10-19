@@ -126,7 +126,8 @@ def test_dynamic_module_unresolved_await_is_observable_partial():
         return {'status': 200, 'headers': (), 'final_url': request['url'],
                 'body': b'await new Promise(()=>{});export const value=42'}
     # WHEN the public native Promise hook observes the unresolved graph.
-    captured = render(source, 'https://fixture.test/', fetch, time.monotonic() + 10, soft_window=0.05)
+    # Soft window spans the deadline: module fetch never races its expiry; only engine settle ends capture.
+    captured = render(source, 'https://fixture.test/', fetch, time.monotonic() + 10, soft_window=10)
     # THEN pending async state prevents a settled claim.
     assert (captured['html'], captured['capture_status'], captured['errors'], captured['pending']) == (
         source, 'partial', [], {'requests': 0, 'timers': 0, 'modules': None, 'promises': 8, 'jobs': False},
