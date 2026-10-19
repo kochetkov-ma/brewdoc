@@ -58,6 +58,7 @@
   "release_fixes": [
     "Verify --url TLS with the operating system trust store through truststore 0.10.5, so pages whose root is only in that store, such as GlobalSign Root R46 on macOS, load instead of refusing at tls. The macOS and Windows verifiers may fetch missing intermediates themselves."
   ],
+  "release_pr": 70,
   "release_examples": [
     "brewdoc --url https://soundcloud.com/forss/flickermood --out track.md"
   ],
