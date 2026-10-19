@@ -165,8 +165,8 @@ page that static mode reads. Pages that need more than the bounded engine refuse
 A shell page whose static HTML embeds at least 200 characters of JSON-LD or noscript text converts that
 text as a partial result, such as an Airbnb listing or a SoundCloud track; the receipt keeps a
 `javascript_required` error. Captcha, bot challenge, login and other shell pages refuse at stage `challenge`
-or `javascript_required` with a plain reason; the receipt names the challenge and keeps the HTTP status. `--no-links` (HTML only) keeps link text,
-omits destinations and discloses it in the receipt.
+or `javascript_required` with a plain reason; the receipt names the challenge and keeps the HTTP status.
+`--no-links` (HTML only) keeps link text, omits destinations and discloses it in the receipt.
 `--timeout` is one positive finite waiting budget, default 30 seconds; cleanup/conversion can add time.
 Public destinations, DNS, redirects, TLS, requests and bytes are validated. Ordinary requests use GET;
 JS admits only the narrow credential-free HN Algolia XHR POST exception. Local HTML never fetches or runs scripts.

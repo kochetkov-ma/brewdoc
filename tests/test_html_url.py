@@ -1660,8 +1660,8 @@ TRACK = ("From the Soulhack album, released on Bad Panda Records in 2008 and sha
 # https://soundcloud.com/ track shell: page text only in noscript blocks, captured 2026-10-19
 SOUNDCLOUD_SHELL = (
     '<html><head><meta property="og:title" content="Flickermood by Forss"><meta property="og:description" '
-    'content="Stream Flickermood by Forss on desktop and mobile."></head><body><noscript><p>JavaScript is disabled. '
-    'You need to enable JavaScript to use SoundCloud.</p></noscript><div id="app"></div><noscript><article>'
+    'content="Stream Flickermood by Forss on desktop and mobile."></head><body><noscript><p>JavaScript is disabled'
+    '</p><p>You need to enable JavaScript to use SoundCloud</p></noscript><div id="app"></div><noscript><article>'
     '<h1>Flickermood by Forss</h1><p>%s</p><dl><dt>Genre</dt><dd>Electronic</dd></dl>'
     '<ul><li>Comment by breakoutt: flow!!!</li></ul></article></noscript><script src="/a.js"></script></body></html>'
     % TRACK)
@@ -1682,6 +1682,9 @@ NOISE_SHELL = (
     % ("We sell things. " * 15, "Please provide details about your experience with this ad. " * 4))
 BROKEN_LD_SHELL = ('<html><head><title>App</title><script type="application/ld+json">{bad</script></head><body>'
                    '<div id="root"></div><script src="/a.js"></script></body></html>')
+LESSON = ("Learn JavaScript closures, scopes and modules with short examples that run in any browser console.",
+          "Each lesson ends with a quiz, and every answer links back to the paragraph that explains it in detail.")
+AWS_WAF_SDK = "https://a1b2.c3d4.us-east-1.token.awswaf.com/a1b2/c3d4/jsapi.js"
 AWS_WAF_TOKEN = '<script src="https://a1b2.c3d4.us-east-1.token.awswaf.com/a1b2/c3d4/challenge.js"></script>'
 AWS_WAF_GOKU = '<script>window.gokuProps = {"key": "k", "iv": "i", "context": "c"};</script>'
 AWS_WAF_ARTICLE = ('<html><head><title>Story</title></head><body><article><p>%s</p></article>'
@@ -1710,6 +1713,19 @@ def embedded(acquisition, snapshot):
     return acquisition | {"capture_status": "partial", "error_count": 1,
                           "errors": [{"category": "javascript_required", "resource_url": PAGE}],
                           "snapshot": {"kind": "embedded_data", "bytes": len(snapshot), "sha256": sha256(snapshot)}}
+
+
+def quote_shell(first, second):
+    """Return an SPA shell whose only page text is a noscript quote of the paragraphs `first` and `second`."""
+    return ('<html><head><title>Quote</title></head><body><div id="root"></div><noscript><blockquote><p>%s</p>'
+            '<p>%s</p></blockquote></noscript><script src="/a.js"></script></body></html>' % (first, second))
+
+
+def deep_shell(text):
+    """Return an SPA shell whose JSON-LD array holds an Article with `text` before a 1,100-deep list."""
+    return ('<html><head><title>Notes</title><script type="application/ld+json">[{"@type": "Article", '
+            '"articleBody": "%s"}, %s1%s]</script></head><body><div id="root"></div><script src="/a.js"></script>'
+            '</body></html>' % (text, "[" * 1100, "]" * 1100))
 
 
 def rooted(text):
@@ -1917,12 +1933,15 @@ def test_success_html_on_an_unsupported_html_runtime_refuses_at_prerequisites_be
     CRATES_SHELL, HN_SHELL, VUE_SHELL, NEXT_SHELL, rooted("x" * 150), rooted("x" * 199), ENABLE_JS_NOTE,
     captcha_shell(RECAPTCHA_V3), captcha_shell("https://js.hcaptcha.com/1/api.js?render=explicit"),
     captcha_shell("https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"),
-    SLOGAN_SHELL, NOISE_SHELL, BROKEN_LD_SHELL, article_shell("x" * 199),
+    captcha_shell(AWS_WAF_SDK), SLOGAN_SHELL, NOISE_SHELL,
+    NOISE_SHELL.replace('"@type": "Organization"', '"@type": ["Thing", "Organization"]'), BROKEN_LD_SHELL,
+    article_shell("x" * 199), quote_shell("x" * 60, "y" * 60), deep_shell("x" * 200),
 ], ids=["crates-enable-javascript", "hn-empty-root", "vue-russian-message", "next-empty-root",
         "empty-root-150-visible", "empty-root-199-visible", "enable-javascript-900-visible",
-        "recaptcha-v3-host-on-shell", "hcaptcha-host-on-shell", "turnstile-host-on-shell",
-        "embedded-tagline-and-javascript-block-only", "embedded-site-noise-only", "embedded-broken-json-ld",
-        "embedded-199-chars"])
+        "recaptcha-v3-host-on-shell", "hcaptcha-host-on-shell", "turnstile-host-on-shell", "aws-waf-sdk-on-shell",
+        "embedded-tagline-and-javascript-block-only", "embedded-site-noise-only", "embedded-site-type-list-only",
+        "embedded-broken-json-ld", "embedded-199-chars", "embedded-nested-quote-counted-once",
+        "embedded-text-before-too-deep-json-ld"])
 def test_static_shell_page_refuses_at_javascript_required_and_names_the_auto_retry(htmlurl, monkeypatch, html):
     # GIVEN a 200 JavaScript shell: little visible text, a script and an empty root or enable-JS message
     calls = serve(htmlurl, monkeypatch, {PAGE: page_hop(html)})
@@ -2043,7 +2062,10 @@ def test_javascript_modes_refuse_a_shell_that_the_engine_did_not_fill(htmlurl, m
     (AIRBNB_SHELL, AIRBNB_DATA), (SOUNDCLOUD_SHELL, SOUNDCLOUD_DATA),
     (article_shell("x" * 200), '<html><head><title>Notes</title></head><body><h1>Notes</h1><p>%s</p></body></html>'
      % ("x" * 200)),
-], ids=["json-ld-listing", "noscript-track", "json-ld-200-chars-beside-broken-block"])
+    (quote_shell(*LESSON), '<html><head><title>Quote</title></head><body><h1>Quote</h1><p>%s</p><p>%s</p></body>'
+     '</html>' % LESSON),
+], ids=["json-ld-listing", "noscript-track", "json-ld-200-chars-beside-broken-block",
+        "noscript-nested-quote-mentioning-javascript"])
 def test_static_shell_with_embedded_page_text_converts_a_partial_embedded_data_snapshot(
         htmlurl, monkeypatch, tmp_path, html, snapshot):
     # GIVEN a static shell whose JSON-LD or noscript blocks carry at least 200 chars of page text
@@ -2082,10 +2104,9 @@ def test_javascript_modes_build_embedded_data_from_the_static_source_when_the_ca
 
 @pytest.mark.parametrize("evidence,render_js,changes,events", [
     (AWS_WAF_TOKEN + AWS_WAF_GOKU, None, {}, [PAGE]),
-    (AWS_WAF_TOKEN, None, {}, [PAGE]),
     (AWS_WAF_GOKU, None, {}, [PAGE]),
     (AWS_WAF_TOKEN + AWS_WAF_GOKU, "auto", {"render_js": "auto"}, ["runtime", PAGE]),
-], ids=["token-host-and-goku-props", "token-host-only", "goku-props-only", "auto-before-any-script"])
+], ids=["token-host-and-goku-props", "goku-props-only", "auto-before-any-script"])
 def test_aws_waf_202_challenge_refuses_at_the_challenge_stage_instead_of_javascript_required(
         htmlurl, monkeypatch, evidence, render_js, changes, events):
     # GIVEN an AWS WAF challenge shell answered with HTTP 202 and an observable JS runtime

@@ -20,6 +20,7 @@ import tempfile
 import threading
 import time
 import zlib
+from collections.abc import Iterator
 from html import escape
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qsl, quote, urljoin, urlsplit, urlunsplit
@@ -53,12 +54,14 @@ _SCRIPT_TYPES = frozenset({"application/ecmascript", "application/javascript", "
 # Weak challenge markers and shell evidence count only below this visible text length.
 _PAGE_TEXT_LIMIT = 1000
 _WEAK_CHALLENGES = {"ddos-guard": ("/.well-known/ddos-guard/",), "aws-waf": ("token.awswaf.com", "gokuprops"),
-                    "hcaptcha": ("hcaptcha.com",),
-                    "recaptcha": ("/recaptcha/",), "cloudflare": ("challenges.cloudflare.com/turnstile",),
+                    "hcaptcha": ("hcaptcha.com",), "recaptcha": ("/recaptcha/",),
+                    "cloudflare": ("challenges.cloudflare.com/turnstile",),
                     "generic": ("checking your browser", "проверка браузера", "проверяем браузер",
                                 "проверка вашего браузера", "please enable cookies", "вы не робот",
                                 "are you a robot")}
-_CAPTCHA_HOSTS = frozenset({"hcaptcha", "recaptcha", "cloudflare"})  # Script hosts that lose to shell evidence.
+# Script hosts that lose to shell evidence.
+_CAPTCHA_HOSTS = frozenset({"token.awswaf.com", "hcaptcha.com", "/recaptcha/",
+                            "challenges.cloudflare.com/turnstile"})
 # An empty app root is shell evidence only below this visible text length.
 _SHELL_TEXT_LIMIT = 200
 _NO_JAVASCRIPT = ("enable javascript", "javascript enabled", "включите javascript", "отключен javascript")
@@ -67,7 +70,9 @@ _APP_ROOTS = "#root, #app, #__next, #__nuxt"
 _EMBEDDED_TEXT_LIMIT = 200
 _SITE_TYPES = frozenset({"WebSite", "Organization", "BreadcrumbList", "ListItem", "SearchAction"})
 _TEXT_FIELDS = ("headline", "name", "description", "articleBody", "text", "reviewBody")
-_NOSCRIPT_BLOCKS = "h1, h2, h3, h4, p, li, dt, dd, blockquote"
+# Innermost text blocks only, so nested blocks never repeat their text.
+_NOSCRIPT_BLOCKS = ":is({0}):not(:has({0}))".format("h1, h2, h3, h4, p, li, dt, dd, blockquote")
+_NOSCRIPT_NOTES = (*_NO_JAVASCRIPT, "javascript is disabled")  # Noscript blocks holding these drop.
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _CONNECT_ATTEMPTS = 3
 _CONNECT_SLICE = 3.0
@@ -762,8 +767,9 @@ def _page_check(html: str, url: str, headers: tuple[tuple[str, str], ...], *, bl
         return "ddos-guard"
     shell = scripts and ((empty_root and visible < _SHELL_TEXT_LIMIT)
                          or any(message in lowered() for message in _NO_JAVASCRIPT))
-    return next((name for name, markers in _WEAK_CHALLENGES.items() if not (shell and name in _CAPTCHA_HOSTS)
-                 and any(marker in lowered() for marker in markers)), "shell" if shell else None)
+    found = (name for name, markers in _WEAK_CHALLENGES.items()
+             if any(marker in lowered() for marker in markers if not (shell and marker in _CAPTCHA_HOSTS)))
+    return next(found, "shell" if shell else None)
 
 
 def _plain(text: str) -> str:
@@ -771,12 +777,15 @@ def _plain(text: str) -> str:
     return " ".join(htmltext.LexborHTMLParser(text).text(separator=" ").split())
 
 
-def _json_ld_texts(value):
+def _json_ld_texts(value: object) -> Iterator[str]:
     """Yield text fields of typed JSON-LD objects, skipping site navigation types."""
     if isinstance(value, list):
         for item in value:
             yield from _json_ld_texts(item)
-    elif isinstance(value, dict) and str(value.get("@type")) not in _SITE_TYPES:
+    elif isinstance(value, dict):
+        types = value.get("@type")
+        if any(str(kind) in _SITE_TYPES for kind in (types if isinstance(types, list) else [types])):
+            return
         if "@type" in value:
             yield from (_plain(value[key]) for key in _TEXT_FIELDS if isinstance(value.get(key), str))
         for item in value.values():
@@ -791,17 +800,17 @@ def _embedded_snapshot(html: str) -> str | None:
         """Return the first matching meta content on one line."""
         return next((" ".join(node.attributes.get("content", "").split()) for node in parser.css(selector)), "")
 
-    title = " ".join(" ".join(node.text() for node in parser.css("head title")).split()) or meta(
-        'meta[property="og:title"]')
+    title = (" ".join(" ".join(node.text() for node in parser.css("head title")).split())
+             or meta('meta[property="og:title"]'))
     description = meta('meta[name="description"]') or meta('meta[property="og:description"]')
     texts = []
     for node in parser.css('script[type="application/ld+json"], noscript'):
         if node.tag == "noscript":
             blocks = (" ".join(block.text(separator=" ").split()) for block in node.css(_NOSCRIPT_BLOCKS))
-            texts += (text for text in blocks if "javascript" not in text.lower())
+            texts += (text for text in blocks if not any(note in text.lower() for note in _NOSCRIPT_NOTES))
             continue
         try:
-            texts += _json_ld_texts(json.loads(node.text()))
+            texts += list(_json_ld_texts(json.loads(node.text())))
         except (ValueError, RecursionError):
             pass  # Broken or too deep JSON-LD carries no page text.
     body = [text for text in dict.fromkeys(texts) if text and text not in (title, description)]
