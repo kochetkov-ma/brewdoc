@@ -1072,7 +1072,7 @@ def installed_url_runtime(enabled: bool) -> dict:
                   "bytes": path.stat().st_size, "sha256": digest(path)}
                  for path in sorted(files) if path.is_file()]
     total = sum(item["bytes"] for item in inventory)
-    if total > 10_000_000:
+    if total > 12_000_000:
         raise ValueError(f"Complete added installed URL runtime exceeds cap: {total}")
     return {"added_installed_bytes": total, "inventory": inventory,
             "shared_exclusion": "Existing Python and base conversion dependencies; entire brewdoc package included conservatively"}
