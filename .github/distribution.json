@@ -52,15 +52,15 @@
     "linux": "Archive SHA-256 checksums; no detached publisher signature"
   },
   "release_features": [
-    "Convert the embedded data of a JavaScript shell page instead of refusing it: title, description, JSON-LD text and noscript text from the static HTML, when the body text reaches 200 characters. The capture is partial, snapshot kind embedded_data, with one javascript_required error. This reads pages such as an Airbnb listing, a SoundCloud track or a Bluesky profile; crates.io still refuses.",
-    "Name AWS WAF challenge pages as challenge aws-waf, such as IMDb or Binance pages answered with HTTP 202, instead of refusing them as javascript_required."
+    "Inspect original source bytes independently of readable conversion for all 15 supported extensions, with a deterministic JSON report and exact retrievable artifacts.",
+    "Expose discovered links and literal code as inert content, including source findings omitted from the readable projection."
   ],
   "release_fixes": [
-    "Verify --url TLS with the operating system trust store through truststore 0.10.5, so pages whose root is only in that store, such as GlobalSign Root R46 on macOS, load instead of refusing at tls. The macOS and Windows verifiers may fetch missing intermediates themselves."
+    "Keep source cell addresses and sparse positions in workbook output, with typed values, formulas and cached results retained in inspection.",
+    "Retain requested inspection artifacts when readable conversion refuses, while leaving existing Markdown output untouched."
   ],
-  "release_pr": 70,
   "release_examples": [
-    "brewdoc --url https://soundcloud.com/forss/flickermood --out track.md"
+    "brewdoc file.pdf --artifact inspection/report=inspection.json --out file.md"
   ],
   "releases": {
     "0.2.0": {

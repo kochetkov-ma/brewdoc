@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from inspection_contract import rendering_bytes, rendering_result
+
 import brewdoc
 from brewdoc import common, selfcheck, service
 from brewdoc.cli import main
@@ -110,6 +112,23 @@ def schema_two(path: Path, body: str, **fields) -> str:
         **fields, body=body, source_bytes=len(source), body_bytes=len(rendered),
         source_sha256=hashlib.sha256(source).hexdigest(),
         body_sha256=hashlib.sha256(rendered).hexdigest())
+
+
+def inspection_receipt(path: Path) -> dict:
+    """Expected additive service evidence, bound to the independent inspection API."""
+    report = brewdoc.inspect_document(path)
+    statuses = ("complete", "partial", "unavailable", "not_applicable")
+    return {
+        "inspection": {"schema": "brewdoc.inspection/1", "artifact": "inspection/report",
+                       "not_carried_scope": "readable_projection",
+                       "supplement_scope": "original_source_findings",
+                       "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                       "source": report["source"], "documents": len(report["documents"]),
+                       "components": len(report["components"]), "findings": len(report["findings"]),
+                       "coverage": {status: sum(row["status"] == status for row in report["coverage"])
+                                    for status in statuses}},
+        "artifacts": [item.to_dict() for item in brewdoc.list_document_artifacts(path)],
+    }
 
 
 def zero_tally() -> dict:
@@ -217,7 +236,8 @@ def test_public_api_is_exactly_the_package_exports():
     # THEN they are the documented public surface, in order
     assert exports == [
         "ArtifactRef", "BrewdocError", "CellFormula", "FormulaArtifact", "__version__",
-        "list_book_artifacts", "read_book_artifact", "read_formulas", "render_book",
+        "inspect_document", "list_book_artifacts", "list_document_artifacts", "read_book_artifact",
+        "read_document_artifact", "read_formulas", "render_book",
         "render_doc", "render_epub", "render_html", "render_pdf", "render_presentation", "run",
         "self_check",
     ], "the public API must change only by a deliberate edit of brewdoc.__all__"
@@ -279,12 +299,14 @@ def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tm
                  ("artifact_outputs", inspect.Parameter.KEYWORD_ONLY, None),
                  ("article", inspect.Parameter.KEYWORD_ONLY, False),
                  ("body_only", inspect.Parameter.KEYWORD_ONLY, False),
-                 ("links", inspect.Parameter.KEYWORD_ONLY, True))),
+                 ("links", inspect.Parameter.KEYWORD_ONLY, True),
+                 ("_inspection_source", inspect.Parameter.KEYWORD_ONLY, None))),
         ("render_html", (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                          ("article", inspect.Parameter.KEYWORD_ONLY, False),
                          ("links", inspect.Parameter.KEYWORD_ONLY, True))),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),))
-          for name in ("render_pdf", "render_doc", "render_presentation", "render_epub")),
+          for name in ("render_pdf", "render_doc", "render_presentation", "render_epub",
+                       "inspect_document", "list_document_artifacts")),
         *((name, (("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
                   ("sheets", inspect.Parameter.KEYWORD_ONLY, None)))
           for name in ("render_book", "list_book_artifacts", "read_formulas")),
@@ -292,6 +314,9 @@ def test_cumulative_markdown_budget_stops_before_consuming_a_later_table_cell(tm
             ("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
             ("key", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
             ("sheets", inspect.Parameter.KEYWORD_ONLY, None))),
+        ("read_document_artifact", (
+            ("path", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty),
+            ("key", inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.empty))),
         ("self_check", ()),
     ],
 )
@@ -314,10 +339,10 @@ def test_public_html_wrapper_and_uppercase_suffix_keep_exact_utf8_output(tmp_pat
     assert out.exists() is False, "the API equivalence destination must start absent"
     # WHEN the public wrapper and generic service render the same source
     api_markdown, tally = brewdoc.render_html(path)
-    rc, line, markdown = brewdoc.run(path, out)
+    rc, line, markdown = rendering_result(brewdoc.run(path, out), out)
     # THEN the wrapper, route, exact tally and output bytes describe the same Unicode chapter
     assert (rc, line["route"], line["unit_kind"], line["units"], tally,
-            selfcheck.chapter_lines(api_markdown, "Untitled"), markdown, out.read_bytes()) == (
+            selfcheck.chapter_lines(api_markdown, "Untitled"), markdown, rendering_bytes(out.read_bytes())) == (
         0, "html", "chapter", 1, {**zero_tally(), "chapters": 1, "text_regions": 1},
         ["café 東京"], api_markdown, api_markdown.encode("utf-8"),
     ), "render_html must share the registered case-insensitive route and lossless file output"
@@ -632,7 +657,8 @@ def test_unexpected_route_error_returns_the_full_refusal_and_preserves_output(tm
              "source": "document.pdf", "out": None, "receipt_schema": "brewdoc.receipt/1",
              "unit_kind": "page", "units": 0, "tables": 0, "text_regions": 0,
              "columns_split": 0, "dropped": zero_tally()["dropped"],
-             "broken_ligature_words": 0, "not_carried": PDF_NOT_CARRIED}, ""),
+             "broken_ligature_words": 0, "not_carried": PDF_NOT_CARRIED,
+             **inspection_receipt(path)}, ""),
         b"previous Markdown\n", ["document.md", "document.pdf"],
     ), "unexpected route errors must return a full failure receipt before any output transaction"
 
@@ -683,7 +709,7 @@ def test_a_success_receipt_names_route_counts_output_and_omissions(tmp_path, nam
     # WHEN it is rendered through the public run path
     code, actual, _markdown = brewdoc.run(path, out)
     # THEN the exact receipt counts the route's own unit kind: pages, sheets or chapters
-    assert (code, actual) == (0, {**receipt, "out": str(out)}), (
+    assert (code, actual) == (0, {**receipt, "out": str(out), **inspection_receipt(path)}), (
         "the route line must name the route, unit counts, output and what it cannot carry"
     )
 
@@ -729,8 +755,10 @@ def test_cli_stdout_is_the_receipt_line_then_the_exact_out_file_bytes(tmp_path, 
                            "- charts and embedded images\n- readable VBA source modules",
                  contents='- [Sheet 1: "Zones"](#brewdoc-sheet-000001)'),
             '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Zones"\n\n'
-            "| Zone | Area | Sown |\n| --- | --- | --- |\n"
-            "| North | 12.5 | 2026-07-18 |\n| South | 9.0 |  |\n", id="xlsx-date-and-empty-cell"),
+            "Source range: A1:C3\n\n| Row | A | B | C |\n| --- | --- | --- | --- |\n"
+            "| 1 | A1: Zone | B1: Area | C1: Sown |\n"
+            "| 2 | A2: North | B2: 12.5 | C2: 2026-07-18 |\n"
+            "| 3 | A3: South | B3: 9.0 |  |\n", id="xlsx-date-and-empty-cell"),
         pytest.param(
             "growth.docx", lambda path: docx(path, GROWTH_REGULATORS),
             dict(NOT_APPLICABLE, name="growth.docx", suffix=".docx", route="doc",
@@ -751,7 +779,7 @@ def test_small_documents_match_the_whole_schema_two_contract(tmp_path, name, bui
     path = build(tmp_path / name)
     expected = schema_two(path, body, **fields)
     # WHEN it is read through the public run path
-    code, _receipt, markdown = brewdoc.run(path)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN every byte matches the metadata-first frame and the route body
     assert (code, markdown) == (0, expected), "%s must match the whole schema 2 document" % name
 
@@ -809,7 +837,7 @@ def test_docx_literal_anchor_content_cannot_forge_receipt_unit_keys(tmp_path):
             "&lt;a name=brewdoc-chapter-888888&gt;cell&lt;/a&gt; ",
             '&lt;div id="brewdoc&amp;#45;page-666666"&gt;table-entity&lt;/div&gt;')))))
     # WHEN the public run path renders and receipts the document
-    code, receipt, markdown = brewdoc.run(path)
+    code, receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN only the trusted renderer unit is navigable and every tag stays escaped text
     assert (code, receipt["unit_keys"], markdown[markdown.index('<a id="brewdoc-contents"></a>'):]) == (
         0, ["chapter/000001"],
@@ -979,7 +1007,7 @@ def test_an_html_line_break_before_a_pipeless_delimiter_row_cannot_forge_a_table
     path = tmp_path / "forge.html"
     path.write_text("<p>a<br>:-</p>", encoding="utf-8")
     # WHEN only its body is rendered
-    code, _receipt, markdown = brewdoc.run(path, body_only=True)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path, body_only=True))
     # THEN the delimiter row is escaped, so GFM keeps one paragraph instead of a one-column table
     assert (code, markdown) == (0, "a\n\\:-\n"), "a source line must not complete a GFM table header"
 
@@ -1018,7 +1046,7 @@ def test_a_quoted_source_name_escapes_its_quotes_and_markup(tmp_path):
     path = pdf(tmp_path / 'say "hi" <b> [x](y).pdf', text_op(72, 700, "hello"))
     name = "say &quot;hi&quot; &lt;b> \\[x\\](y).pdf"
     # WHEN it is rendered through the public run path
-    code, _receipt, markdown = brewdoc.run(path)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN the quoted title and Source name rows keep the value inside its quotes
     assert (code, markdown) == (0, schema_two(path, HELLO, **ONE_PAGE, name=name, suffix=".pdf")), (
         "a source name must not close its quotes or open a tag or link")
@@ -1032,7 +1060,7 @@ def test_a_docx_heading_cannot_forge_a_contents_link_or_unit_anchor(tmp_path):
     heading = ('Chapter 1: "Real&quot;\\](#brewdoc-chapter-000009) '
                '&lt;a id=&quot;brewdoc-chapter-000009&quot;>&lt;/a>"')
     # WHEN the public run path renders and receipts it
-    code, receipt, markdown = brewdoc.run(path)
+    code, receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN the label stays inside one contents link and one heading, with one unit key
     assert (code, receipt["unit_keys"], markdown[markdown.index('<a id="brewdoc-contents"></a>'):]) == (
         0, ["chapter/000001"],
@@ -1055,7 +1083,7 @@ def test_a_docx_fence_line_cannot_swallow_the_next_chapter_heading(tmp_path, fen
     path = docx(tmp_path / "fence.docx", HEADING % "Intro" + paragraph % fence + paragraph % "First"
                 + HEADING % "Next" + paragraph % "Second")
     # WHEN the public run path renders the full document
-    code, _receipt, markdown = brewdoc.run(path)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN the fence run is escaped, so chapter 2's anchor and heading stay outside any code block
     assert (code, markdown[markdown.index('<a id="brewdoc-chapter-000001"></a>'):]) == (
         0, '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Intro"\n\n%s\n\nFirst\n\n'
@@ -1079,8 +1107,10 @@ def test_a_docx_fence_line_cannot_swallow_the_next_chapter_heading(tmp_path, fen
             "zones.xlsx", lambda path: rezipped(path, zones_book(path).read_bytes(), "North",
                                                 ENTITY_XML),
             '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Zones"\n\n'
-            "| Zone | Area | Sown |\n| --- | --- | --- |\n"
-            "| %s | 12.5 | 2026-07-18 |\n| South | 9.0 |  |\n" % ENTITY_SAFE, id="xlsx-cell"),
+            "Source range: A1:C3\n\n| Row | A | B | C |\n| --- | --- | --- | --- |\n"
+            "| 1 | A1: Zone | B1: Area | C1: Sown |\n"
+            "| 2 | A2: %s | B2: 12.5 | C2: 2026-07-18 |\n"
+            "| 3 | A3: South | B3: 9.0 |  |\n" % ENTITY_SAFE, id="xlsx-cell"),
         pytest.param(
             "one.pptx", lambda path: rezipped(path, selfcheck.synthetic_pptx(), "North field",
                                               ENTITY_XML),
@@ -1110,7 +1140,7 @@ def test_entity_shaped_source_text_is_escaped_once_on_every_body_route(
     build(path)
     assert sorted(tmp_path.iterdir()) == [path], "the route document must be the only input"
     # WHEN the public run path renders it
-    code, _receipt, markdown = brewdoc.run(path)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN each entity-shaped run is escaped exactly once, `<` is an entity and `>` stays literal
     assert (code, markdown[markdown.index(expected.partition("\n")[0]):]) == (0, expected), (
         "source text that looks like an entity must stay visible text, never decode or double-escape")
@@ -1159,26 +1189,26 @@ def test_fixed_layout_block_keeps_source_angle_brackets_and_ampersands_literal(t
 
 
 @pytest.mark.parametrize(
-    ("name", "build", "options"),
+    ("name", "build", "options", "reason"),
     [
         pytest.param("one.pdf", lambda path: pdf(path, text_op(72, 700, "hello")),
-                     {"sheets": ("Sheet1",)}, id="pdf-sheet"),
+                     {"sheets": ("Sheet1",)}, "--sheet and --artifact are workbook-only options", id="pdf-sheet"),
         pytest.param("growth.docx", lambda path: docx(path, GROWTH_REGULATORS),
                      {"artifact_outputs": {"formula/sheet/000001": "calc.json"}},
-                     id="docx-artifact"),
+                     "unknown artifact key: formula/sheet/000001", id="docx-artifact"),
     ],
 )
-def test_workbook_only_options_are_refused_before_any_output(
-        tmp_path, monkeypatch, name, build, options):
-    # GIVEN a PDF or DOCX, a requested Markdown path and a workbook-only option
+def test_invalid_format_options_are_refused_before_any_output(
+        tmp_path, monkeypatch, name, build, options, reason):
+    # GIVEN a PDF or DOCX, a requested Markdown path and an invalid format option
     monkeypatch.chdir(tmp_path)
     path = build(tmp_path / name)
     # WHEN the option reaches the public run path
     code, receipt, markdown = brewdoc.run(path, tmp_path / "out.md", **options)
     # THEN the normal receipt reports exit 1 and nothing is written
     assert (code, receipt["file_ok"], receipt["reason"], markdown, sorted(tmp_path.iterdir())) == (
-        1, False, "--sheet and --artifact are workbook-only options", "", [path],
-    ), "workbook-only options on PDF or DOCX must be refused before any write"
+        1, False, reason, "", [path],
+    ), "invalid sheet selections or unknown artifacts must be refused before any write"
 
 
 def test_argparse_syntax_errors_keep_exit_two():

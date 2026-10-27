@@ -7,6 +7,7 @@ import pytest
 
 from brewdoc import cli, htmlurl
 from brewdoc.service import ROUTES
+from inspection_contract import rendering_bytes, rendering_result, rendering_stdout
 from test_html import HTML_OMISSIONS, LINKS_OMISSION, disclosed_document, expected_receipt, supported_html
 from test_html_article import frozen_url, url_acquisition
 from test_html_url import (MALFORMED_DISPOSITION, OCTET, SECRET_SHOWN, SECRET_URL, converted,
@@ -17,6 +18,20 @@ URL = "https://example.com/article"
 RECEIPT = {"receipt_schema": "brewdoc.receipt/2", "route": "html", "file_ok": True,
            "acquisition": {"mode": "static", "capture_status": "static"}}
 MARKDOWN = "# Article\n\nПривет 世界\n"
+
+
+def _record_url_results(monkeypatch):
+    """Keep the full URL result so CLI output can be checked before projecting additions."""
+    results = []
+    acquire = htmlurl._run_url
+
+    def record(*args, **options):
+        result = acquire(*args, **options)
+        results.append(result)
+        return result
+
+    monkeypatch.setattr(htmlurl, "_run_url", record)
+    return results
 
 
 @pytest.mark.parametrize("arguments", [
@@ -144,13 +159,17 @@ def test_url_cli_writes_a_pdf_document_with_its_pdf_receipt(tmp_path, monkeypatc
     destination.write_bytes(b"previous output\n")
     name, (local_code, receipt, markdown) = converted(tmp_path, url, ".pdf", body)
     monkeypatch.setattr(htmlurl, "_request", lambda *args: ok((("Content-Type", "application/pdf"),), body))
+    results = _record_url_results(monkeypatch)
     assert local_code == 0, "the synthetic PDF must convert as a local file"
     # WHEN the CLI acquires the URL into an output file
     code = cli.main(["--url", url, "--out", str(destination)])
+    printed = capsys.readouterr().out
+    assert json.loads(printed) == results[0][1], "CLI stdout must retain the complete inspected receipt"
+    actual = rendering_result(results[0], destination)
     # THEN stdout is the PDF receipt and the file holds the PDF Markdown
-    assert (code, json.loads(capsys.readouterr().out), destination.read_bytes()) == (
+    assert (code, json.loads(rendering_stdout(printed)), rendering_bytes(destination.read_bytes()), actual[2]) == (
         0, dict(receipt, out=str(destination), source=url, receipt_schema="brewdoc.receipt/2",
-                acquisition=document_acquisition(url, url, body, body)), markdown.encode("utf-8"),
+                acquisition=document_acquisition(url, url, body, body)), markdown.encode("utf-8"), markdown,
     ), "--url must convert a PDF document through the PDF route"
 
 
@@ -195,13 +214,16 @@ def test_url_cli_renders_standard_links_or_omits_destinations_with_exact_receipt
     document = disclosed_document(path, content, 2, omissions).replace("sample.html", name)
     expected = dict(expected_receipt(path, out, 2), source=URL, not_carried=[*HTML_OMISSIONS, *omissions],
                     receipt_schema="brewdoc.receipt/2", acquisition=url_acquisition(body, snapshot, render_js))
+    results = _record_url_results(monkeypatch)
     assert (calls, out.read_bytes()) == ([], b"replaced"), "URL conversion must start without requests"
     # WHEN static or frozen JS CLI conversion runs with or without --no-links
     code = cli.main(["--url", URL, "--out", str(out), *arguments] + ["--render-js"] * render_js)
     captured = capsys.readouterr()
+    assert json.loads(captured.out) == results[0][1], "CLI stdout must preserve every inspected receipt field"
+    actual = rendering_result(results[0], out)
     # THEN links are standard Markdown, or plain text with a disclosed omission, over the unchanged snapshot
-    assert (code, captured.out, captured.err, calls, out.read_bytes()) == (
-        0, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", [URL], document.encode("utf-8"),
+    assert (code, rendering_stdout(captured.out), captured.err, calls, rendering_bytes(out.read_bytes()), actual[2]) == (
+        0, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", [URL], document.encode("utf-8"), document,
     ), "URL HTML must carry standard links, or omit only destinations with --no-links"
 
 

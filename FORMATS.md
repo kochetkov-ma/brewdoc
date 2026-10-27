@@ -1,11 +1,14 @@
 # Formats
 
-Supported extensions cover the profiles below, not every possible file. PDF needs a text layer;
+Supported extensions cover the profiles below, not every possible file. Readable PDF needs a text layer;
 unreadable, malformed and unsupported input is refused by name. Base dependencies are pdfplumber,
 python-calamine and `truststore==0.10.5` for `--url` TLS; static HTML adds its conditional native
 parser. Other routes use those or stdlib.
 
-## Supported
+## Supported readable projections
+
+The table and format sections describe readable conversion. Independent static inspection
+has its own [coverage and artifact contract](#static-inspection), including content omitted here.
 
 | Input | Reader | Content |
 |---|---|---|
@@ -27,9 +30,60 @@ zero units and brewdoc.markdown/passthrough/1.
 PDF page/000001, DOCX/EPUB/HTML/ODT/EML chapter/000001, PPTX/ODP slide/000001,
 workbook sheet/000001.
 Unsupported suffixes use route/kind none; other refusals retain their route/kind and zero units.
-Workbooks/HTML/EPUB/ODT/ODP/EML preserve Unicode as UTF-8 without BOM and LF newlines;
-PDF/DOCX/PPTX emit ASCII. Text preserves its source UTF-8 bytes and newlines.
+`run` and the CLI write generated output as UTF-8 without BOM and with LF newlines.
+Direct `render_pdf`, `render_doc` and `render_presentation` wrappers retain ASCII output.
+Text preserves its source UTF-8 bytes and newlines.
 MiB means 1,048,576 bytes. Local conversion never acquires external resources.
+
+## Static inspection
+
+Normal `run` and CLI conversion inspect original bytes independently of the readable projection
+for all 15 extensions. Findings appear under Links, Active content and Extracted content when
+present. Scripts, formulas, targets and other active content are literal data. Inspection never
+executes code, evaluates formulas, follows discovered links or fetches resources.
+`not_carried` and Known omissions describe only the readable projection.
+
+`inspect_document(path)` returns deterministic `brewdoc.inspection/1` JSON data.
+`list_document_artifacts(path)` lists the report and admitted payloads;
+`read_document_artifact(path, key)` returns exact bytes for a listed key.
+These APIs do not depend on successful readable conversion. Existing `list_book_artifacts`,
+`read_book_artifact`, typed formulas and workbook keys retain their separate contracts.
+
+```sh
+brewdoc file.pdf --artifact inspection/report=inspection.json --out file.md
+```
+
+Use the report's artifact inventory to choose an exact payload key, then request
+`--artifact KEY=PATH` or call `read_document_artifact(path, key)`.
+`--artifact` works on every supported route; `--sheet` remains workbook-only.
+All requests and output collisions are validated before writes. If readable conversion fails,
+including a textless PDF, available requested inspection artifacts can still be written.
+The receipt retains the readable refusal and an existing Markdown destination stays untouched.
+
+Each source document has fixed coverage rows for inventory, text, links, scripts, actions,
+forms, attachments, images, cells, formulas, names, external_references, hidden_structures
+and macros. Status is `complete`, `partial`, `unavailable` or `not_applicable`, with a reason
+and source locations. Success of readable conversion does not imply complete inspection.
+Malformed, encrypted, unsupported and resource-limited content keeps explicit failure evidence.
+Admitted unknown payloads remain retrievable opaque bytes; byte retention does not claim inspection.
+
+The report records source name, suffix, size and SHA-256 when the complete source is admitted,
+plus document/component identities, findings, artifact hashes, limits and counters.
+Local input is identified as `local`. Explicit `--url` conversion identifies its frozen
+snapshot and acquisition provenance; optional JavaScript capture remains a separate opt-in boundary.
+Embedded ODF directory documents reference original package members through `source_members`.
+They have null byte size and hash because no contiguous child file exists. No synthetic ZIP is implied.
+
+| Inspection allowance | Maximum |
+|---|---:|
+| Original source; individual payload | 32 MiB each |
+| Decoded bytes; retained payload bytes across the operation | 256 MiB each |
+| Records; document occurrences; nesting | 1,000,000; 128; 16 |
+| Serialized report | 64 MiB |
+
+Format-specific limits also apply. A limit leaves partial or unavailable coverage rather
+than silently declaring completeness. These are admission limits, not a process memory cap.
+No new formats, OCR, decryption or runtime component installation are added.
 
 ## Markdown escaping
 
@@ -59,21 +113,23 @@ Generated unit anchors and keys still cannot be forged by source text.
 
 ## Body-only output
 
-`--body-only` or `run(path, body_only=True)` keeps only unit content. It removes the quoted
+`--body-only` or `run(path, body_only=True)` keeps readable unit content. It removes the quoted
 title, Metadata, Artifacts, Known omissions, Contents and unit anchors. Unit headings such as
-`## Page 1` stay only when the document has more than one unit; zero units give empty Markdown.
+`## Page 1` stay only when the document has more than one unit; zero units give an empty projection.
 Lines inside fences are never removed. EPUB fragment anchors stay, so chapter links and the
 Publication navigation link can dangle. Text pass-through is unchanged. Receipt, exit codes,
-refusals and limits are those of the full rendering; `--out` writes the body in the route
-encoding. It composes with `--article` and `--url`; with `--self-check` it is a usage error (exit 2).
+refusals and limits are those of the full rendering. Inspection findings still follow the body
+in generated UTF-8 output. It composes with `--article` and `--url`;
+with `--self-check` it is a usage error (exit 2).
 
 ## UTF-8 text
 
 `.md` and `.txt` decode strict UTF-8 and return identical re-encoded bytes, including BOM,
 CRLF/bare CR/LF, whitespace, syntax and final-newline presence. Empty input succeeds.
 No normalization, parser, generated metadata, anchors, text/table counting or size cap is added.
-Invalid UTF-8 and UTF-16/32 BOM input refuse before writes. Workbook/article options refuse.
-The local receipt remains brewdoc.receipt/1 with empty unit keys, artifacts and omissions.
+Invalid UTF-8 and UTF-16/32 BOM input refuse readable output. Sheet/article options refuse.
+The local receipt remains brewdoc.receipt/1 with empty unit keys and readable omissions.
+Inspection is separate in the receipt and retrievable report; no supplement is appended to the bytes.
 `--out` contains only source bytes; stdout places the JSON receipt before those bytes.
 
 ## PDF
@@ -110,7 +166,8 @@ selectolax==0.4.13; python_version < '3.15' and platform_python_implementation =
 ```
 
 Overall Python support stays >=3.12. Other runtimes retain the HTML API/route but refuse with
-html/chapter, zero units, empty Markdown and no writes; self-check verifies that and other routes.
+html/chapter, zero units and empty Markdown; self-check verifies that and other routes.
+Requested inspection artifacts follow the independent artifact contract above.
 A missing/broken parser on supported CPython fails HTML and self-check. No alternate parser.
 
 By default, HTML renders the recovered body/fragment without page chrome. `header` and `footer` elements
@@ -121,7 +178,8 @@ contains a main is kept. A `header` or role banner that contains an `h1` is kept
 carries the page title; footers have no such exception. Only the first `role` token that names
 an ARIA 1.2 role counts: `role="note navigation"` is a note and stays. Any role other than the
 four landmark roles keeps the element. First nonempty head title labels chapter/000001,
-with entities decoded and Unicode kept, otherwise Untitled. Only .html is accepted. No HTML artifacts.
+with entities decoded and Unicode kept, otherwise Untitled. Only .html is accepted.
+The readable adapter has no legacy artifacts; generic inspection artifacts remain available.
 
 Charset precedence: a BOM (UTF-8, UTF-16BE, UTF-16LE), then the HTTP header label for `--url`,
 then the first declaring meta (`charset`, or http-equiv content-type) in the first 1,024 bytes,
@@ -173,9 +231,10 @@ URLs stay distinct; nested code/pre does not duplicate them. Each link line afte
 once in text_regions; cell links add no regions/tables. EPUB records are unchanged.
 
 `--no-links`, `run(path, links=False)` or `render_html(path, links=False)` keeps anchor text and
-drops every `href` after the limits are checked: linked images stay plain images and code
-anchors add no link line. The
-receipt `not_carried` and Markdown Known omissions add `link destinations: omitted by --no-links`
+drops every `href` from the readable DOM after the limits are checked: linked images stay plain
+images and code anchors add no link line. `run` and CLI inspection retain original destinations
+in the default findings supplement and `inspection/report`. The readable omission in
+receipt `not_carried` and Markdown Known omissions adds `link destinations: omitted by --no-links`
 after any article entry, also on HTML refusals and article fallback. Other routes refuse it with
 exit 1 and `--no-links is an HTML-only option`, including a `--url` that returns a document (stage
 `options`). With `--self-check` it is a usage error (exit 2).
@@ -327,11 +386,13 @@ OCR or DRM decryption occurs.
 
 Titles/creators/languages/identifiers follow existing metadata in that order, retaining declaration
 order, duplicates, empty values and Unicode. A declared unique identifier must resolve. Source/body
-hash meanings remain. No EPUB artifacts; --sheet/--artifact remain workbook-only.
+hash meanings remain. The readable EPUB adapter has no legacy artifacts;
+generic inspection artifacts remain available. `--sheet` is workbook-only.
 Malformed/missing required content, unsafe paths, ambiguous names, duplicate members/IDs, encrypted
 reading text/unsupported encryption, fixed layout and multiple rootfiles refuse the entire book.
 Recognized IDPF/Adobe font obfuscation is accepted only for existing declared fonts, never read/decoded.
-Hard refusals return zero units, empty Markdown and no writes.
+Hard readable refusals return zero units and empty Markdown. Requested inspection artifacts
+follow the independent artifact contract above.
 
 | Inclusive budget | Maximum |
 |---|---:|
@@ -655,7 +716,8 @@ elements and expanded characters are checked before ElementTree construction.
 Bounded inert doctypes/internal entities retain OOXML behavior; EPUB's stricter
 entity and encoding rules do not apply here. No external entities are fetched.
 Limit/compression failures name the member and budget where applicable. `run`
-returns exit 1, zero units, empty Markdown and no writes; raising reader APIs
+returns exit 1, zero units and empty Markdown; requested available inspection artifacts
+follow the independent contract above. Raising readable APIs
 raise `BrewdocError`. Complete successful output is preserved, with no truncation.
 
 These are selected-reader policy limits, not a process memory cap or universal
@@ -666,7 +728,17 @@ hashing, formula serialization, Markdown assembly and output staging/rollback
 are outside the guarantee. Source identity and concurrent file mutation handling
 are unchanged. A file below these limits can still require substantial memory/time.
 
-## Workbook artifacts
+## Workbook projection and artifacts
+
+Readable grids use generated `Row` and spreadsheet-letter column headers, with source
+row numbers and literal A1 addresses. The first source row remains data. Source sheet
+ordinals and occupied ranges survive selection; sparse distant cells do not imply a filled
+rectangle. Source error values, missing cached results and explicit blanks remain distinct.
+Merge ranges are retained without inventing values for covered cells. `--sheet` selects
+only the readable projection and legacy artifacts; inspection still reads all source sheets,
+including hidden structures.
+
+The following table describes the existing workbook artifact API, not native inspection:
 
 | Input | Formulas | VBA | Constraint |
 |---|---|---|---|
@@ -675,7 +747,9 @@ are unchanged. A file below these limits can still require substantial memory/ti
 | .xlsb | Unavailable through pinned binding | Related vbaProject.bin when present | Exact opaque bytes |
 | .xls/.ods | Unavailable through pinned binding | Unavailable | Cached values still render |
 
-Readable VBA modules and module/script counts are unavailable/unknown; projects never execute.
+That API exposes opaque VBA projects. Independent inspection also recovers supported native
+formula records and readable VBA source with source locations; unsupported records keep explicit
+coverage limits. Projects and modules never execute.
 Stable explicit keys select artifacts; typed formula APIs enumerate selected formula sheets.
 Artifact requests do not change Markdown bytes. Numbers stay as stored (for example 85.0);
 dates use ISO days and exposed datetime values retain their full `isoformat()` precision.
@@ -688,7 +762,7 @@ Formula Markdown contains cached values, not recalculated results.
 ODT/ODP require unique `mimetype`, `META-INF/manifest.xml` and `content.xml` members,
 matching qualified media types and the expected office body. Missing, duplicate, malformed
 or consumed encrypted content refuses. Optional styles/settings/metadata are ignored.
-No extraction, external resource fetching, decryption or macro execution occurs.
+The readable adapter never fetches external resources, decrypts or executes macros.
 
 ODT keeps ordered paragraphs, heading chapters, section/list descendants and tables.
 Inline spans, hyperlink labels, tails, `text:s` space counts, tabs and line breaks retain
@@ -727,8 +801,9 @@ Selected HTML uses the existing offline HTML renderer, its clean profile includi
 drop, and its 8 MiB UTF-8 input and structural limits; it needs the same supported parser
 runtime. No article selection is applied.
 Named inline parts and attachment names appear in MIME order, with unnamed attachment markers.
-Attached-message inventory stops at `message/rfc822`. Attachment payloads, nested-message bodies,
-unselected alternatives and non-body inline resources are omitted, with no retrievable artifacts.
+The readable attached-message inventory stops at `message/rfc822`. Attachment payloads,
+nested-message bodies, unselected alternatives and non-body inline resources are omitted
+from that projection. Independent inspection inventories MIME parts and admits recoverable payloads.
 Other headers, including Bcc, routing and signature fields, are omitted. No decryption or
 signature verification occurs.
 
@@ -744,8 +819,8 @@ CSV/TSV are intentionally unsupported/unplanned; agent systems can read their te
 
 ## Deferred
 
-Not currently planned: .doc/.ppt binary OLE2 (including Word 97 piece tables) needs olefile or a CFB reader (text only, lossy tables);
-.rtf needs a parser.
+Not currently planned: .doc/.ppt readable adapters (including Word 97 piece tables) and .rtf.
+The CFB inspection reader does not add these supported input formats.
 
 ## Never
 

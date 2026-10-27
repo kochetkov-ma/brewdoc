@@ -977,7 +977,11 @@ def _run_url(url: str, out=None, *, render_js: bool | str | None = False, sheets
             path = Path(folder) / ("url-%s%s" % (url_hash[:16], suffix))
             path.write_bytes(snapshot)
             del snapshot
-            code, receipt, markdown = run(path, out, article=article, body_only=body_only, links=links)
+            code, receipt, markdown = run(
+                path, out, article=article, body_only=body_only, links=links,
+                _inspection_source={"snapshot": acquisition["snapshot"],
+                                    "requested_url": acquisition["requested_url"],
+                                    "final_url": acquisition["final_url"]})
         if code != 0:
             stage = "output" if receipt["reason"].startswith("output write failed:") else "conversion"
             receipt["reason"] = "URL snapshot conversion or output refused"

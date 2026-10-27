@@ -6,6 +6,7 @@ import argparse
 import ast
 import base64
 import hashlib
+import io
 import importlib.util
 import importlib.metadata
 import json
@@ -17,6 +18,7 @@ import shutil
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -25,6 +27,9 @@ import time
 import tomllib
 import unicodedata
 import zipfile
+import zlib
+from email.message import EmailMessage
+from xml.sax.saxutils import escape
 from multiprocessing.connection import Connection
 from pathlib import Path, PurePosixPath
 
@@ -98,8 +103,34 @@ def zip_xml_refusal_case(work: Path) -> tuple[Path, Path, dict]:
 def zip_xml_refusal_probe(arguments: list[str], work: Path, environment: dict) -> dict:
     """Require the real CLI to refuse excess ZIP members without changing output."""
     source, output, expected = zip_xml_refusal_case(work)
-    result = subprocess.run([*arguments, str(source), '--out', str(output)], cwd=work,
+    report_path = work / 'zip-member-inspection.json'
+    result = subprocess.run([*arguments, str(source), '--out', str(output),
+                             '--artifact', 'inspection/report=' + str(report_path)], cwd=work,
                             env=environment, capture_output=True, timeout=10)
+    try:
+        raw = report_path.read_bytes()
+        report = json.loads(raw)
+        identity = {'name': source.name, 'suffix': '.docx', 'byte_size': source.stat().st_size,
+                    'sha256': digest(source), 'kind': 'local'}
+        inventories = [row for row in report['coverage'] if row['capability'] == 'inventory']
+        if (report['schema'] != 'brewdoc.inspection/1' or report['source'] != identity
+                or len(inventories) != 1 or inventories[0]['status'] not in ('partial', 'unavailable')
+                or 'members limit exceeded' not in inventories[0]['reason']):
+            raise ValueError('independent inspection did not retain the member-limit boundary')
+        statuses = ('complete', 'partial', 'unavailable', 'not_applicable')
+        summary = {'schema': 'brewdoc.inspection/1', 'artifact': 'inspection/report',
+                   'source_sha256': identity['sha256'], 'source': identity,
+                   'documents': len(report['documents']), 'components': len(report['components']),
+                   'findings': len(report['findings']),
+                   'coverage': {status: sum(row['status'] == status for row in report['coverage'])
+                                for status in statuses},
+                   'not_carried_scope': 'readable_projection', 'supplement_scope': 'original_source_findings'}
+        reference = {'key': 'inspection/report', 'kind': 'inspection-report', 'availability': 'available',
+                     'count': 1, 'location': 'source', 'media_type': 'application/json', 'byte_size': len(raw),
+                     'sha256': hashlib.sha256(raw).hexdigest(), 'out': str(report_path)}
+        expected = {**expected, 'inspection': summary, 'artifacts': [reference, *report['artifacts']]}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError('ZIP/XML member refusal changed its receipt or existing output') from exc
     stdout = (json.dumps(expected, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
     if (result.returncode, result.stdout, result.stderr, output.read_bytes()) != (
             1, stdout, b'', b'preserve existing output\n'):
@@ -235,9 +266,11 @@ def validate_manifest(manifest: dict) -> None:
     unicode_routes = verifier().UNICODE_ROUTES if current_formats else {'html', 'epub'}
     for row in rows + probes:
         if 'markdown_encoding' in row:
-            expected = 'utf-8' if row['receipt']['route'] in unicode_routes else 'ascii'
+            inspected = row['receipt'].get('inspection', {}).get('schema') == 'brewdoc.inspection/1'
+            expected = 'utf-8' if inspected or row['receipt']['route'] in unicode_routes else 'ascii'
             if row['markdown_encoding'] != expected:
                 raise ValueError('Standalone Markdown encoding differs from its route')
+    verifier().admit_inspection(manifest, version=version, source_sha=manifest['source_sha'])
 
 
 def validate_verification(manifest: dict, verification: dict) -> None:
@@ -253,6 +286,11 @@ def validate_verification(manifest: dict, verification: dict) -> None:
                     'probes': [row['probe'] for row in manifest['probes']]}
         if {key: verification.get(key) for key in expected} != expected:
             raise ValueError('Standalone synthetic smoke verification is incomplete')
+    packet = verifier().admit_inspection(manifest, version=manifest['version'], source_sha=manifest['source_sha'])
+    if packet is not None:
+        verifier().check_inspection_result(verification.get('inspection'), packet)
+    elif 'inspection' in verification:
+        raise ValueError('Unexpected inspection verification without a sealed packet')
 
 
 def admit_manifest(path: Path) -> dict:
@@ -569,7 +607,7 @@ checkout=Path(sys.argv[2]);rows=[];extra=[]
 def observe(source,options=None):
  code,receipt,markdown=brewdoc.run(source,**(options or {}))
  if code!=0: raise ValueError('Installed probe refused '+str(source))
- encoding='utf-8' if receipt['route'] in helper.UNICODE_ROUTES else 'ascii'
+ encoding=helper.markdown_encoding(receipt)
  body=markdown.encode(encoding)
  return {'path':source.name,'source_sha256':helper.digest(source),'receipt':receipt,'code':code,
          'markdown_encoding':encoding,
@@ -579,7 +617,7 @@ for document,expected in ([] if sys.argv[4]=='smoke' else helper.select_inputs(c
  code,receipt,markdown=actual
  if code!=0: raise ValueError('Accepted installed engine refused '+str(source))
  if 'accepted_output' in expected: helper.check_accepted_output(source,actual,expected['accepted_output'])
- encoding='utf-8' if receipt['route'] in helper.UNICODE_ROUTES else 'ascii'
+ encoding=helper.markdown_encoding(receipt)
  body=markdown.encode(encoding)
  rows.append({'path':document['path'],'source_sha256':helper.digest(source),'receipt':receipt,
               'markdown_encoding':encoding,
@@ -600,7 +638,8 @@ for document,expected in ([] if sys.argv[4]=='smoke' else helper.select_inputs(c
 for case in json.loads(Path(sys.argv[3]).read_text()):
  source=Path(case['source']);row=observe(source)
  if 'expected' in case:
-  if row['receipt']!=case['expected']['receipt'] or row['markdown_sha256']!=case['expected']['markdown_sha256']: raise ValueError('Synthetic EPUB2 differs from literal expectations')
+  code,receipt,readable=helper.checked_projection(source,brewdoc.run(source))
+  if code!=0 or receipt!=case['expected']['receipt'] or hashlib.sha256(readable.encode('utf-8')).hexdigest()!=case['expected']['markdown_sha256']: raise ValueError('Synthetic EPUB2 differs from literal expectations')
  else:
   key='formula/sheet/000002'
   with tempfile.TemporaryDirectory() as temporary:
@@ -610,6 +649,116 @@ for case in json.loads(Path(sys.argv[3]).read_text()):
  row.update(path=source.name,bytes_base64=case['bytes_base64'],probe=case['probe']);extra.append(row)
 print(json.dumps({'version':brewdoc.__version__,'origin':brewdoc.__file__,'oracle':rows,'probes':extra}))
 '''
+
+
+def inspection_api_case(checkout: Path) -> dict:
+    """Compile only the reviewed passive HTML builder and its literal authority."""
+    path = checkout / 'tests/test_inspection_acceptance.py'
+    selected = {'TARGET', 'SCRIPT', 'NESTED', '_safety_markup'}
+    tree = ast.parse(path.read_text(encoding='utf-8'))
+    nodes, names = [], []
+    for node in tree.body:
+        defined = ([node.name] if isinstance(node, ast.FunctionDef) else
+                   [target.id for target in node.targets if isinstance(target, ast.Name)]
+                   if isinstance(node, ast.Assign) else [])
+        admitted = selected.intersection(defined)
+        if admitted:
+            if len(defined) != 1 or any(isinstance(child, (ast.Import, ast.ImportFrom)) for child in ast.walk(node)):
+                raise ValueError('Inspection fixture authority has unexpected bindings or imports')
+            nodes.append(node)
+            names.extend(admitted)
+    if sorted(names) != sorted(selected):
+        raise ValueError('Inspection fixture authority is missing or duplicated')
+    namespace = {'base64': base64}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), namespace)
+    payload, target = namespace['_safety_markup'](None)
+    return {'path': 'passive.html', 'target': target,
+            'source': {'size': len(payload), 'sha256': hashlib.sha256(payload).hexdigest(),
+                       'bytes_base64': base64.b64encode(payload).decode('ascii')},
+            'script': {'size': len(namespace['SCRIPT'].encode('utf-8')),
+                       'sha256': hashlib.sha256(namespace['SCRIPT'].encode('utf-8')).hexdigest(),
+                       'bytes_base64': base64.b64encode(namespace['SCRIPT'].encode('utf-8')).decode('ascii')}}
+
+
+def _inspection_builder_node(node: ast.AST, allowed_imports: list[tuple[str, tuple[str, ...]]]) -> ast.AST:
+    """Vet each executable fixture node and strip only its reviewed local imports."""
+    declared = [child for child in ast.walk(node) if isinstance(child, (ast.Import, ast.ImportFrom))]
+    observed = [(child.module, tuple(alias.name for alias in child.names))
+                for child in declared if isinstance(child, ast.ImportFrom)
+                and all(alias.asname is None for alias in child.names)]
+    if len(observed) != len(declared) or observed != allowed_imports:
+        raise ValueError('Inspection builder imports differ from reviewed bindings')
+    if any(isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+           and child.func.id in ('__import__', 'eval', 'exec', 'compile') for child in ast.walk(node)):
+        raise ValueError('Inspection builder has an unreviewed dynamic import or execution')
+    for parent in ast.walk(node):
+        for field, value in ast.iter_fields(parent):
+            if isinstance(value, list):
+                setattr(parent, field, [ast.copy_location(ast.Pass(), child)
+                    if isinstance(child, ast.ImportFrom) else child for child in value])
+    return node
+
+
+def inspection_cases(checkout: Path, output: Path) -> list[dict]:
+    """Generate the reviewed fifteen source cases once using explicit AST bindings."""
+    selectors = {
+        'test_documents.py': {'TRANSITIONAL', 'document', 'paragraph', 'paragraph_xml'},
+        'test_extraction_regressions.py': {'_image_button_pdf'},
+        'test_inspect_pdf.py': {'_pdf', '_stream', '_features_pdf'},
+        'test_biff.py': {'record', 'stream', 'compound_book'},
+        'test_biff12.py': {'_record', '_wide', '_formula', '_cell', '_row', '_members'},
+        'test_workbook_fidelity.py': {'SYNTHETIC_ROWS', 'fidelity_book'},
+        'test_inspect_workbook.py': {'_ods'},
+        'test_inspection_acceptance.py': {'TARGET', 'SCRIPT', 'NESTED', 'OFFICE', 'TEXT',
+            '_archive', '_mail', 'SYNTHETIC', '_package_safety', '_safety_pdf', '_safety_xls',
+            '_safety_xlsb', '_safety_ooxml', '_safety_package', '_safety_markup', '_safety_mail', '_STATIC_SAFETY'},
+    }
+    imports = {'_safety_pdf': [('test_inspect_pdf', ('_features_pdf',))],
+               '_safety_xls': [('test_biff', ('compound_book', 'record', 'stream'))],
+               '_safety_xlsb': [('test_biff12', ('_cell', '_formula', '_members', '_record', '_row', '_wide'))],
+               '_safety_ooxml': [('test_workbook_fidelity', ('fidelity_book',))]}
+    namespace = {'base64': base64, 'hashlib': hashlib, 'io': io, 'zipfile': zipfile,
+                 'struct': struct, 're': re, 'zlib': zlib, 'EmailMessage': EmailMessage, 'Path': Path, 'escape': escape}
+    for filename, selected in selectors.items():
+        path = checkout / 'tests' / filename
+        nodes, found, updates = [], [], 0
+        for node in ast.parse(path.read_text(encoding='utf-8')).body:
+            names = ([node.name] if isinstance(node, ast.FunctionDef) else
+                     [target.id for target in node.targets if isinstance(target, ast.Name)]
+                     if isinstance(node, ast.Assign) else [])
+            matches = selected.intersection(names)
+            if matches:
+                if len(names) != 1:
+                    raise ValueError('Inspection builder has ambiguous selected bindings')
+                nodes.append(_inspection_builder_node(node, imports.get(names[0], [])))
+                found.extend(matches)
+            elif (filename == 'test_inspection_acceptance.py' and isinstance(node, ast.Expr)
+                  and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
+                  and isinstance(node.value.func.value, ast.Name) and node.value.func.value.id == '_STATIC_SAFETY'):
+                if node.value.func.attr != 'update':
+                    raise ValueError('Inspection builder has an unknown source update')
+                nodes.append(_inspection_builder_node(node, []))
+                updates += 1
+        if sorted(found) != sorted(selected) or updates != int(filename == 'test_inspection_acceptance.py'):
+            raise ValueError('Inspection builder authority is missing or duplicated')
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), namespace)
+    builders = namespace['_STATIC_SAFETY']
+    if set(builders) != verifier().SUFFIXES:
+        raise ValueError('Inspection builder does not cover all fifteen formats')
+    output.mkdir(parents=True, exist_ok=False)
+    cases = []
+    for suffix, build_source in sorted(builders.items()):
+        work = output / suffix[1:]
+        work.mkdir()
+        payload, _target = build_source(work)
+        if suffix in ('.md', '.txt'):
+            payload = b'\xef\xbb\xbf' + payload + b'\r\nCaf\xc3\xa9\r\n'
+        name = 'passive' + suffix
+        (work / name).write_bytes(payload)
+        cases.append({'id': suffix, 'path': name, 'source': {
+            'size': len(payload), 'sha256': hashlib.sha256(payload).hexdigest(),
+            'bytes_base64': base64.b64encode(payload).decode('ascii')}})
+    return cases
 
 
 def synthetic_cases(checkout: Path, output: Path) -> list[dict]:
@@ -668,17 +817,19 @@ def build(checkout: Path, bundle: Path, output: Path, target: str, *, smoke: boo
     helper = verifier()
     producer = json.loads((bundle / 'ci-package/manifest.json').read_text(encoding='utf-8'))
     helper.verify_manifest(bundle, producer)
+    helper.check_module_sources(checkout, bundle, helper.sealed_module_sources(producer))
+    helper.inspection_authority(producer, checkout)
+    if bundle.name == 'ci-runtime':
+        helper.check_runtime_pair(bundle)
+    packet = helper.load_inspection_packet(bundle, producer)
+    if packet is not None:
+        helper.inspection_builder_sources(producer, checkout)
     if producer['uv'] != data['uv'] or command(['uv', '--version']).stdout.decode().split()[1] != data['uv']:
         raise ValueError('Standalone build tooling differs from the accepted producer')
     for name, expected in producer['source'].items():
         if digest(checkout / name) != expected:
             raise ValueError('Standalone checkout differs from producer source manifests')
     wheel, _sdist = helper.distributions(bundle / 'dist')
-    with zipfile.ZipFile(wheel) as archive:
-        for name in archive.namelist():
-            if name.startswith('brewdoc/') and name.endswith('.py'):
-                if archive.read(name) != (checkout / 'src' / name).read_bytes():
-                    raise ValueError('Standalone wheel source differs from the checkout')
     output.mkdir(parents=True, exist_ok=False)
     environment = output / 'build-env'
     command(['uv', 'venv', '--managed-python', '--python', data['python'], str(environment)])
@@ -768,6 +919,8 @@ collection=COLLECT(executable,analysis.binaries,analysis.datas,strip=False,upx=F
                 'archive': {'filename': asset.name, 'bytes': asset.stat().st_size, 'sha256': digest(asset)},
                 'inventory': records, 'oracle': observed['oracle'], 'probes': observed['probes'], 'runtime': runtime_info,
                 'signing': data['signing'], 'minimum_tested': data['targets'][target]['verification_floor']}
+    if packet is not None:
+        manifest['inspection'] = packet
     validate_manifest(manifest)
     write_json(output / 'manifest.json', manifest)
 
@@ -779,6 +932,58 @@ def consumer_environment(work: Path) -> dict:
                         'TMPDIR': str(work), 'TMP': str(work), 'TEMP': str(work),
                         'LANG': 'en_US.UTF-8', 'PYTHONIOENCODING': 'ascii'})
     return environment
+
+
+def probe_inspection_cli(arguments: list[str], work: Path, environment: dict, packet: dict) -> dict:
+    """Check each sealed source twice through a real CLI in fresh relative-path workspaces."""
+    helper = verifier()
+    helper.validate_inspection_packet(packet, version=packet['version'], source_sha=packet['source_sha'])
+    prefix = list(arguments)
+    executable = shutil.which(prefix[0], path=environment.get('PATH')) or prefix[0]
+    prefix[0] = os.path.abspath(executable)
+    rows = []
+    with tempfile.TemporaryDirectory(prefix='inspection-cli-', dir=work) as temporary:
+        for case in packet['cases']:
+            parent = Path(temporary) / case['id'][1:]
+            parent.mkdir()
+            reports = []
+            for number in range(2):
+                directory = parent / str(number)
+                directory.mkdir()
+                source = directory / case['path']
+                source.write_bytes(helper.sealed_bytes(case['source']))
+                destination, report_path, payload_path = directory / 'markdown.md', directory / 'report.json', directory / 'payload.bin'
+                if report_path.exists() or report_path.is_symlink() or payload_path.exists() or payload_path.is_symlink():
+                    raise ValueError('Inspection artifact destinations must start absent')
+                destination.write_bytes(helper.INSPECTION_SENTINEL)
+                result = subprocess.run([*prefix, case['path'], '--out', 'markdown.md', '--artifact',
+                    'inspection/report=report.json', '--artifact', case['payload']['key'] + '=payload.bin'],
+                    cwd=directory, env=environment, capture_output=True, timeout=60)
+                receipt = helper.inspection_receipt(case)
+                line = (json.dumps(receipt, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
+                if result.returncode != case['readable']['code'] or result.stderr or result.stdout != line:
+                    raise ValueError('Inspection CLI receipt, stdout framing, exit or stderr differs')
+                if any(path.is_symlink() or not path.is_file() for path in (report_path, payload_path, destination)):
+                    raise ValueError('Inspection CLI artifacts are missing or linked')
+                raw, payload, target = report_path.read_bytes(), payload_path.read_bytes(), destination.read_bytes()
+                if raw != helper.sealed_bytes(case['report']) or payload != helper.sealed_bytes(case['payload']):
+                    raise ValueError('Inspection CLI report or selected payload bytes differ')
+                if result.returncode == 0:
+                    if (len(target), hashlib.sha256(target).hexdigest()) != (
+                            case['readable']['markdown_size'], case['readable']['markdown_sha256']):
+                        raise ValueError('Inspection CLI Markdown bytes differ')
+                    body = target
+                else:
+                    if target != helper.INSPECTION_SENTINEL:
+                        raise ValueError('Inspection CLI refusal changed its Markdown sentinel')
+                    body = b''
+                actual_key = next(item['key'] for item in json.loads(result.stdout)['artifacts'] if item['out'] == 'payload.bin')
+                reports.append(raw)
+            rows.append(helper.observed_inspection_case(case, source.read_bytes(), reports, payload, result.returncode, body, target, actual_key))
+    observed = {'schema': helper.DELIVERY_INSPECTION_SCHEMA, 'suite_sha256': hashlib.sha256(helper.canonical_json(packet)).hexdigest(),
+                'module_sources_sha256': packet['module_sources_sha256'], 'cases': rows}
+    helper.check_inspection_result(observed, packet)
+    return observed
 
 
 def check_output(result: subprocess.CompletedProcess, row: dict, output: Path | None = None,
@@ -875,6 +1080,9 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
     if verification_scope(manifest) != scope:
         raise ValueError('Requested standalone verification scope differs from its manifest')
     producer = json.loads((bundle / 'ci-package/manifest.json').read_text(encoding='utf-8'))
+    packet = verifier().admit_inspection(manifest, version=producer['version'], source_sha=producer['checkout_sha'])
+    if packet != verifier().load_inspection_packet(bundle, producer):
+        raise ValueError('Native inspection packet differs from its admitted package producer')
     if (manifest['schema'], manifest['source_sha'], manifest['version'], manifest['target'], manifest['python']) != (
             1, producer['checkout_sha'], producer['version'], target, data['python']):
         raise ValueError('Standalone source, target, version or interpreter identity changed')
@@ -952,6 +1160,7 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
                 1, False, 0, b'preserve existing output\n', b''):
             raise ValueError('Frozen refusal changed the existing output')
         zip_xml_refusal_probe([str(binary)], work, environment)
+        inspection = probe_inspection_cli([str(binary)], work, environment, packet) if packet is not None else None
         children = child_checks(binary, work, environment, data['targets'][target]['render_js'])
         public = command([str(binary), '--url', 'https://example.org/', '--timeout', '30'],
                          cwd=work, env=environment, timeout=35)
@@ -976,7 +1185,8 @@ def verify(checkout: Path, bundle: Path, output: Path, target: str, archive: Pat
                    'verdict': 'PASS', 'host': platform.platform(), 'consumer_environment_keys': sorted(environment),
                    'self_check': 38, 'fixtures': fixture_results, 'children': children,
                    'probes': [row['probe'] for row in manifest['probes']],
-                   'https': public_receipt, 'invalid_tls': invalid_receipt, 'javascript': js_receipt})
+                   'https': public_receipt, 'invalid_tls': invalid_receipt, 'javascript': js_receipt,
+                   **({'inspection': inspection} if packet is not None else {})})
 
 
 def aggregate(source: Path, output: Path) -> None:
@@ -992,7 +1202,9 @@ def aggregate(source: Path, output: Path) -> None:
         if target not in expected_targets or target in records:
             raise ValueError('Unknown or duplicated standalone target')
         identities.add((manifest['source_sha'], manifest['version'], manifest['python'], manifest['wheel_sha256'],
-                        manifest['lock_sha256'], verification_scope(manifest)))
+                        manifest['lock_sha256'], verification_scope(manifest),
+                        hashlib.sha256(verifier().canonical_json(manifest['inspection'])).hexdigest()
+                        if 'inspection' in manifest else None))
         records[target] = manifest
     if set(records) != expected_targets or len(identities) != 1:
         raise ValueError('Standalone release requires three native targets with one source identity')

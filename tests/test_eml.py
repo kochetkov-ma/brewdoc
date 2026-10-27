@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from brewdoc import run
+from inspection_contract import rendering_bytes, rendering_result, rendering_stdout
 from brewdoc.cli import main
 from brewdoc import htmltext
 from brewdoc import eml
@@ -141,9 +142,9 @@ def test_eml_selects_one_native_body_and_returns_exact_markdown(
     )
 
     # WHEN the public route converts the local message
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
-    # THEN one schema 2 chapter carries only the selected body
+    # THEN the readable schema 2 chapter carries only the selected body
     assert conversion == (0, _receipt(source, regions), _markdown(source, content, regions)), (
         "body selection, literal content, Unicode and all receipt counters must match"
     )
@@ -169,7 +170,7 @@ def test_eml_repeated_headers_keep_fixed_name_order_and_source_spelling(tmp_path
                "Message-ID: &lt;id@example.test>\n\n```\nhello\n```\n")
 
     # WHEN only the supplied public header subset is rendered
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN spelling, decoded words, empty values and repeated order remain source driven
     assert conversion == (0, _receipt(source, 2), _markdown(source, content, 2, "café")), (
@@ -177,7 +178,7 @@ def test_eml_repeated_headers_keep_fixed_name_order_and_source_spelling(tmp_path
     )
 
 
-def test_eml_attachment_inventory_uses_names_without_decoding_payloads(tmp_path, monkeypatch):
+def test_eml_readable_attachment_inventory_uses_names_without_decoding_payloads(tmp_path, monkeypatch):
     # GIVEN named inline, unnamed attached and opaque attached-message parts
     raw = _multipart(b"mixed", [PLAIN,
         b"Content-Type: image/png\nContent-Disposition: inline; filename*=utf-8''..%2Fcaf%C3%A9.png\n"
@@ -207,7 +208,7 @@ def test_eml_attachment_inventory_uses_names_without_decoding_payloads(tmp_path,
                "- ../café.png\n- \\[unnamed attachment\\]\n- mail.eml\n")
 
     # WHEN conversion inventories declared attachment metadata
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN names follow MIME source order and cannot create paths or artifacts
     assert (conversion, decoded, sorted(path.name for path in tmp_path.iterdir())) == (
@@ -248,7 +249,7 @@ def test_eml_selected_body_or_outer_defect_refuses_without_output_writes(
     ), "the malformed source must target the intended MIME decoder or outer container"
 
     # WHEN the public route validates data it would consume
-    code, receipt, markdown = run(source, out)
+    code, receipt, markdown = rendering_result(run(source, out), out)
 
     # THEN the named EML refusal leaves existing bytes and no staged files
     assert (code, receipt, markdown, out.read_bytes(),
@@ -269,7 +270,7 @@ def test_eml_plain_body_does_not_require_html_parser(tmp_path, monkeypatch):
     assert htmltext.LexborHTMLParser is None, "HTML backend must be unavailable during conversion"
 
     # WHEN the public route selects plain text
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN no HTML prerequisite prevents exact literal output
     assert conversion == (
@@ -298,7 +299,7 @@ def test_eml_html_scripts_are_omitted_and_external_image_stays_inert(tmp_path, m
     content = '\n東京\n\n![photo](https://example.test/image.png)\n'
 
     # WHEN the existing static HTML body renderer handles the message
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN script content disappears and the image becomes an unfetched Markdown image
     assert conversion == (0, _receipt(source, 2), _markdown(source, content, 2)), (
@@ -352,7 +353,7 @@ def test_eml_html_body_uses_the_clean_html_profile(tmp_path, payload, content, r
     ), "the selected body must be the exact HTML payload"
 
     # WHEN the EML route renders the body through the shared HTML content renderer
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN landmarks, controls, images, lists, quotes and escaping follow the HTML clean rules
     assert conversion == (0, _receipt(source, regions), _markdown(source, content, regions)), (
@@ -368,11 +369,11 @@ def test_eml_html_body_refuses_no_links_at_options_before_output(tmp_path, capsy
     assert run(source)[0] == 0, "the linked mail must otherwise convert successfully"
     expected = _refusal(source, "--no-links is an HTML-only option")
     # WHEN public API and CLI request --no-links for the EML route
-    result = run(source, out, links=False)
+    result = rendering_result(run(source, out, links=False), out)
     code = main([str(source), "--no-links", "--out", str(out)])
     captured = capsys.readouterr()
     # THEN both refuse at options because EML keeps its link destinations, and the output stays intact
-    assert (result, code, captured.out, captured.err, out.read_bytes()) == (
+    assert (result, code, rendering_stdout(captured.out), captured.err, out.read_bytes()) == (
         (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", b"keep",
     ), "EML must refuse the HTML-only --no-links option before output publication"
 
@@ -389,7 +390,7 @@ def test_eml_html_body_refuses_when_html_parser_is_unavailable(tmp_path, monkeyp
     ), "source must require the existing HTML content renderer"
 
     # WHEN conversion reaches the HTML prerequisite check
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN the existing named parser refusal preserves the destination
     assert (conversion, out.read_bytes()) == (
@@ -407,7 +408,7 @@ def test_eml_api_file_and_ascii_cli_stdout_publish_exact_utf8(tmp_path, monkeypa
     assert stream.encoding == "ascii", "CLI must emit Unicode through its byte-buffer path"
 
     # WHEN the API writes a file and the CLI publishes stdout
-    written = run(source, out)
+    written = rendering_result(run(source, out), out)
     with monkeypatch.context() as patch:
         patch.setattr(sys, "stdout", stream)
         code = main([str(source)])
@@ -417,7 +418,7 @@ def test_eml_api_file_and_ascii_cli_stdout_publish_exact_utf8(tmp_path, monkeypa
 
     # THEN both output destinations carry exact UTF-8 with complete receipt framing
     assert written == (0, _receipt(source, 1, str(out)), markdown), "API must return the full result"
-    assert (out.read_bytes(), code, stdout, captured.out, captured.err) == (
+    assert (rendering_bytes(out.read_bytes()), code, rendering_stdout(stdout), captured.out, captured.err) == (
         markdown.encode("utf-8"), 0,
         (json.dumps(_receipt(source, 1), ensure_ascii=True, sort_keys=True)
          + os.linesep).encode("ascii") + markdown.encode("utf-8"), "", "",
@@ -445,14 +446,14 @@ def test_eml_groupwise_attached_message_defect_keeps_valid_primary_body(tmp_path
                "\n```\ntest\n```\n\nAttachments:\n- test.eml\n- Neues Textdokument.txt\n")
 
     # WHEN only primary content and attachment metadata are converted
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN an omitted nested-message defect cannot refuse the valid primary body
     assert conversion == (0, _receipt(source, 3, str(out)),
                           _markdown(source, content, 3, "test333")), (
         "primary body and both declared attachment names must survive without nested content"
     )
-    assert out.read_bytes() == conversion[2].encode("utf-8"), "corpus output must use UTF-8"
+    assert rendering_bytes(out.read_bytes()) == conversion[2].encode("utf-8"), "corpus output must use UTF-8"
 
 
 def test_eml_named_inline_text_remains_a_native_body_candidate(tmp_path):
@@ -471,7 +472,7 @@ def test_eml_named_inline_text_remains_a_native_body_candidate(tmp_path):
     content = "\n```\nnamed body\n```\n\nAttachments:\n- café.txt\n"
 
     # WHEN native body selection and metadata inventory share that part
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN its selected text and decoded filename are both carried once
     assert conversion == (0, _receipt(source, 2), _markdown(source, content, 2)), (
@@ -489,7 +490,7 @@ def test_eml_missing_supported_body_has_explicit_omission(tmp_path):
     )
 
     # WHEN local conversion carries only available source metadata
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN unavailable text is disclosed without decryption or invented regions
     assert conversion == (0, _receipt(source, 0),
@@ -518,7 +519,7 @@ def test_eml_actual_message_node_boundary_counts_root_without_factory_probe(tmp_
     assert len(list(message.walk())) == nodes, "source must contain the actual admitted node count"
 
     # WHEN the route parses the boundary message with a policy factory
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN no disposable parser probe consumes a retained-node allowance
     assert conversion == (0, _receipt(source, 1),
@@ -538,7 +539,7 @@ def test_eml_actual_message_node_limit_plus_one_refuses_without_writes(tmp_path)
     )
 
     # WHEN parsing would construct a 1025th message node
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN the stable node-limit refusal occurs before output staging
     assert (conversion, out.read_bytes(), sorted(path.name for path in tmp_path.iterdir())) == (
@@ -558,7 +559,7 @@ def test_eml_mime_depth_boundary_counts_root_as_one(tmp_path):
     ), "the singly nested source must have root depth one and a depth-64 leaf"
 
     # WHEN the iterative depth check admits this message
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN native body selection proceeds at the exact supported depth
     assert conversion == (0, _receipt(source, 1),
@@ -578,7 +579,7 @@ def test_eml_mime_depth_limit_plus_one_refuses_before_output(tmp_path):
     )
 
     # WHEN the route checks MIME depth before recursive body selection
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN the stable depth refusal preserves output and no stage exists
     assert (conversion, out.read_bytes(), sorted(path.name for path in tmp_path.iterdir())) == (
@@ -642,7 +643,7 @@ def test_eml_policy_factory_refuses_before_over_budget_construction(tmp_path, mo
     monkeypatch.setattr(eml, "EmailMessage", count_constructor)
 
     # WHEN the public route would need its fourth retained message
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN the fourth constructor is never called and output remains untouched
     assert (conversion, len(constructed), out.read_bytes(),
@@ -672,7 +673,7 @@ def test_eml_depth_check_refuses_before_recursive_native_body_selection(tmp_path
     monkeypatch.setattr(EmailMessage, "get_body", forbidden_body_selection)
 
     # WHEN local conversion checks the parsed MIME tree
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN depth refusal precedes every get_body call and output publication
     assert (conversion, selections, out.read_bytes()) == (
@@ -700,7 +701,7 @@ def test_eml_small_depth_boundary_reaches_native_body_selection_once(tmp_path, m
     monkeypatch.setattr(EmailMessage, "get_body", record_body_selection)
 
     # WHEN local conversion admits the exact depth boundary
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN native body selection runs once on the root after depth admission
     assert (conversion, selections) == (
@@ -732,7 +733,7 @@ def test_eml_defect_in_unselected_inline_container_keeps_valid_selected_body(
     ), "malformation must belong only to an omitted container, not the selected body or outer message"
 
     # WHEN conversion consumes primary body and available metadata
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN omitted resource defects cannot invalidate the selected primary body
     assert conversion == (0, _receipt(source, 1), _markdown(source, content, 1)), (
@@ -760,7 +761,7 @@ def test_eml_rendered_encoded_header_defect_refuses_without_writes(tmp_path, sub
     ), "only a carried encoded header, not the selected body, must be malformed"
 
     # WHEN the EML route decodes the header it would carry
-    code, receipt, markdown = run(source, out)
+    code, receipt, markdown = rendering_result(run(source, out), out)
 
     # THEN strict header refusal preserves the destination before publication
     assert (code, receipt, markdown, out.read_bytes(),
@@ -786,7 +787,7 @@ def test_eml_parser_recursion_failure_returns_named_refusal_without_writes(tmp_p
     monkeypatch.setattr(BytesParser, "parse", exhausted_parser)
 
     # WHEN the existing public route invokes the failing stdlib parser
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN the stable capacity refusal prevents traceback leakage and output writes
     assert (conversion, out.read_bytes()) == (
@@ -808,7 +809,7 @@ def test_eml_selected_content_type_header_defect_refuses_without_writes(tmp_path
     ), "the defect must live on the consumed MIME header while native parsing recovers valid text"
 
     # WHEN the route validates the selected body's MIME decoding declaration
-    code, receipt, markdown = run(source, out)
+    code, receipt, markdown = rendering_result(run(source, out), out)
 
     # THEN malformed consumed MIME metadata cannot publish recovered content
     assert (code, receipt, markdown, out.read_bytes(),
@@ -839,7 +840,7 @@ def test_eml_ignored_attachment_content_type_defect_keeps_valid_primary_body(tmp
     content = "\n```\nplain first\n```\n\nAttachments:\n- opaque.bin\n"
 
     # WHEN conversion carries the primary body and declared attachment name
-    conversion = run(source)
+    conversion = rendering_result(run(source))
 
     # THEN attachment header recovery cannot invalidate the valid selected body
     assert conversion == (0, _receipt(source, 2), _markdown(source, content, 2)), (

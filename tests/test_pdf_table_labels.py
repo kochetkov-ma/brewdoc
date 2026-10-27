@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import pdfplumber
 import pytest
 
+from inspection_contract import rendering_result
+
 from brewdoc import common, pdf, selfcheck, service
 
 
@@ -113,7 +115,7 @@ def test_ruled_group_stub_belongs_once_to_first_covered_record(tmp_path, cell_ow
     assert source == ["Model Size A B C", "7B 11 12 13", "13B 21 22 23", "Family",
                       "33B 31 32 33", "65B 41 42 43"], "the source must show a centred stub between four complete records"
     # WHEN the source is converted through its public route
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     content = selfcheck.chapter_lines(markdown, "Page 1")
     # THEN the row span appears once on the first record without creating a fifth record
     assert (code, receipt, content) == (0, expected_receipt("stub.pdf"), [
@@ -139,7 +141,7 @@ def test_independent_stub_outside_record_group_stays_separate(tmp_path, label_y,
         source_labels = [char["text"] for char in document.pages[0].chars][-6:]
     assert source_labels == list("Family"), "the source must contain exactly one complete independent label"
     # WHEN the page is converted
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     content = selfcheck.chapter_lines(markdown, "Page 1")
     # THEN independent labels are not attached to a numeric record
     assert [line for line in content if line.startswith("| Family")] == expected, "a label outside the record group must retain its independent ownership"
@@ -155,7 +157,7 @@ def test_wrapped_cell_continuation_remains_on_its_original_record(tmp_path):
         source = document.pages[0].extract_text().splitlines()
     assert source[:3] == ["Model Size A B C", "Long 7B 11 12 13", "Family"], "the source must place the continuation immediately below its first record"
     # WHEN the wrapped table is converted
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN wrapping preserves the original record rather than becoming a row-span stub
     assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
         0, expected_receipt("wrapped.pdf"), ["| Model | Size | A | B | C |", "| --- | --- | --- | --- | --- |",

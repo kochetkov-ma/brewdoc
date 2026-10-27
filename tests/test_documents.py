@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from inspection_contract import rendering_bytes, rendering_result
+
 import brewdoc
 from test_contract import NOT_APPLICABLE, schema_two, zero_tally
 
@@ -52,9 +54,9 @@ def test_empty_docx_body_keeps_one_empty_chapter_and_exact_success_receipt(tmp_p
     assert out.exists() is False, "the empty-document output must start absent"
     # WHEN both adapter and service render the empty document
     rendered = brewdoc.render_doc(path)
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), out)
     # THEN the empty Body chapter is navigable and counted without a text region
-    assert (rendered, result, out.read_bytes()) == (
+    assert (rendered, result, rendering_bytes(out.read_bytes())) == (
         (expected, {**zero_tally(), "chapters": 1}), (0, receipt, expected), expected.encode("ascii"),
     ), "empty DOCX must preserve complete metadata, body hashes, receipt and output bytes"
 

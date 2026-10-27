@@ -573,6 +573,75 @@ def smoke_record(tmp_path, target='linux-x64'):
     return directory, manifest
 
 
+def inspection_native_record(tmp_path, target='linux-x64'):
+    """Extend the real bounded archive fixture with one complete independently sealed packet."""
+    from test_install_verification import complete_inspection_packet
+
+    directory, manifest = smoke_record(tmp_path, target)
+    packet = complete_inspection_packet()
+    old = directory / manifest['archive']['filename']
+    filename = 'brewdoc-' + packet['version'] + '-' + target + ('.zip' if target == 'windows-x64' else '.tar.gz')
+    old.rename(directory / filename)
+    manifest.update(version=packet['version'], source_sha=packet['source_sha'], inspection=packet)
+    manifest['archive']['filename'] = filename
+    report = json.loads((directory / 'verification.json').read_bytes())
+    report.update(version=packet['version'], source_sha=packet['source_sha'],
+                  inspection=BUILDER.verifier().expected_inspection_result(packet))
+    BUILDER.write_json(directory / 'manifest.json', manifest)
+    BUILDER.write_json(directory / 'verification.json', report)
+    return directory, manifest
+
+
+def test_actual_native_archive_admission_keeps_complete_inspection_beside_the_old_two_probes(tmp_path):
+    # GIVEN a bounded real archive with complete modern packet and native observation
+    directory, manifest = inspection_native_record(tmp_path)
+    # WHEN actual archive admission binds the manifest, verification and bytes
+    actual = BUILDER.admit_manifest(directory / 'manifest.json')
+    # THEN the additive profile retains every exact old smoke rule and fifteen case identities
+    assert (actual, len(actual['inspection']['cases']), [row['probe'] for row in actual['probes']], actual['oracle']) == (
+        manifest, 15, ['epub2', 'formula'], [],
+    ), 'modern native admission must preserve source/byte seals and exactly the existing two probes'
+
+
+@pytest.mark.parametrize('damage', ['missing-packet', 'unknown-packet', 'missing-result', 'second-report', 'payload', 'order'])
+def test_real_native_archive_admission_refuses_missing_or_corrupt_inspection_evidence(tmp_path, damage):
+    # GIVEN an admitted complete packet plus exactly one damaged manifest or observed result
+    directory, manifest = inspection_native_record(tmp_path)
+    assert BUILDER.admit_manifest(directory / 'manifest.json') == manifest, 'the entire modern archive fixture must pass first'
+    report = json.loads((directory / 'verification.json').read_bytes())
+    changes = {'missing-packet': lambda: manifest.pop('inspection'),
+               'unknown-packet': lambda: manifest['inspection'].update(schema='unknown/9'),
+               'missing-result': lambda: report.pop('inspection'),
+               'second-report': lambda: report['inspection']['cases'][0].update(repeat_report_sha256='0' * 64),
+               'payload': lambda: report['inspection']['cases'][0].update(payload_size=0),
+               'order': lambda: report['inspection']['cases'].reverse()}
+    changes[damage]()
+    BUILDER.write_json(directory / 'manifest.json', manifest)
+    BUILDER.write_json(directory / 'verification.json', report)
+    # WHEN the real archive admission rechecks its original producer/evidence objects
+    # THEN whole packet/result identity cannot be replaced by a PASS string or matching old fields
+    with pytest.raises(ValueError, match='[Ii]nspection'):
+        BUILDER.admit_manifest(directory / 'manifest.json')
+
+
+def test_native_aggregation_refuses_three_matching_old_identities_with_a_foreign_profile(tmp_path):
+    # GIVEN all three real target archives with matching source/tool/old smoke fields
+    source = tmp_path / 'targets'
+    source.mkdir()
+    records = [inspection_native_record(source, target) for target in ('linux-x64', 'windows-x64', 'macos-arm64')]
+    directory, foreign = records[-1]
+    foreign['inspection']['module_sources_sha256'] = '0' * 64
+    report = json.loads((directory / 'verification.json').read_bytes())
+    report['inspection'] = BUILDER.verifier().expected_inspection_result(foreign['inspection'])
+    BUILDER.write_json(directory / 'manifest.json', foreign)
+    BUILDER.write_json(directory / 'verification.json', report)
+    assert BUILDER.admit_manifest(directory / 'manifest.json') == foreign, 'self-consistent foreign evidence must reach cross-target admission'
+    # WHEN actual aggregation compares the three admitted target identities
+    # THEN a foreign but mutually agreeing target packet/result cannot claim the same producer packet
+    with pytest.raises(ValueError, match='Standalone release requires three native targets with one source identity'):
+        BUILDER.aggregate(source, tmp_path / 'aggregate')
+
+
 def test_explicit_native_smoke_admits_only_two_sealed_synthetic_probes(tmp_path):
     # GIVEN two generated source payloads and a complete archive identity
     directory, manifest = smoke_record(tmp_path)
@@ -594,6 +663,32 @@ def test_native_smoke_rejects_wrong_scope_or_missing_synthetic_coverage(tmp_path
     manifest.update(delta)
     # THEN admission fails before any replay or archive access
     with pytest.raises(ValueError, match='scope|oracle|probes'):
+        BUILDER.validate_manifest(manifest)
+
+
+@pytest.mark.parametrize('version', ['0.8.0', '0.10.0', '1.0.0'])
+def test_current_native_manifest_requires_the_inspection_profile(tmp_path, version):
+    # GIVEN otherwise complete historical smoke fields rebound to a current release
+    _directory, manifest = smoke_record(tmp_path)
+    manifest['version'] = version
+    manifest['archive']['filename'] = 'brewdoc-' + version + '-linux-x64.tar.gz'
+    assert manifest['probes'][0]['probe'] in {'epub2', 'formula'}, 'existing smoke probes must remain present'
+    # WHEN real native manifest admission sees no inspection profile
+    # THEN numeric current versions cannot use historical omission rules
+    with pytest.raises(ValueError, match='inspection'):
+        BUILDER.validate_manifest(manifest)
+
+
+@pytest.mark.parametrize('version', ['0.7.1', '0.8.0'])
+def test_native_manifest_never_accepts_an_unknown_present_inspection_profile(tmp_path, version):
+    # GIVEN a complete smoke manifest with a present but unknown inspection schema
+    _directory, manifest = smoke_record(tmp_path)
+    manifest['version'] = version
+    manifest['archive']['filename'] = 'brewdoc-' + version + '-linux-x64.tar.gz'
+    manifest['inspection'] = {'schema': 'foreign.inspection/9'}
+    # WHEN the real validator admits original manifest fields
+    # THEN historical optionality cannot excuse a malformed present block
+    with pytest.raises(ValueError, match='inspection'):
         BUILDER.validate_manifest(manifest)
 
 

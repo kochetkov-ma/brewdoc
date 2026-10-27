@@ -8,6 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from inspection_contract import (readable_markdown, rendering_bytes, rendering_result,
+                                 rendering_stdout)
+
 import brewdoc
 from brewdoc import common, selfcheck
 from brewdoc.cli import main
@@ -61,7 +64,7 @@ def test_invalid_artifact_requests_fail_before_any_write(
     code = main([str(path), "--out", str(tmp_path / "book.md"), "--sheet", "Calc",
                  *(f"--artifact={item}" for item in artifact_outputs)])
     # THEN stdout is the one exact refusal receipt line and nothing is written
-    assert (code, capsys.readouterr().out, tree_state(tmp_path)) == (
+    assert (code, rendering_stdout(capsys.readouterr().out), tree_state(tmp_path)) == (
         1, json.dumps(refused(reason), ensure_ascii=True, sort_keys=True) + "\n", before,
     ), "invalid artifact requests must be refused before any write"
 
@@ -85,7 +88,7 @@ def test_api_artifact_mapping_validation_refuses_before_any_write(tmp_path, arti
     out.write_bytes(b"previous Markdown\n")
     before = tree_state(tmp_path)
     # WHEN the API validates a non-mapping or malformed key/path pair
-    result = brewdoc.run(path, out, artifact_outputs=artifact_outputs)
+    result = rendering_result(brewdoc.run(path, out, artifact_outputs=artifact_outputs), out)
     # THEN its full refusal and all previous bytes and modes remain unchanged
     assert (result, tree_state(tmp_path)) == ((1, refused(reason), ""), before), (
         "API artifact validation must precede output staging and preserve existing files"
@@ -106,9 +109,9 @@ def test_canonically_equivalent_artifact_paths_collide_before_any_write(tmp_path
         False, False, False,
     ), "collision validation must start with all output destinations absent"
     # WHEN two different artifact keys request those absent destinations
-    result = brewdoc.run(path, out, artifact_outputs={
+    result = rendering_result(brewdoc.run(path, out, artifact_outputs={
         FORMULA_KEYS[0]: tmp_path / composed, FORMULA_KEYS[1]: tmp_path / decomposed,
-    })
+    }), out)
     # THEN the full collision receipt is returned without files or stages
     assert (result, tree_state(tmp_path)) == (
         (1, refused("artifact outputs collide: formula/sheet/000001 and formula/sheet/000002"), ""),
@@ -245,7 +248,7 @@ def test_failed_replace_restores_earlier_targets_and_removes_new_ones(
                             itertools.repeat(os.replace))
     monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
     # WHEN publishing fails part way through
-    actual = brewdoc.run(path, targets[0], artifact_outputs=dict(zip(FORMULA_KEYS, targets[1:])))
+    actual = rendering_result(brewdoc.run(path, targets[0], artifact_outputs=dict(zip(FORMULA_KEYS, targets[1:]))), targets[0])
     # THEN originals keep bytes and modes, the new target is absent, and no stage remains
     assert (actual, tree_state(tmp_path)) == ((1, refused(
         "output write failed: could not replace %s: injected replace failure"
@@ -267,12 +270,12 @@ def test_failed_restore_after_failed_replace_names_every_unrestored_target(
     steps = itertools.chain(itertools.repeat(os.replace, 2), itertools.repeat(fail))
     monkeypatch.setattr(os, "replace", lambda source, target: next(steps)(source, target))
     # WHEN the third replace and both restores fail
-    actual = brewdoc.run(path, markdown_out, artifact_outputs=dict(zip(FORMULA_KEYS, (first, later))))
+    actual = rendering_result(brewdoc.run(path, markdown_out, artifact_outputs=dict(zip(FORMULA_KEYS, (first, later)))), markdown_out)
     # THEN run fails, names every unrestored target, and leaves new bytes but no stage
     assert (actual, tree_state(tmp_path)) == ((1, refused(
         "output write failed: could not replace %s: injected failure; could not restore "
         "%s (injected failure), %s (injected failure)" % (later, markdown_out, first)), ""), {
-        **before, "book.md": (markdown.encode("ascii"), observable_mode(0o640)),
+        **before, "book.md": (markdown.encode("utf-8"), observable_mode(0o640)),
         "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), observable_mode(0o600)),
     }), "an unrestored target must be reported, never silently left replaced"
 
@@ -288,8 +291,8 @@ def test_staging_failure_fails_with_a_receipt_and_leaves_no_file(tmp_path, monke
     steps = itertools.chain([os.fsync], [fail], itertools.repeat(os.fsync))
     monkeypatch.setattr(os, "fsync", lambda descriptor: next(steps)(descriptor))
     # WHEN staging fails after one payload was prepared
-    actual = brewdoc.run(path, tmp_path / "book.md", artifact_outputs=dict(
-        zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json"))))
+    actual = rendering_result(brewdoc.run(path, tmp_path / "book.md", artifact_outputs=dict(
+        zip(FORMULA_KEYS, (tmp_path / "a.json", tmp_path / "b.json")))), tmp_path / "book.md")
     # THEN the receipt reports the failure and neither outputs nor stages exist
     assert (actual, tree_state(tmp_path)) == (
         (1, refused("output write failed: injected staging failure"), ""), before,
@@ -326,7 +329,7 @@ def test_successful_run_writes_exact_bytes_keeps_modes_and_leaves_no_stage(tmp_p
     # THEN bytes are exact, existing modes survive, the new file follows 0666 & ~umask
     assert (code, receipt["file_ok"], tree_state(tmp_path)) == (0, True, {
         **before,
-        "book.md": (markdown.encode("ascii"), observable_mode(0o640)),
+        "book.md": (markdown.encode("utf-8"), observable_mode(0o640)),
         "first.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[0]), observable_mode(0o600)),
         "later.json": (brewdoc.read_book_artifact(path, FORMULA_KEYS[1]), created_mode),
     }), "success must publish exact bytes with preserved or umask modes and no stage files"
@@ -354,7 +357,7 @@ def test_parent_symlink_retarget_cannot_redirect_publish_or_leak_stage(tmp_path,
     code, _receipt, markdown = brewdoc.run(path, link / "book.md")
     # THEN the parent captured before staging receives it and neither directory keeps a stage
     assert (code, tree_state(first_parent), tree_state(second_parent)) == (
-        0, {"book.md": (markdown.encode("ascii"), created_mode)}, {},
+        0, {"book.md": (markdown.encode("utf-8"), created_mode)}, {},
     ), "publish must use the real parent captured before staging"
 
 
@@ -484,7 +487,8 @@ def test_body_only_helper_strips_the_envelope_and_unit_anchors_outside_fences(
         pytest.param("book.xlsx", formula_book, {"sheets": ["Calc"]}, CALC_TABLE,
                      id="xlsx-one-selected-sheet"),
         pytest.param("book.xlsx", formula_book, {},
-                     '## Sheet 1: "Inputs"\n\n| 1.0 |\n| --- |\n| 2.0 |\n| 3.0 |\n\n'
+                     '## Sheet 1: "Inputs"\n\nSource range: A1:A3\n\n'
+                     '| Row | A |\n| --- | --- |\n| 1 | A1: 1.0 |\n| 2 | A2: 2.0 |\n| 3 | A3: 3.0 |\n\n'
                      '## Sheet 2: "Calc"\n\n' + CALC_TABLE + '\n## Sheet 3: "Empty"\n',
                      id="xlsx-three-sheets"),
         pytest.param("empty.xlsm", zero_sheet_book, {}, "", id="xlsm-no-sheets"),
@@ -509,8 +513,9 @@ def test_body_only_run_returns_the_default_receipt_and_only_the_body(tmp_path, n
     assert (code, receipt["file_ok"]) == (0, True), "the default run must succeed first"
     # WHEN the same document is rendered body-only
     result = brewdoc.run(path, **options, body_only=True)
-    # THEN the receipt is unchanged and Markdown keeps only the unit body
-    assert result == (0, receipt, body), "body-only must change only the Markdown, never the receipt"
+    # THEN the complete receipt is unchanged and the readable prefix keeps only the unit body
+    assert (result[0], result[1], rendering_result(result)[2]) == (0, receipt, body), (
+        "body-only must retain the complete inspection receipt and the exact readable body")
 
 
 def two_slides(path: Path, first: str) -> Path:
@@ -555,7 +560,7 @@ def test_body_only_drops_later_unit_anchors_after_a_raw_route_fence_line(tmp_pat
     # GIVEN a two-unit raw-route document whose first unit holds an unclosed fence opener
     path = build(tmp_path / name)
     # WHEN only its body is rendered
-    code, _receipt, markdown = brewdoc.run(path, body_only=True)
+    code, _receipt, markdown = rendering_result(brewdoc.run(path, body_only=True))
     # THEN the fence run is escaped, so no fence hides the second unit anchor from body-only
     assert (code, markdown) == (0, body), "source text must not keep a unit anchor in body-only output"
 
@@ -624,7 +629,8 @@ def test_cli_body_only_prints_the_default_receipt_then_the_body(tmp_path, capsys
     # WHEN the CLI is asked for body-only output on stdout
     code = main([str(path), "--body-only"])
     # THEN stdout is the same receipt line followed by the body
-    assert (code, capsys.readouterr().out) == (0, receipt + "\n" + body), (
+    actual_receipt, newline, markdown = capsys.readouterr().out.partition("\n")
+    assert (code, actual_receipt, newline, readable_markdown(markdown)) == (0, receipt, "\n", body), (
         "--body-only must change only the Markdown after the receipt line")
 
 
@@ -648,7 +654,9 @@ def test_cli_body_only_out_writes_body_bytes_in_the_route_encoding(tmp_path, cap
     # WHEN the CLI writes body-only output to the same file
     code = main([str(path), "--body-only", "--out", str(out)])
     # THEN stdout is the same receipt and the file holds only the encoded body
-    assert (code, capsys.readouterr().out, out.read_bytes()) == (0, receipt, body), (
+    api_markdown = brewdoc.run(path, body_only=True)[2]
+    assert out.read_bytes() == api_markdown.encode("utf-8"), "CLI files must preserve the complete inspected API output"
+    assert (code, capsys.readouterr().out, rendering_bytes(out.read_bytes())) == (0, receipt, body), (
         "--body-only --out must keep the receipt and write the body in the route encoding")
 
 
@@ -708,11 +716,12 @@ def test_body_only_composes_with_article_selection(tmp_path):
     # GIVEN an HTML page with prose outside its article and the default article run
     path = written(tmp_path / "page.html", "<title>Page</title><p>Outside</p><article><p>Kept</p></article>")
     code, receipt, markdown = brewdoc.run(path, article=True)
-    assert (code, markdown) == (0, ARTICLE_MARKDOWN), "the article run must drop prose outside the article"
+    assert (code, readable_markdown(markdown)) == (0, ARTICLE_MARKDOWN), "the readable article must drop prose outside the article"
     # WHEN the article is rendered body-only
     result = brewdoc.run(path, article=True, body_only=True)
     # THEN the article receipt is unchanged and only the selected body remains
-    assert result == (0, receipt, "Kept\n"), "body-only must derive the body from the article output"
+    assert (result[0], result[1], readable_markdown(result[2])) == (0, receipt, "Kept\n"), (
+        "body-only must preserve the complete inspection receipt while deriving the readable article body")
 
 
 @HTML_ONLY
@@ -728,5 +737,8 @@ def test_url_body_only_keeps_the_url_receipt_and_prints_the_body(monkeypatch, ca
     # WHEN the same URL is requested body-only
     code = main(["--url", "https://example.com/page", "--body-only"])
     # THEN the URL receipt is unchanged and only the body follows it
-    assert (code, capsys.readouterr().out) == (0, receipt + "\nBody café\n"), (
+    actual_receipt, newline, markdown = capsys.readouterr().out.partition("\n")
+    assert (code, actual_receipt, newline, readable_markdown(markdown)) == (
+        0, receipt, "\n", "Body café\n",
+    ), (
         "--url must pass --body-only through to the local conversion")

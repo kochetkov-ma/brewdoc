@@ -12,6 +12,7 @@ import pdfplumber
 from pdfminer.pdftypes import resolve1
 from pdfplumber.utils import extract_text
 
+from brewdoc._pdf_fonts import PDF_FONT_GLYPHS, type1_encoding
 from brewdoc.common import (CID_RE, BrewdocError, Rendered, Route, _assemble, head_key, new_tally,
                             reading, sanitise)
 
@@ -48,13 +49,6 @@ PDF_GLYPHS = {"−": "-", "α": "[alpha]", "β": "[beta]", "θ": "[theta]", "π"
               "∈": "[in]", "≻": "[succeeds]", "∑": "[sum]", "∏": "[product]",
               "∼": "~", "∗": "*", "ˆ": "^", "′": "[prime]", "·": "[middle-dot]",
               "×": "[times]", "†": "[dagger]", "‡": "[double-dagger]", "̸": "[overlay:0338]"}
-PDF_FONT_GLYPHS = {"summationtext": "[sum]", "summationdisplay": "[sum]",
-                   "productdisplay": "[product]"}
-for _glyph_stem, _glyph_token in (("parenleft", "("), ("parenright", ")"),
-                                 ("bracketleft", "["), ("bracketright", "]"),
-                                 ("braceleft", "{"), ("braceright", "}")):
-    for _glyph_size in ("big", "Big", "bigg", "Bigg"):
-        PDF_FONT_GLYPHS[_glyph_stem + _glyph_size] = _glyph_token
 
 
 def _line_chars(line) -> list:
@@ -500,14 +494,7 @@ def _pdf_font_encodings(page) -> dict:
         if not isinstance(length, int) or length <= 0:
             continue
         header = stream.get_data()[:length]
-        definitions = list(re.finditer(rb"/Encoding\s+256\s+array(.*?)\bdef\b", header, re.S))
-        if len(definitions) != 1:
-            continue
-        names = {}
-        for code, glyph in re.findall(rb"dup\s+(\d+)\s+/([A-Za-z0-9]+)\s+put", definitions[0][1]):
-            code = int(code)
-            names[code] = glyph.decode("ascii") if code not in names else None
-        encodings[name] = names
+        encodings[name] = type1_encoding(header)
     return encodings
 
 

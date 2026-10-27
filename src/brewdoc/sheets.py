@@ -14,6 +14,8 @@ from pathlib import Path
 
 from python_calamine import CalamineWorkbook
 
+from brewdoc._inspection_workbook import (_calamine_panic_types, _coordinate,
+                                         _workbook_cell_findings, column_letters)
 from brewdoc.common import (CAPABILITY_FIELDS, ArtifactRef, BrewdocError, Rendered, Route,
                             _ZipBudget, _assemble, _check_zip_members, _local_name, _opc_main_part,
                             _relationship_elements, _relationship_part, _relationships,
@@ -72,6 +74,64 @@ def _sheet_grid(rows, tally: dict) -> list[list[str]]:
     return [row[:width] for row in grid] if width else []
 
 
+def _addressed_grid(sheet, records: tuple[dict, ...], tally: dict) -> tuple[list[list[str]], str | None, bool]:
+    """Add generated axes and literal source addresses without expanding distant empty areas."""
+    values = {}
+    projected = {}
+    merge_bounds = []
+    if sheet is not None:
+        top, left = sheet.start or (0, 0)
+        bottom, right = sheet.end or (top, left)
+        rows = sheet.to_python() if (bottom - top + 1) * (right - left + 1) <= 100_000 else ()
+        for row, cells in enumerate(rows, top + 1):
+            for column, value in enumerate(cells, left + 1):
+                text = _sheet_cell_text(value, tally)
+                projected[(row, column)] = text
+                if text:
+                    values[(row, column)] = text
+    for record in records:
+        if record["kind"] != "cell":
+            continue
+        location, details = record["location"], record["details"]
+        point = _coordinate(location["cell"])
+        if details.get("merge_range"):
+            merge_bounds.extend(_coordinate(address) for address in details["merge_range"].split(":"))
+        if details.get("error") is not None:
+            values[point] = details["error"]
+        elif details.get("cached_value_state") == "missing":
+            values[point] = "[missing cached result]"
+        elif details.get("value_type") in ("blank", "empty"):
+            values[point] = "[blank]"
+        elif point not in values:
+            values[point] = (projected[point] if point in projected else
+                             _sheet_cell_text(details.get("value"), tally))
+    if not values:
+        return [], None, False
+    row_numbers = sorted({row for row, _column in (*values, *merge_bounds)})
+    column_numbers = sorted({column for _row, column in (*values, *merge_bounds)})
+    first_row, last_row = row_numbers[0], row_numbers[-1]
+    first_column, last_column = column_numbers[0], column_numbers[-1]
+    occupied = "%s%d:%s%d" % (column_letters(first_column), first_row,
+                               column_letters(last_column), last_row)
+    sparse = (last_row - first_row + 1) * (last_column - first_column + 1) > 100_000
+    if not sparse:
+        row_numbers = range(first_row, last_row + 1)
+        column_numbers = range(first_column, last_column + 1)
+    if len(row_numbers) * len(column_numbers) > 100_000:
+        return ([["Row", "Column", "Cell"], *[
+            [str(row), column_letters(column), "%s%d: %s" % (column_letters(column), row, value)]
+            for (row, column), value in sorted(values.items())]], occupied, True)
+    grid = [["Row", *(column_letters(column) for column in column_numbers)]]
+    for row in row_numbers:
+        cells = [str(row)]
+        for column in column_numbers:
+            point = (row, column)
+            cells.append("%s%d: %s" % (column_letters(column), row, values[point])
+                         if point in values else "")
+        grid.append(cells)
+    return grid, occupied, sparse
+
+
 def _sheet_selection(sheets) -> tuple | None:
     """Freeze a public sheet selection once; None keeps every sheet."""
     if sheets is None:
@@ -108,24 +168,65 @@ def _select_sheets(available, sheets) -> tuple[tuple[int, str], ...]:
 @contextlib.contextmanager
 def _workbook(path: Path):
     """Open a workbook with calamine; its own error types become one BrewdocError."""
-    with reading(path, "spreadsheet"), CalamineWorkbook.from_path(str(path)) as book:
-        yield book
+    with reading(path, "spreadsheet"):
+        try:
+            with CalamineWorkbook.from_path(str(path)) as book:
+                yield book
+        except _calamine_panic_types() as exc:
+            raise BrewdocError("spreadsheet unreadable: %s: %s: %s" % (path, type(exc).__name__, exc)) from exc
 
 
-def _render_book(path: Path, sheets, *, _zip_budget: _ZipBudget | None = None) -> Rendered:
-    """Render selected cached values; the same frozen selection scopes the artifact inventory."""
+def _render_book(path: Path, sheets, *, _zip_budget: _ZipBudget | None = None,
+                 _inspection_report: dict | None = None) -> Rendered:
+    """Render addressed selected values while inspection retains the complete source workbook."""
     budget = _ZipBudget() if _zip_budget is None else _zip_budget
     tally = new_tally()
     with _workbook(path) as book:
-        selected = _select_sheets(book.sheet_names, sheets)
-        source_units = len(book.sheet_names)
+        book_names = tuple(book.sheet_names)
+        if sheets is not None:
+            _select_sheets(sheets, sheets)
+        findings = _workbook_cell_findings(path, _inspection_report)
+        source_locations = {item["location"]["sheet_ordinal"]: item["location"]
+                            for item in findings if item["kind"] in ("sheet", "sheet-declaration")
+                            and item["location"].get("sheet_ordinal") is not None}
+        stored_names = {location["sheet"] for location in source_locations.values() if location["sheet"] is not None}
+        source_ordinals, original_names, aliases = {}, {}, {}
+        for ordinal, location in sorted(source_locations.items()):
+            original = location["sheet"]
+            alias = original if original in book_names else None
+            if original is None and ordinal <= len(book_names) and book_names[ordinal - 1] not in stored_names:
+                alias = book_names[ordinal - 1]
+            display = (original if original is not None else alias or location.get("display_sheet")
+                       or "[unnamed source sheet %d]" % ordinal)
+            source_ordinals[display], original_names[display], aliases[display] = ordinal, original, alias
+        available = tuple(sorted(source_ordinals, key=source_ordinals.get))
+        available += tuple(name for name in book_names
+                           if name not in source_ordinals and name not in aliases.values())
+        selected = _select_sheets(available, sheets)
+        source_units = max(len(available), max(source_ordinals.values(), default=0))
         units = []
         for ordinal, name in selected:
-            rows = _sheet_grid(
-                book.get_sheet_by_name(name).to_python(skip_empty_area=False), tally)
+            ordinal = source_ordinals.get(name, ordinal)
+            original = original_names.get(name, name)
+            records = tuple(item for item in findings if item["location"].get("sheet") == original
+                            and item["location"].get("sheet_ordinal") == ordinal)
+            points = [_coordinate(item["location"]["cell"]) for item in records if item["kind"] == "cell"]
+            span = ((max(row for row, _column in points) - min(row for row, _column in points) + 1)
+                    * (max(column for _row, column in points) - min(column for _row, column in points) + 1)
+                    if points else 0)
+            alias = aliases.get(name, name)
+            sheet = book.get_sheet_by_name(alias) if alias in book_names and span <= 100_000 else None
+            rows, occupied, sparse = _addressed_grid(sheet, records, tally)
+            blocks = []
+            if original is None:
+                blocks.append(("text", ["Source sheet name: not stored. The heading is a generated display label."]))
             if rows:
                 tally["tables"] += 1
-            units.append((ordinal, name, [("table", rows)] if rows else []))
+                blocks.append(("text", ["Source range: " + occupied]))
+                if sparse:
+                    blocks.append(("text", ["Empty row and column gaps are omitted; source addresses are preserved."]))
+                blocks.append(("table", rows))
+            units.append((ordinal, name, blocks))
     artifacts = _book_artifacts(path, sheets, budget)
     return _assemble(path, ROUTE.name, ROUTE.unit_kind, source_units, units, tally,
                      not_carried=ROUTE.not_carried, artifacts=artifacts,

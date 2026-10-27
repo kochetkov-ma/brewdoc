@@ -9,6 +9,7 @@ import zipfile
 import pytest
 
 import brewdoc
+from inspection_contract import rendering_result
 from test_contract import NOT_APPLICABLE, schema_two, zero_tally
 from test_documents import STRICT, TRANSITIONAL, docx, paragraph, paragraph_xml
 
@@ -79,7 +80,7 @@ def test_first_direct_qualified_fallback_is_selected_once(tmp_path, namespace, p
     assert (source.count(":Choice "), source.count(":Fallback>")) == (2, 4), (
         "the input must contain two Choices and two separately closed direct fallbacks")
     # WHEN the public reader renders one logical alternative
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN the exact full document and receipt contain only the first direct fallback
     assert actual == expected_result(path, BODY_START + "before Kept after\n"), (
         "fallback selection must use qualified names, survive prefix aliases and preserve surrounding text")
@@ -96,7 +97,7 @@ def test_alternatives_without_a_direct_fallback_omit_choice_content(tmp_path, br
     root = ET.fromstring('<root xmlns:w="%s">%s</root>' % (TRANSITIONAL, content))
     assert root[0].find("{%s}Fallback" % MC) is None, "the outer alternative must have no direct fallback"
     # WHEN Choice-only content is read through the narrowed fallback contract
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN unsupported content adds neither text nor an empty region
     assert actual == expected_result(path, BODY_START + "before\n\nafter\n", regions=2), (
         "a fallback hidden inside a Choice must not become the outer alternative's selected content")
@@ -110,7 +111,7 @@ def test_nested_fallback_selection_preserves_surrounding_text_order(tmp_path):
     path = docx(tmp_path / "sample.docx", paragraph_xml(content))
     assert content.count(":AlternateContent ") == 2, "the input must contain outer and nested alternatives"
     # WHEN both selected branches are traversed in source order
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN nested selection leaves ordinary text on both sides in place
     assert actual == expected_result(path, BODY_START + "before inner after\n"), (
         "nested fallbacks must preserve depth-first content order without consuming either Choice")
@@ -122,7 +123,7 @@ def test_heading_label_uses_the_same_selected_fallback_as_heading_text(tmp_path)
     path = docx(tmp_path / "sample.docx", paragraph_xml(content, "Heading1") + paragraph("body"))
     assert content.count("Chosen title") == 1, "the selected heading label must have one physical source"
     # WHEN a heading defines the chapter label and contents entry
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN both navigation and body heading retain the same exact selected label
     expected = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Chosen title"\n\nbody\n'
     assert actual == expected_result(path, expected, label="Chosen title"), (
@@ -139,7 +140,7 @@ def test_table_cell_text_selects_fallback_without_changing_column_alignment(tmp_
     path = docx(tmp_path / "sample.docx", source)
     assert source.count("<w:tc>") == 4, "the selected text must belong to four independent table cells"
     # WHEN the existing direct row/cell reader flattens each selected cell's text
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN header and data values retain their source columns and exact table count
     assert actual == expected_result(path, BODY_START + "| A | B |\n| --- | --- |\n| x | y |\n",
                                      regions=0, tables=1), (
@@ -157,7 +158,7 @@ def test_identical_independent_paragraphs_and_textboxes_are_retained(tmp_path, s
     assert (source.count("<w:txbxContent>"), source.count("Repeat")) == (textboxes, 2), (
         "the input must carry two separate text sources, not one logical alternative")
     # WHEN ordinary Word content is rendered
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN each independent repetition remains in its original paragraph position
     assert actual == expected_result(path, BODY_START + rendered, regions=regions), (
         "alternative selection must not become text-value deduplication")
@@ -174,7 +175,7 @@ def test_ordinary_content_without_qualified_alternatives_stays_exact(tmp_path, s
     path = docx(tmp_path / "sample.docx", source)
     assert path.is_file() is True, "the unchanged-control input must be a readable synthetic DOCX"
     # WHEN the public reader follows ordinary qualified Word text
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN full bytes and receipts preserve the existing ordinary-content behavior
     assert actual == expected_result(path, BODY_START + rendered), (
         "only exact compatibility AlternateContent names may trigger fallback selection")
@@ -189,7 +190,7 @@ def test_deep_selected_fallbacks_do_not_depend_on_python_recursion(tmp_path):
     path = docx(tmp_path / "sample.docx", paragraph_xml(content))
     assert content.count("<mc:AlternateContent ") == levels, "every selected level must be physically present"
     # WHEN the public reader traverses the accepted XML depth
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN fallback handling retains exact content without a recursive-walker failure
     assert actual == expected_result(path, BODY_START + "Deep\n"), (
         "selected fallback traversal must remain iterative at valid XML depths")
@@ -213,7 +214,7 @@ def test_licensed_textbox_alternative_renders_once_with_exact_receipt():
         ("{%s}Fallback" % MC, ("Here is a text box",)),
     )), "the source must contain exactly two alternative representations of one textbox"
     # WHEN the public service renders the real main-story content
-    actual = brewdoc.run(path)
+    actual = rendering_result(brewdoc.run(path))
     # THEN the logical textbox appears once while every other body region and receipt field survives
     expected_body = BODY_START + (
         "Here is a text boxFootnote appears here\n\n"

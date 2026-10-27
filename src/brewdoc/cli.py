@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from brewdoc.common import BrewdocError, _markdown_encoding
+from brewdoc.common import BrewdocError
 from brewdoc.selfcheck import self_check
 from brewdoc.service import (EXIT_FAIL, EXIT_OK, EXIT_USAGE, SUFFIXES, _html_receipt_route,
                              _line, _route, run)
@@ -69,16 +69,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="keep main or article content; with none, render the whole clean page "
                              "and set receipt article_fallback: true")
     parser.add_argument("--no-links", dest="links", action="store_false",
-                        help="HTML only: keep link text, omit destinations and disclose it in the receipt")
+                        help="HTML only: omit readable-link destinations; inspection retains original targets")
     parser.add_argument("--body-only", action="store_true",
                         help="omit the title, metadata, omissions, contents and unit anchors; "
                              "keep unit headings only for several units")
-    parser.add_argument("--out", help="write Markdown here (PDF/DOCX/PPTX ASCII; other formats UTF-8); "
-                                     "default stdout")
+    parser.add_argument("--out", help="write inspected Markdown here as UTF-8; default stdout")
     parser.add_argument("--sheet", action="append",
                         help="render only this exact workbook sheet; repeat for caller order")
     parser.add_argument("--artifact", action="append",
-                        help="write one listed workbook artifact as KEY=PATH; repeat as needed")
+                        help="write a listed artifact as KEY=PATH, including inspection/report; repeat as needed")
     parser.add_argument("--self-check", action="store_true", dest="self_check",
                         help="render synthetic fixtures twice and compare; exits 0 when green")
     return parser
@@ -127,10 +126,9 @@ def main(argv=None) -> int:
                 article=args.article, body_only=args.body_only, links=args.links)
     print(json.dumps(line, ensure_ascii=True, sort_keys=True))
     if rc == EXIT_OK and not args.out:
-        encoding = _markdown_encoding(line["route"])
-        if encoding == "utf-8" and hasattr(sys.stdout, "buffer"):
+        if hasattr(sys.stdout, "buffer"):
             sys.stdout.flush()
-            sys.stdout.buffer.write(markdown.encode(encoding))
+            sys.stdout.buffer.write(markdown.encode("utf-8"))
         else:
             sys.stdout.write(markdown)
     return rc

@@ -19,22 +19,23 @@ SPEC.loader.exec_module(INSTALL)
 
 def test_installed_smoke_makes_only_two_fresh_base_installations(tmp_path, monkeypatch):
     # GIVEN one sealed wheel and sdist with exact producer tool and source identity
-    checkout, bundle = tmp_path / 'checkout', tmp_path / 'bundle'
-    checkout.mkdir()
-    (bundle / 'dist').mkdir(parents=True)
-    (bundle / 'ci-package').mkdir()
-    (bundle / 'dist/brewdoc.whl').write_bytes(b'wheel')
-    (bundle / 'dist/brewdoc.tar.gz').write_bytes(b'sdist')
-    manifest = {'verification_scope': 'smoke', 'source': {}, 'files': {}, 'checkout_sha': 'a' * 40,
-                'uv': '0.12.21'}
-    (bundle / 'ci-package/manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    from test_install_verification import fake_package_command, module_pair, public_api_case
+
+    checkout, bundle, _modules = module_pair(tmp_path)
+    monkeypatch.setattr(INSTALL, 'command', fake_package_command)
+    INSTALL.prepare(checkout, bundle, smoke=True)
+    source, expected = public_api_case(tmp_path)
+    inspection_api = INSTALL.probe_inspection_api(source, expected)
+    manifest = json.loads((bundle / 'ci-package/manifest.json').read_bytes())
+    inspection = INSTALL.probe_inspection_packet(INSTALL.load_inspection_packet(bundle, manifest), tmp_path)
     calls = []
 
     def command(arguments, cwd):
         """Substitute only install/process edges while retaining driver admission."""
         calls.append(arguments)
         replies = {('uv', '--version'): b'uv 0.12.21', ('git', 'rev-parse'): ('a' * 40).encode()}
-        report = {'verification_scope': 'smoke', 'oracle': [], 'probes': [{'probe': 'epub2'}, {'probe': 'formula'}]}
+        report = {'verification_scope': 'smoke', 'oracle': [], 'probes': [{'probe': 'epub2'}, {'probe': 'formula'}],
+                  'inspection_api': inspection_api, 'inspection': inspection}
         return subprocess.CompletedProcess(arguments, 0, replies.get(tuple(arguments[:2]), json.dumps(report).encode()), b'')
 
     monkeypatch.setattr(INSTALL, 'command', command)
@@ -49,6 +50,10 @@ def test_installed_smoke_makes_only_two_fresh_base_installations(tmp_path, monke
     probes = [arguments for arguments in calls if 'probe' in arguments]
     assert [arguments[-1] for arguments in probes] == ['--smoke', '--smoke'], 'both consumers use synthetic smoke'
     assert report['verification_scope'] == 'smoke', 'the evidence cannot be mistaken for full coverage'
+    assert [row['probe']['inspection_api'] for row in report['installations']] == [inspection_api] * 2, (
+        'both base installations require the same actual public inspection API evidence')
+    assert [row['probe']['inspection'] for row in report['installations']] == [inspection] * 2, (
+        'both base installations require the complete packet-bound fifteen-case evidence')
 
 
 @pytest.mark.parametrize('child_change,count,expectation', [
@@ -58,19 +63,17 @@ def test_installed_smoke_makes_only_two_fresh_base_installations(tmp_path, monke
 ])
 def test_full_installations_bind_the_same_pair_to_four_independent_expected_runtimes(tmp_path, monkeypatch, child_change, count, expectation):
     # GIVEN the sealed full pair and one exact representative runtime
-    checkout, bundle = tmp_path / 'checkout', tmp_path / 'bundle'
+    from test_install_verification import fake_package_command, module_pair, public_api_case
+
+    checkout, bundle, _modules = module_pair(tmp_path)
     source = checkout / '.github/workflows/verify_install.py'
-    source.parent.mkdir(parents=True)
     shutil.copyfile(INSTALL.__file__, source)
-    (bundle / 'dist').mkdir(parents=True)
-    (bundle / 'ci-package').mkdir()
-    wheel, sdist = bundle / 'dist/brewdoc.whl', bundle / 'dist/brewdoc.tar.gz'
-    wheel.write_bytes(b'wheel')
-    sdist.write_bytes(b'sdist')
-    manifest = {'verification_scope': 'full', 'source': {INSTALL.VERIFIER_SOURCE: INSTALL.digest(source)},
-                'files': {'dist/' + path.name: {'size': path.stat().st_size, 'sha256': INSTALL.digest(path)}
-                          for path in (wheel, sdist)}, 'checkout_sha': 'a' * 40, 'uv': '0.12.21'}
-    (bundle / 'ci-package/manifest.json').write_text(json.dumps(manifest))
+    monkeypatch.setattr(INSTALL, 'command', fake_package_command)
+    INSTALL.prepare(checkout, bundle)
+    api_source, expected = public_api_case(tmp_path)
+    inspection_api = INSTALL.probe_inspection_api(api_source, expected)
+    manifest = json.loads((bundle / 'ci-package/manifest.json').read_bytes())
+    inspection = INSTALL.probe_inspection_packet(INSTALL.load_inspection_packet(bundle, manifest), tmp_path)
     identity = {'implementation': 'CPython', 'version': '3.14.7', 'system': 'Darwin', 'machine': 'arm64',
                 'soabi': 'cpython-314-darwin', 'abi_flags': '', 'gil_disabled': False, 'pointer_bits': 64,
                 'libc': ['', ''], 'os_name': 'Darwin', 'os_version': '15.8.1'}
@@ -80,7 +83,8 @@ def test_full_installations_bind_the_same_pair_to_four_independent_expected_runt
         """Substitute installer processes while retaining artifact/runtime admission."""
         calls.append(arguments)
         replies = {('uv', '--version'): b'uv 0.12.21', ('git', 'rev-parse'): ('a' * 40).encode()}
-        child = {'runtime': {**identity, **child_change}, 'verification_scope': 'full'}
+        child = {'runtime': {**identity, **child_change}, 'verification_scope': 'full',
+                 'inspection_api': inspection_api, 'inspection': inspection}
         return subprocess.CompletedProcess(arguments, 0, replies.get(tuple(arguments[:2]), json.dumps(child).encode()), b'')
 
     monkeypatch.setattr(INSTALL, 'command', command)
@@ -104,6 +108,7 @@ def test_full_installations_bind_the_same_pair_to_four_independent_expected_runt
 def test_installed_smoke_generates_and_checks_synthetic_cli_without_corpus(tmp_path, monkeypatch):
     # GIVEN a corpus selector that fails whenever smoke attempts licensed input selection
     from brewdoc import __version__
+    from test_install_verification import complete_inspection_packet
 
     monkeypatch.chdir(tmp_path)
 
@@ -133,6 +138,8 @@ def test_installed_smoke_generates_and_checks_synthetic_cli_without_corpus(tmp_p
                 'archive': {'filename': f'brewdoc-{__version__}-linux-x64.tar.gz', 'bytes': 1, 'sha256': 'd' * 64},
                 'inventory': {'brewdoc': {'kind': 'directory', 'mode': 0o755},
                               'brewdoc/brewdoc': {'kind': 'file', 'mode': 0o755, 'bytes': 1, 'sha256': 'e' * 64}}}
+    packet = complete_inspection_packet()
+    manifest.update(source_sha=packet['source_sha'], inspection=packet)
     assert builder.validate_manifest(manifest) is None, 'actual installed synthetic records also satisfy the native seal'
 
 

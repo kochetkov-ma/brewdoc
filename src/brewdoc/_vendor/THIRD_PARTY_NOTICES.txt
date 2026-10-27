@@ -1,3 +1,30 @@
+calamine 0.36.0 Excel Ftab name and arity metadata
+Source: https://github.com/tafia/calamine/blob/v0.36.0/src/utils.rs
+Source SHA256: 407012efe8f39bc2636089064fe921ffbb4418342104bcde43133550a0ac487f
+The tables in brewdoc/_excel_formula.py are adapted from this MIT-licensed source.
+
+The MIT License (MIT)
+
+Copyright (c) 2016 Johann Tuffe
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
 LinkeDOM 0.18.13 published worker bundle
 Source: https://registry.npmjs.org/linkedom/-/linkedom-0.18.13.tgz
 Archive SHA256: 816d4b548060b72cdc4a141079bf857a934bba8dd42d745a9e0c40c0fbbce8bb

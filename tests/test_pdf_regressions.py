@@ -8,7 +8,10 @@ from types import SimpleNamespace
 import pdfplumber
 import pytest
 
+from inspection_contract import rendering_result
+
 from brewdoc import common, pdf, selfcheck, service
+from brewdoc._pdf_fonts import PDF_FONT_GLYPHS, type1_encoding
 
 FONT_NAME = "BDTEST+CMEX10"
 
@@ -86,6 +89,52 @@ OVERRIDDEN_PROGRAM = type1_program(((80, "summationtext"), (255, "summationtext"
 PDF_DIFFERENCES = "/Encoding << /Differences [255 /productdisplay] >> "
 
 
+@pytest.mark.parametrize("header,expected", [
+    (b"/Encoding 256 array dup 80 /summationtext put readonly def", {80: "summationtext"}),
+    (b"/Encoding 256 array dup 0 /.notdef put dup 80 /summationtext put readonly def",
+     {0: ".notdef", 80: "summationtext"}),
+    (b"/Encoding 256 array dup 80 /name.with_underscore#2E put def", {80: "name.with_underscore#2E"}),
+    (b"/Encoding 256 array dup 80 /Encoding put def", {80: "Encoding"}),
+    (b"/Encoding 256 array dup 80 /summationtext put dup 80 /productdisplay put def", {80: None}),
+    (b"/Encoding 256 array % dup 80 /productdisplay put\n dup 80 /summationtext put def", {80: "summationtext"}),
+    (b"% /Encoding 256 array dup 80 /productdisplay put def\n"
+     b"/Encoding 256 array dup 80 /summationtext put def", {80: "summationtext"}),
+    (b"(/Encoding 256 array dup 80 /productdisplay put def)", {}),
+    (b"/Encoding 256 array dup 80 /summationtext put someProcedure def", {}),
+    (b"/Encoding 256 array dup 80 /summationtext put def Encoding 80 /productdisplay put", {}),
+    (b"/Encoding 256 array dup 80 /summationtext put def currentdict /Encoding get 80 /productdisplay put", {}),
+    (b"/Encoding 256 array dup 80 /summationtext put def /Encoding 256 array dup 80 /productdisplay put def", {}),
+    (b"/Encoding 256 array dup 80 /summationtext put def /Other 256 array dup 80 /productdisplay put def",
+     {80: "summationtext"}),
+])
+def test_shared_type1_header_parser_accepts_only_literal_unambiguous_encoding_source(header, expected):
+    # GIVEN source bytes that may contain literal assignments, decoys or unsupported programs
+    assert type(header) is bytes, "the shared parser must consume the admitted original header byte sequence"
+    # WHEN both PDF consumers use the same passive source-name primitive
+    actual = type1_encoding(header)
+    # THEN comments, strings and executable constructs cannot become authoritative glyph declarations
+    assert (actual, pdf.PDF_FONT_GLYPHS is PDF_FONT_GLYPHS) == (
+        expected, True,
+    ), "literal source names and legacy public mapping identity must remain precise without program execution"
+
+
+@pytest.mark.parametrize("glyph,expected,loss", [
+    ("summationtext", "[sum]", 0), ("unknown.named_glyph", f"[font-glyph:{FONT_NAME}:80]", 1),
+])
+def test_literal_notdef_assignment_preserves_independent_legacy_glyph_projection(tmp_path, glyph, expected, loss):
+    # GIVEN a legal explicit .notdef entry followed by a separate source glyph declaration
+    program = type1_program(((0, ".notdef"), (80, glyph)))
+    path = tmp_path / "literal-notdef.pdf"
+    path.write_bytes(font_identity_pdf((("F1", program),), "", 80))
+    assert source_lines(path) == ["(cid:80)"], "the source font engine must expose the unmapped used code independently"
+    # WHEN the shared literal font parser supplies the existing readable projection
+    markdown, tally = pdf.render_pdf(path)
+    # THEN an unused .notdef entry cannot erase an independently recoverable sum or change unknown-glyph accounting
+    assert (selfcheck.chapter_lines(markdown, "Page 1"), tally["dropped"]["cid_survivors"]) == (
+        [expected], loss,
+    ), "legal literal glyph names must preserve the previous Markdown and exact unresolved-glyph tally"
+
+
 def font_identity_pdf(fonts, encoding, char_code):
     """Show `char_code` once per `(resource name, Type1 program)` entry, each font embedded."""
     commands = "".join(f"BT /{name} 10 Tf 1 0 0 1 {x} 690 Tm (\\{char_code:03o}) Tj ET\n"
@@ -135,7 +184,7 @@ def test_data_rows_remain_separate_without_individual_horizontal_rules(tmp_path,
     assert source_lines(path) == ["Region Q1 Q2", "Alpha 11 12", "Beta 21 22",
                                   "Gamma 31 32", "Delta 41 42"], "the source must contain four distinct records"
     # WHEN the PDF is rendered through the public entry point
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN every record retains its label and its two values in one row
     assert (code, receipt["file_ok"], receipt["route"]) == (0, True, "pdf"), "conversion must succeed on the valid source"
     assert selfcheck.chapter_lines(markdown, "Page 1") == [
@@ -158,7 +207,7 @@ def test_shaded_header_padding_does_not_add_columns_or_repeat_headers(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == ["DATE TYPE CHANGE PAGE", "04/27 Edit New label 1"], "the source must have one header and one data row"
     # WHEN decoration overlaps the table's ruled region
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN header and body values occupy the same four columns
     assert (code, receipt["file_ok"]) == (0, True), "the shaded table must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == [
@@ -178,7 +227,7 @@ def test_boxed_prose_remains_three_sentences_without_a_false_table(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == prose, "the boxed source must contain each sentence exactly once"
     # WHEN the boxed paragraph is classified
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN prose stays in reading order without being turned into table cells
     assert (code, receipt["file_ok"]) == (0, True), "the boxed paragraph must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == prose, "a decorative box must not change or repeat paragraph structure"
@@ -197,7 +246,7 @@ def test_right_hand_chart_grid_does_not_suppress_left_hand_prose(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert source_lines(path) == [prose[0], prose[1], "Series A", prose[2], prose[3]], "the source must keep the plot and all left-column text"
     # WHEN a right-hand plot produces closed rectangular candidates
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN each neighboring sentence and heading remains once in source order
     assert (code, receipt["file_ok"]) == (0, True), "the mixed-layout page must render successfully"
     assert re.findall("|".join(map(re.escape, prose)), markdown) == prose, "a plot candidate must not consume neighboring prose or its heading"
@@ -213,7 +262,7 @@ def test_scientific_notation_keeps_the_decoded_mathematical_minus(tmp_path):
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["3.0e−4"], "the source font must decode a mathematical minus rather than an ASCII hyphen"
     # WHEN scientific notation is converted to the PDF route's ASCII representation
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the exponent sign and numeric magnitude remain unambiguous
     assert (code, receipt["file_ok"]) == (0, True), "the explicitly encoded PDF must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == ["3.0e-4"], "a negative exponent must not become an unknown glyph"
@@ -226,7 +275,7 @@ def test_greek_and_operator_glyphs_keep_distinct_pdf_tokens(tmp_path):
     path.write_bytes(symbol_pdf("BT /F2 10 Tf 1 0 0 1 80 660 Tm (b=p+\\345) Tj ET\n"))
     assert source_lines(path) == ["β=π+∑"], "the source must expose three distinct Unicode identities"
     # WHEN decoded mathematical glyphs pass through PDF-specific normalization
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN their identities remain distinct without inventing equation layout
     assert (code, receipt["file_ok"]) == (0, True), "the explicitly encoded symbols must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == ["[beta]=[pi]+[sum]"], "decoded Greek letters and operators need stable distinct ASCII tokens"
@@ -254,7 +303,7 @@ def test_displayed_fraction_keeps_its_bar_between_numerator_and_denominator(tmp_
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["β+∑", "(1)", "π"], "the source must place distinct numerator and denominator glyphs around the bar"
     # WHEN the PDF contains two-dimensional mathematical notation
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN one fixed-layout block preserves glyph identities and fraction geometry
     assert (code, receipt["file_ok"]) == (0, True), "the displayed equation must render successfully"
     blocks = re.findall(r"```\n(.*?)\n```", markdown, re.DOTALL)
@@ -282,7 +331,7 @@ def test_unknown_font_glyph_keeps_its_font_and_code_instead_of_disappearing(tmp_
     path.write_bytes(symbol_pdf(commands))
     assert source_lines(path) == ["left (cid:230) right"], "the undecoded source glyph must have an observable code"
     # WHEN the PDF route cannot establish the glyph's semantic identity
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the unknown identity stays visible and is counted without guessing
     assert (code, receipt["file_ok"]) == (0, True), "an undecoded glyph must not refuse otherwise readable text"
     assert selfcheck.chapter_lines(markdown, "Page 1") == ["left [font-glyph:Symbol:230] right"], "unknown font glyphs need a visible font-scoped identity"
@@ -308,7 +357,7 @@ def test_stacked_left_tables_beside_a_tall_table_do_not_repeat_cell_content(tmp_
     expected_values = ["1", "2", "3", "4", "5", "6", "A", "B", "C", "D", "E", "F"]
     assert source_values == expected_values, "each source cell must contain one distinct value"
     # WHEN adjacent table boxes have overlapping vertical ranges
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN every cell remains once and belongs to its own two-column table row
     assert (code, receipt["file_ok"]) == (0, True), "all three valid tables must render successfully"
     content = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
@@ -331,7 +380,7 @@ def test_font_recovery_uses_only_unambiguous_encoding_identity(tmp_path, fonts, 
     path.write_bytes(font_identity_pdf(fonts, encoding, char_code))
     assert source_lines(path) == [" ".join(f"(cid:{char_code})" for _ in fonts)], "every source character must remain undecoded before recovery"
     # WHEN explicit font encodings are considered for the public PDF conversion
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN conflicting declarations and unrelated arrays cannot determine glyph identity
     assert (code, receipt["file_ok"]) == (0, True), "the valid synthetic font resources must remain readable"
     assert selfcheck.chapter_lines(markdown, "Page 1") == [expected], "unproved or overridden font metadata must not determine a glyph identity"
@@ -356,7 +405,7 @@ def test_sparse_numeric_ruling_keeps_six_columns_and_grouped_headers(tmp_path):
     assert source_lines(path) == ["Model Unit Score Rate", "A B C D",
                                   "Alpha kg 11 12 13 14", "Beta kg 21 22 23 24"], "the source must expose both stubs, grouped labels and four numeric fields"
     # WHEN the numeric ruling covers only part of the complete table
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN stubs and units stay associated with all four values under the grouped header
     assert (code, receipt["file_ok"]) == (0, True), "the sparse six-column source must render successfully"
     page = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
@@ -385,7 +434,7 @@ def test_narrow_table_keeps_its_caption_separate_from_neighboring_prose(tmp_path
     assert right == ["Item Qty Cost", "A 2 5", "B 3 7", "Table 9: Small inventory.",
                      "Values are synthetic."], "the source must contain a real narrow table followed by two caption lines"
     # WHEN the table and prose share the same vertical band
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the prose lane is contiguous and the caption immediately follows its table
     assert (code, receipt["file_ok"]) == (0, True), "the narrow mixed-layout source must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == prose + [
@@ -410,7 +459,7 @@ def test_spanning_table_header_outside_rule_end_keeps_every_character_once(tmp_p
         truth = next(word for word in document.pages[0].extract_words() if word["text"] == "truth")
     assert (truth["text"], round(truth["x0"], 2), round(truth["x1"], 2)) == ("truth", 489.48, 509.49), "the source word truth must straddle the rule boundary at x=500"
     # WHEN a qualified table owns a heading wider than its numeric rules
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the full heading survives once with its two source records
     assert (code, receipt["file_ok"]) == (0, True), "the valid source table must render successfully"
     assert markdown.count(heading) == 1, "the spanning heading must remain intact and occur once"
@@ -436,7 +485,7 @@ def test_long_model_name_does_not_absorb_adjacent_hardware_cell(tmp_path):
     assert source_lines(path) == ["Model GPU Power Carbon", "Alpha V100 10 20",
                                   "Beta V100 30 40", "BLOOM-176B A100-80GB 50 60"], "the source must expose four distinct fields on every record baseline"
     # WHEN repeated body columns establish separate model and hardware fields
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the long model and adjacent hardware retain their own cells
     assert (code, receipt["file_ok"]) == (0, True), "the valid four-column source must render successfully"
     page = "\n".join(selfcheck.chapter_lines(markdown, "Page 1"))
@@ -463,7 +512,7 @@ def test_line_number_rail_keeps_each_code_line_whole_without_a_page_gutter(tmp_p
         glyph = document.pages[0].chars[1]
     assert (glyph["text"], round(glyph["x0"], 2), round(glyph["x1"], 2)) == ("d", 100.0, 105.56), "the first code glyph must straddle the midpoint the indented gaps imply"
     # WHEN the listing band is checked for repeated prose-column starts
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN no gutter is taken and every glyph stays once on its own numbered line
     assert (code, receipt["file_ok"]) == (0, True), "the valid listing source must render successfully"
     assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["columns_split"]) == (listing, 0), "a line-number rail is not a page gutter, so no glyph may be cut or duplicated"
@@ -488,7 +537,7 @@ def test_adjacent_centred_header_heads_keep_their_own_body_columns(tmp_path):
                  for word in document.pages[0].extract_words() if word["text"] in ("MMLU", "AlpacaEval")]
     assert heads == [("MMLU", 185.28, 214.72), ("AlpacaEval", 217.5, 267.52)], "the two heads must sit one space apart, closer than the header grouping threshold"
     # WHEN the header band is mapped onto the columns the body records establish
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN each centred head keeps its own column instead of merging into its neighbour
     assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
     assert selfcheck.chapter_lines(markdown, "Page 1") == [
@@ -556,7 +605,7 @@ def test_fused_header_token_keeps_body_supported_heads_and_every_character_once(
 
     monkeypatch.setattr(pdf, "_logical_rows", observe_rows)
     # WHEN the fused word is associated with the independently established body columns
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN complete headers follow their body centres and every source glyph survives once
     assert (code, receipt) == (0, page_receipt("fused-heads.pdf", 1, 0)), (
         "the synthetic table must retain the exact successful PDF counters without drops")
@@ -600,7 +649,7 @@ def test_spanning_header_token_crossing_body_boundary_stays_whole(tmp_path):
                 "SharedRisk", 239.975, 291.655, 265.815,
             ), "the indivisible source word must span and be centred over the body-column boundary"
     # WHEN a spanning source word crosses the same independently inferred boundary
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN it stays whole in one cell above the unchanged headers and body records
     assert (code, receipt) == (0, page_receipt("spanning-body-boundary.pdf", 1, 0)), (
         "the spanning table must keep its exact counters without drops")
@@ -626,7 +675,7 @@ def test_separate_plot_axes_do_not_turn_a_figure_legend_into_a_table(tmp_path):
         axes = [(round(box["x0"], 2), round(box["x1"], 2)) for box in document.pages[0].rects]
     assert axes == [(60.0, 160.0), (185.0, 285.0), (310.0, 410.0), (435.0, 535.0)], "the panel axes must leave 25 pt gaps, far wider than a trimmed rule"
     # WHEN the widest group of aligned horizontal segments is read as a column grid
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the legend keeps its fixed layout and no table is reported
     assert (code, receipt["file_ok"]) == (0, True), "the synthetic figure page must render successfully"
     assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
@@ -660,7 +709,7 @@ def test_trimmed_cmidrule_segments_keep_their_grouped_header_table(tmp_path):
     assert rules == [(79.5, 60.0, 360.0), (97.5, 140.0, 220.0), (97.5, 230.0, 310.0),
                      (105.5, 60.0, 360.0), (165.5, 60.0, 360.0)], "the trimmed segments must leave a 10 pt gap between the full-width rules"
     # WHEN the trimmed rule is considered as the source of the table's columns
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN both header groups keep their own two body columns
     assert (code, receipt["file_ok"]) == (0, True), "the valid booktabs source must render successfully"
     assert (selfcheck.chapter_lines(markdown, "Page 1"), receipt["tables"]) == ([
@@ -705,7 +754,7 @@ def test_tight_word_gaps_without_space_glyphs_keep_words_separate(tmp_path, oper
     path.write_bytes(selfcheck.synthetic_pdf([f"BT /F1 10 Tf 1 0 0 1 72 700 Tm {operands} TJ ET\n"]))
     assert upright_runs(path) == [(True, glyphs)], "the source must hold only upright word glyphs"
     # WHEN the line is rendered as page prose
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN each word gap becomes one space while a 0.3 pt intra-word kern does not
     assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
         0, page_receipt("tight-kerning.pdf", 0, 1), expected), "a word gap wider than 0.15 em must separate words in prose"
@@ -718,7 +767,7 @@ def test_rotated_margin_stamp_stays_out_of_upright_prose(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([text_op(72, 700, "Body text") + stamp]))
     assert upright_runs(path) == [(True, "Body text"), (False, "arXiv:0000.00000v1")], "the source must hold one upright and one rotated run"
     # WHEN the page is rendered
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN only upright prose remains and the dropped stamp adds no tally or table
     assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
         0, page_receipt("rotated-stamp.pdf", 0, 1), ["Body text"]), "rotated text must not enter prose"
@@ -734,7 +783,7 @@ def test_rotated_header_inside_a_ruled_table_stays_in_its_cell(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert upright_runs(path) == [(False, "Rot"), (True, "Name11Alpha")], "the source must hold one rotated header and upright cells"
     # WHEN the table page is rendered
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the rotated header keeps its table cell
     assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
         0, page_receipt("rotated-header.pdf", 1, 0), ["| Rot | Name |", "| --- | --- |", "| 11 | Alpha |"]), (
@@ -751,7 +800,7 @@ def test_rotated_header_reading_bottom_to_top_keeps_its_reading_order(tmp_path):
     path.write_bytes(selfcheck.synthetic_pdf([drawing]))
     assert upright_runs(path) == [(False, "Rot"), (True, "Name11Alpha")], "the source must hold one upward header and upright cells"
     # WHEN the table page is rendered
-    code, receipt, markdown = service.run(path)
+    code, receipt, markdown = rendering_result(service.run(path))
     # THEN the upward header reads in source order, not reversed
     assert (code, receipt, selfcheck.chapter_lines(markdown, "Page 1")) == (
         0, page_receipt("upward-header.pdf", 1, 0), ["| Rot | Name |", "| --- | --- |", "| 11 | Alpha |"]), (

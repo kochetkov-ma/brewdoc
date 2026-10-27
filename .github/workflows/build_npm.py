@@ -373,7 +373,7 @@ def file_inventory(folder: Path, *, target: str | None = None) -> dict:
             for path in sorted(folder.rglob("*")) if path.is_file()}
 
 
-def verify_tarball(path: Path, record: dict) -> None:
+def verify_tarball(path: Path, record: dict, *, inspection: dict | None = None) -> None:
     """Check the actual npm archive's complete file list, bytes and modes."""
     payload = path.read_bytes()
     if (len(payload), digest(payload), integrity(payload)) != (record["bytes"], record["sha256"], record["integrity"]):
@@ -395,6 +395,8 @@ def verify_tarball(path: Path, record: dict) -> None:
             native = json.loads(archive.extractfile("package/native-manifest.json").read())
             verified = json.loads(archive.extractfile("package/native-verification.json").read())
             helper = native_builder()
+            helper.verifier().admit_inspection(native, version=record["version"], source_sha=record["source_sha"],
+                                               inspection=inspection)
             helper.validate_manifest(native)
             helper.validate_verification(native, verified)
             if len({verification_scope(value) for value in (native, verified, record)}) != 1:
@@ -677,6 +679,8 @@ def consumer_probe(arguments: list[str], work: Path, environment: dict, native: 
     if (check.returncode, check.stdout, check.stderr) != (0, ("self-check: ok (38 checks)" + os.linesep).encode("ascii"), b""):
         raise ValueError(f"npm consumer self-check changed (exit {check.returncode}; "
                          f"stdout={check.stdout[:512]!r}; stderr={check.stderr[:512]!r})")
+    packet = helper.verifier().admit_inspection(native, version=native["version"], source_sha=native["source_sha"])
+    inspection = {"inspection": helper.probe_inspection_cli(arguments, work, environment, packet)} if packet is not None else {}
     if verification_scope(native) == "smoke":
         if native["oracle"] != [] or len(native["probes"]) != 2 or {row["probe"] for row in native["probes"]} != {"epub2", "formula"}:
             raise ValueError("npm smoke requires exactly the synthetic native probes")
@@ -689,7 +693,7 @@ def consumer_probe(arguments: list[str], work: Path, environment: dict, native: 
         copied.write_bytes(payload)
         helper.check_output(cli_result(arguments, [str(copied)], work, environment), row)
         return {"self_check": 38, "selected_package": selected_package, "fixtures": [],
-                "probes": [{"probe": "epub2", "path": row["path"], "markdown_sha256": row["markdown_sha256"]}]}
+                "probes": [{"probe": "epub2", "path": row["path"], "markdown_sha256": row["markdown_sha256"]}], **inspection}
     help_result = cli_result(arguments, ["--help"], work, environment, 45)
     if help_result.returncode != 0 or help_result.stderr or not help_result.stdout.startswith(b"usage: brewdoc"):
         raise ValueError("npm consumer help changed")
@@ -712,7 +716,7 @@ def consumer_probe(arguments: list[str], work: Path, environment: dict, native: 
             1, False, 0, b"preserve existing output\n", b""):
         raise ValueError("npm consumer changed atomic malformed refusal")
     return {"self_check": 38, "selected_package": selected_package, "fixtures": fixtures,
-            "atomic_refusal": True, "help_sha256": digest(help_result.stdout)}
+            "atomic_refusal": True, "help_sha256": digest(help_result.stdout), **inspection}
 
 
 def process_snapshot() -> dict:
@@ -936,6 +940,7 @@ def probe(input_dir: Path, target: str, mode: str, output: Path, smoke: bool = F
                 packages["local"] = local_prefix / "node_modules/brewdoc"
             packages["npx"] = npx_packages[0]
             consumers = {}
+            helper = native_builder()
             for name, folder in packages.items():
                 installed_identity(folder, manifest["packages"][-1], dependencies=True)
                 resolution = subprocess.run([node, "-e", "process.stdout.write(require.resolve(process.argv[1],{paths:[process.argv[2]]}))",
@@ -952,6 +957,10 @@ def probe(input_dir: Path, target: str, mode: str, output: Path, smoke: bool = F
                     raise ValueError("Installed npm native source identity differs")
                 if verification_scope(native) != scope:
                     raise ValueError("Installed npm verification scope differs")
+                packet = helper.verifier().admit_inspection(native, version=manifest["version"],
+                                                           source_sha=manifest["source_sha"])
+                consumer_work = work / ("consumer-" + name)
+                consumer_work.mkdir()
                 bin_paths = {"global": global_prefix / ("brewdoc.cmd" if os.name == "nt" else "bin/brewdoc"),
                              "local": local_prefix / "node_modules/.bin" / ("brewdoc.cmd" if os.name == "nt" else "brewdoc")}
                 arguments = [str(bin_paths[name])] if name != "npx" else []
@@ -959,8 +968,10 @@ def probe(input_dir: Path, target: str, mode: str, output: Path, smoke: bool = F
                     arguments = npm_command(["--yes", f"--package={package}", "brewdoc"], npx=True)
                 if smoke and name == "npx":
                     consumers[name] = {"self_check": 38, "selected_package": selected["metadata"]["name"], "fixtures": [], "probes": []}
+                    if packet is not None:
+                        consumers[name]["inspection"] = helper.probe_inspection_cli(arguments, consumer_work, environment, packet)
                 else:
-                    consumers[name] = consumer_probe(arguments, work, environment, native, selected["metadata"]["name"])
+                    consumers[name] = consumer_probe(arguments, consumer_work, environment, native, selected["metadata"]["name"])
             cancellation = cancellation_probe(packages["global" if smoke else "local"] / "bin/brewdoc.cjs", work, environment,
                                               target != "windows-x64", native_binary=cancellation_binary)
             signatures = None
