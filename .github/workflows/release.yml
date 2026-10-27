@@ -74,7 +74,7 @@ jobs:
           path: dist/
           digest-mismatch: error
       # trusted publishing: OIDC token exchange, no stored PyPI token
-      - uses: pypa/gh-action-pypi-publish@v1.14.2
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
 
   npm-publish:
     if: "!cancelled() && github.event_name == 'push' && needs.distribution-admit.result == 'success' && needs.pypi-consumer.result == 'success'"
