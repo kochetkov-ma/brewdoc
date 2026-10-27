@@ -30,6 +30,209 @@ BUILDER = importlib.util.module_from_spec(BUILDER_SPEC)
 BUILDER_SPEC.loader.exec_module(BUILDER)
 
 
+@pytest.mark.parametrize('damage', ['new-module', 'removed-module', 'missing-map', 'wrong-map-digest'])
+def test_native_build_rechecks_complete_source_membership_before_any_command(tmp_path, monkeypatch, damage):
+    # GIVEN a real sealed module pair followed by current source or seal drift
+    from test_install_verification import fake_package_command, module_pair, verification
+
+    checkout, bundle, _modules = module_pair(tmp_path)
+    monkeypatch.setattr(verification, 'command', fake_package_command)
+    verification.prepare(checkout, bundle, smoke=True)
+    path = bundle / 'ci-package/manifest.json'
+    manifest = json.loads(path.read_bytes())
+    mutations = {'new-module': lambda: (checkout / 'src/brewdoc/new_reader.py').write_bytes(b'value=2\n'),
+                 'removed-module': lambda: (checkout / 'src/brewdoc/nested/reader.py').unlink(),
+                 'missing-map': lambda: manifest.pop('module_sources'),
+                 'wrong-map-digest': lambda: manifest.update(module_sources_sha256='0' * 64)}
+    mutations[damage]()
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(BUILDER, 'facts', lambda *args: {'uv': '0.12.21'})
+    monkeypatch.setattr(BUILDER, 'verifier', lambda: verification)
+    monkeypatch.setattr(BUILDER, 'command', lambda *args, **kwargs: pytest.fail('module drift reached a native build command'))
+    # WHEN the actual native build entry admits its producer
+    # THEN complete membership and digest checks precede even the tooling subprocess
+    with pytest.raises(ValueError, match='module source'):
+        BUILDER.build(checkout, bundle, tmp_path / 'native', 'macos-arm64', smoke=True)
+    assert (tmp_path / 'native').exists() is False, 'failed source admission must not create the build environment'
+
+
+@pytest.mark.parametrize('smoke', [False, True])
+@pytest.mark.parametrize('damage', ['missing-and-changed', 'missing', 'malformed', 'foreign', 'changed-current'])
+def test_native_build_requires_mandatory_current_fixture_authority_before_commands(tmp_path, monkeypatch, smoke, damage):
+    # GIVEN a genuine producer packet with damaged mandatory fixture provenance
+    from test_install_verification import damage_fixture_authority, fake_package_command, module_pair, verification
+
+    checkout, bundle, _modules = module_pair(tmp_path)
+    monkeypatch.setattr(verification, 'command', fake_package_command)
+    verification.prepare(checkout, bundle, smoke=smoke)
+    damage_fixture_authority(checkout, bundle, damage)
+    monkeypatch.setattr(BUILDER, 'facts', lambda *args: {'uv': '0.12.21'})
+    monkeypatch.setattr(BUILDER, 'verifier', lambda: verification)
+    monkeypatch.setattr(BUILDER, 'command', lambda *args, **kwargs: pytest.fail('fixture authority bypass reached native command'))
+    # WHEN the actual native entry admits full or smoke producer source
+    # THEN authority omission, corruption and current edits fail before the first tooling command
+    with pytest.raises(ValueError, match='fixture authority'):
+        BUILDER.build(checkout, bundle, tmp_path / 'native', 'macos-arm64', smoke=smoke)
+    assert (tmp_path / 'native').exists() is False, 'invalid authority must not create a build environment'
+
+
+@pytest.mark.parametrize('side', ['root', 'runtime'])
+@pytest.mark.parametrize('damage', ['missing', 'malformed', 'foreign'])
+def test_native_runtime_entry_binds_root_and_runtime_fixture_authority(tmp_path, monkeypatch, side, damage):
+    # GIVEN a complete runtime copy with a different authority seal in one packet
+    from test_install_verification import damage_fixture_authority, fake_package_command, module_pair, verification
+
+    checkout, bundle, _modules = module_pair(tmp_path)
+    monkeypatch.setattr(verification, 'command', fake_package_command)
+    verification.prepare(checkout, bundle, smoke=True)
+    verification.prepare_runtime(checkout, bundle)
+    runtime = bundle / 'ci-runtime'
+    damage_fixture_authority(checkout, {'root': bundle, 'runtime': runtime}[side], damage)
+    monkeypatch.setattr(BUILDER, 'facts', lambda *args: {'uv': '0.12.21'})
+    monkeypatch.setattr(BUILDER, 'verifier', lambda: verification)
+    monkeypatch.setattr(BUILDER, 'command', lambda *args, **kwargs: pytest.fail('foreign runtime authority reached native command'))
+    # WHEN a native build consumes that runtime packet through its existing entry
+    # THEN neither root-valid nor runtime-valid direction can bypass pair identity
+    with pytest.raises(ValueError, match='fixture authority'):
+        BUILDER.build(checkout, runtime, tmp_path / 'native', 'macos-arm64')
+    assert (tmp_path / 'native').exists() is False, 'inconsistent runtime provenance must precede build creation'
+
+
+@pytest.mark.parametrize('damage', ['missing', 'duplicate', 'import'])
+def test_inspection_fixture_compiles_only_one_explicit_reviewed_builder(tmp_path, damage):
+    # GIVEN fixture authority with one absent, duplicated or importing selected function
+    source = (Path(__file__).parent / 'test_inspection_acceptance.py').read_text()
+    tree = ast.parse(source)
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_safety_markup')
+    variants = {'missing': source.replace('def _safety_markup(', 'def _missing_markup('),
+                'duplicate': source + '\n' + ast.get_source_segment(source, function),
+                'import': source.replace('def _safety_markup(_directory):\n',
+                                         'def _safety_markup(_directory):\n    import pytest\n')}
+    path = tmp_path / 'tests/test_inspection_acceptance.py'
+    path.parent.mkdir()
+    path.write_text(variants[damage])
+    # WHEN the existing explicit AST fixture boundary selects its producer symbols
+    # THEN missing authority and new test imports cannot enter the packaging controller
+    with pytest.raises(ValueError, match='Inspection fixture authority'):
+        BUILDER.inspection_api_case(tmp_path)
+
+
+def test_actual_cli_profile_checks_every_format_twice_with_original_artifacts_and_destinations(tmp_path):
+    # GIVEN one complete current-source packet and the real development CLI prefix
+    from test_install_verification import complete_inspection_packet
+
+    packet = complete_inspection_packet()
+    checkout = Path(__file__).resolve().parents[1]
+    prefix = [sys.executable, '-B', str(checkout / 'src/brewdoc/cli.py')]
+    # WHEN the shared native/global/npx boundary runs all sealed sources twice in fresh directories
+    observed = BUILDER.probe_inspection_cli(prefix, tmp_path, os.environ.copy(), packet)
+    # THEN complete raw receipt, report, payload, Markdown and refusal identities match the packet
+    assert observed == BUILDER.verifier().expected_inspection_result(packet), (
+        'actual CLI observations must cover all fifteen formats, repeated reports, BOM/CRLF and preserved refusal destinations')
+
+
+@pytest.mark.parametrize('damage', ['payload', 'second-report', 'stale-second', 'sentinel', 'text-newlines', 'receipt'])
+def test_actual_cli_profile_refuses_corruption_and_stale_second_run_outputs(tmp_path, monkeypatch, damage):
+    # GIVEN the real CLI with exactly one corrupted process/output edge
+    from test_install_verification import complete_inspection_packet
+
+    packet = complete_inspection_packet()
+    checkout = Path(__file__).resolve().parents[1]
+    original = subprocess.run
+    calls = []
+
+    def process(arguments, **options):
+        """Run the real child except the deliberate no-op second invocation."""
+        calls.append(arguments)
+        directory = Path(options['cwd'])
+        intercepted = {('stale-second', 2): lambda: first[0]}
+        result = intercepted.get((damage, len(calls)), lambda: original(arguments, **options))()
+        first.append(result)
+        changes = {
+            ('payload', len(calls) == 1): lambda: (directory / 'payload.bin').write_bytes(b'brokenAcceptanceProof(\'literal source\');'),
+            ('second-report', len(calls) == 2): lambda: (directory / 'report.json').write_bytes((directory / 'report.json').read_bytes() + b' '),
+            ('sentinel', result.returncode == 1): lambda: (directory / 'markdown.md').write_bytes(b'overwritten refusal\n'),
+            ('text-newlines', arguments[-7] in ('passive.md', 'passive.txt')): lambda: (directory / 'markdown.md').write_bytes(
+                (directory / 'markdown.md').read_bytes().replace(b'\r\n', b'\n'))}
+        changes.get((damage, True), lambda: None)()
+        replies = {('receipt', 1): lambda: subprocess.CompletedProcess(arguments, result.returncode,
+            (json.dumps({**json.loads(result.stdout), 'out': 'foreign.md'}, sort_keys=True) + os.linesep).encode(), result.stderr)}
+        return replies.get((damage, len(calls)), lambda: result)()
+
+    first = []
+    monkeypatch.setattr(BUILDER.subprocess, 'run', process)
+    # WHEN the actual shared CLI consumer observes the corrupted edge
+    # THEN fresh artifact files and exact unnormalized bytes remain mandatory
+    with pytest.raises(ValueError, match='Inspection CLI'):
+        BUILDER.probe_inspection_cli([sys.executable, '-B', str(checkout / 'src/brewdoc/cli.py')], tmp_path, os.environ.copy(), packet)
+
+
+@pytest.mark.parametrize('damage', ['duplicate-symbol', 'new-import', 'dynamic-import'])
+def test_all_format_ast_builder_refuses_unreviewed_fixture_code(tmp_path, damage):
+    # GIVEN copied public builder authorities with one selected function or import changed
+    helper = BUILDER.verifier()
+    checkout = Path(__file__).resolve().parents[1]
+    for name in helper.INSPECTION_SOURCE_FILES:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes((checkout / name).read_bytes())
+    path = tmp_path / 'tests/test_inspection_acceptance.py'
+    source = path.read_text()
+    function = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == '_safety_markup')
+    replacements = {'duplicate-symbol': source + '\n' + ast.get_source_segment(source, function),
+                    'new-import': source.replace('def _safety_markup(_directory):\n', 'def _safety_markup(_directory):\n    import pytest\n'),
+                    'dynamic-import': source.replace('def _safety_markup(_directory):\n', 'def _safety_markup(_directory):\n    __import__("pytest")\n')}
+    path.write_text(replacements[damage])
+    # WHEN the real reviewed explicit AST selection compiles its authorities
+    # THEN whole test modules, new imports and duplicated symbols cannot enter the controller
+    with pytest.raises(ValueError, match='Inspection builder'):
+        BUILDER.inspection_cases(tmp_path, tmp_path / 'sources')
+
+
+@pytest.mark.parametrize('change,refused,count', [('normal', False, 15), ('update', True, 0), ('definition', True, 0)])
+def test_every_admitted_fixture_node_is_vetted_before_clean_controller_execution(tmp_path, change, refused, count):
+    # GIVEN copied fixture authorities and an initially clean no-project controller
+    checkout = Path(__file__).resolve().parents[1]
+    for name in BUILDER.verifier().INSPECTION_SOURCE_FILES:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes((checkout / name).read_bytes())
+    path = tmp_path / 'tests/test_inspection_acceptance.py'
+    tree = ast.parse(path.read_text())
+    update = next(node for node in tree.body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                  and isinstance(node.value.func, ast.Attribute) and isinstance(node.value.func.value, ast.Name)
+                  and node.value.func.value.id == '_STATIC_SAFETY')
+    wrapped = ast.parse("(__import__('pytest'), {})[1]", mode='eval').body
+    wrapped.value.elts[1] = update.value.args[0]
+    edits = {'normal': lambda: None, 'update': lambda: setattr(update.value, 'args', [wrapped]),
+             'definition': lambda: next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name == '_safety_markup').body.insert(0, ast.parse("__import__('pytest')").body[0])}
+    edits[change]()
+    path.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    script = '''import importlib.util,json,sys
+from pathlib import Path
+assert "pytest" not in sys.modules, "controller must start without pytest"
+spec=importlib.util.spec_from_file_location("builder",sys.argv[1])
+builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
+output=Path(sys.argv[3]);before="pytest" in sys.modules
+try:
+ cases=builder.inspection_cases(Path(sys.argv[2]),output)
+except ValueError:
+ result={"refused":True,"cases":0}
+else:
+ result={"refused":False,"cases":len(cases)}
+result.update(before=before,after="pytest" in sys.modules,outputs=output.exists())
+print(json.dumps(result,sort_keys=True))
+'''
+    # WHEN the actual AST controller admits normal, selected-definition or update-expression code
+    result = subprocess.run([sys.executable, '-I', '-c', script, str(checkout / '.github/workflows/build_standalone.py'),
+                             str(tmp_path), str(tmp_path / 'sources')], capture_output=True, timeout=30)
+    # THEN forbidden imports fail before execution or output creation while the full normal builder remains usable
+    assert (result.returncode, result.stderr, json.loads(result.stdout)) == (
+        0, b'', {'refused': refused, 'cases': count, 'before': False, 'after': False, 'outputs': not refused},
+    ), 'every admitted executable node must retain the same import boundary in a clean controller'
+
+
 def oracle_observer():
     """Compile the actual installed oracle observation without executing its full build driver."""
     import brewdoc
@@ -39,6 +242,30 @@ def oracle_observer():
     namespace = {'brewdoc': brewdoc, 'helper': BUILDER.verifier(), 'hashlib': hashlib}
     exec(compile(ast.Module(body=[function], type_ignores=[]), '<installed oracle>', 'exec'), namespace)
     return namespace['observe']
+
+
+def test_actual_smoke_oracle_keeps_literal_epub_seal_and_full_inspection_bytes(tmp_path):
+    # GIVEN the real trusted builders and independent literal EPUB expectations
+    import brewdoc
+
+    checkout = Path(__file__).resolve().parents[1]
+    cases = BUILDER.synthetic_cases(checkout, tmp_path)
+    inputs = tmp_path / 'inputs.json'
+    BUILDER.write_json(inputs, cases)
+    assert [case['probe'] for case in cases] == ['epub2', 'formula'], 'both existing producer probes must remain selected'
+    # WHEN the actual complete oracle executes its source-bound inspection and literal-output gates
+    process = subprocess.run([sys.executable, '-c', BUILDER.ORACLE_CODE,
+                              str(checkout / '.github/workflows/verify_install.py'), str(checkout),
+                              str(inputs), 'smoke'], cwd=tmp_path, capture_output=True, timeout=30)
+    assert (process.returncode, process.stderr) == (0, b''), 'the complete producer oracle must accept exact current output'
+    rows = json.loads(process.stdout)['probes']
+    code, receipt, markdown = brewdoc.run(tmp_path / rows[0]['path'])
+    # THEN the seal covers the full inspected UTF-8 output after the separate literal gate passes
+    assert (code, rows[0]['markdown_encoding'], rows[0]['markdown_sha256'], rows[0]['markdown_bytes'],
+            rows[0]['receipt'], [row['probe'] for row in rows]) == (
+        0, 'utf-8', hashlib.sha256(markdown.encode('utf-8')).hexdigest(), len(markdown.encode('utf-8')),
+        receipt, ['epub2', 'formula'],
+    ), 'native producer seals must cover complete new bytes and preserve every literal and formula probe'
 
 
 @pytest.mark.parametrize('suffix,create', [
@@ -215,7 +442,17 @@ def test_native_zip_member_probe_requires_the_real_cli_refusal_and_preserves_out
     # WHEN the same probe used for producer and public archives invokes the source CLI
     actual = BUILDER.zip_xml_refusal_probe([sys.executable, '-m', 'brewdoc.cli'], tmp_path, environment)
     # THEN the exact full refusal survives and no Markdown replaces the prior output
-    assert (actual, output.read_bytes()) == (expected, b'preserve existing output\n'), 'CLI refusal preserves the complete receipt and destination'
+    rendering = {key: value for key, value in actual.items() if key not in ('inspection', 'artifacts')}
+    report_path = tmp_path / 'zip-member-inspection.json'
+    report = json.loads(report_path.read_bytes())
+    assert (rendering, output.read_bytes(), actual['inspection']['source_sha256'],
+            actual['artifacts']) == (
+        expected, b'preserve existing output\n', hashlib.sha256(source.read_bytes()).hexdigest(),
+        [{'key': 'inspection/report', 'kind': 'inspection-report', 'availability': 'available',
+          'count': 1, 'location': 'source', 'media_type': 'application/json',
+          'byte_size': report_path.stat().st_size, 'sha256': hashlib.sha256(report_path.read_bytes()).hexdigest(),
+          'out': str(report_path)}, *report['artifacts']],
+    ), 'CLI refusal preserves the complete rendering receipt, exact inspection bytes and destination'
 
 
 @pytest.mark.parametrize('code,receipt_change,suffix,stderr,output_bytes', [

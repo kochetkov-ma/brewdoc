@@ -8,6 +8,8 @@ import re
 import pdfplumber
 import pytest
 
+from inspection_contract import rendering_result
+
 from brewdoc import common, pdf, selfcheck, service
 from test_contract import NOT_APPLICABLE, PDF_NOT_CARRIED, schema_two, zero_tally
 from test_pdf_regressions import rule, text_op
@@ -126,9 +128,9 @@ def test_mixed_pages_disclose_original_source_facts_without_changing_receipts(tm
                      (0, 1, 0, 0, 0), (0, 1, *counts)], (
         "page facts must come from the original source, including filled rectangles filtered from layout")
     # WHEN the public service renders all five source ordinals twice
-    actual = service.run(path)
-    repeated = service.run(path)
-    # THEN only Known omissions gains exact observations; anchors, body and full receipt stay coherent
+    actual = rendering_result(service.run(path))
+    repeated = rendering_result(service.run(path))
+    # THEN readable omissions gain exact observations; anchors, body and rendering receipt stay coherent
     body = page_heading(1) + "\nkept body\n\n" + page_heading(2) + "\n" + page_heading(3) + "\n" + page_heading(4) + "\n" + page_heading(5)
     notes = (
         "Page 2: no extractable text; no image or vector drawing objects detected.",
@@ -138,7 +140,7 @@ def test_mixed_pages_disclose_original_source_facts_without_changing_receipts(tm
     )
     expected = expected_pdf(path, body, pages=5, notes=notes)
     assert (actual, repeated) == (expected, expected), (
-        "mixed-page observations must be deterministic Markdown facts without adding receipt fields or claiming scans")
+        "mixed-page observations must preserve deterministic readable facts and rendering counters without claiming scans")
 
 
 def test_wholly_textless_pdf_keeps_exact_refusal_and_existing_destination(tmp_path):
@@ -151,8 +153,8 @@ def test_wholly_textless_pdf_keeps_exact_refusal_and_existing_destination(tmp_pa
         counts = [len(page.chars) for page in document.pages]
     assert counts == [0, 0], "the old no-OCR refusal requires every page to be textless"
     # WHEN the public service is asked to write the wholly textless source
-    actual = service.run(path, out)
-    # THEN the unchanged full refusal leaves the prior destination intact
+    actual = rendering_result(service.run(path, out), out)
+    # THEN the established rendering refusal leaves the prior destination intact
     reason = "no text layer: 2 of 2 pages carry zero characters in %s - this reader does no OCR" % path
     receipt = {
         "file_ok": False, "route": "pdf", "reason": reason, "source": path.name, "out": None,
@@ -177,7 +179,7 @@ def test_empty_and_all_text_pdf_controls_preserve_complete_public_bytes(tmp_path
         observed_pages = len(document.pages)
     assert observed_pages == pages, "the control document must have the declared physical page count"
     # WHEN the existing public PDF route converts the source
-    actual = service.run(path)
+    actual = rendering_result(service.run(path))
     # THEN no source observation changes these complete successful outputs
     assert actual == expected_pdf(path, body, pages=pages, regions=regions), (
         "zero-page success and all-text Markdown/receipt bytes must remain unchanged")
@@ -192,7 +194,7 @@ def test_existing_two_page_rectangle_shape_discloses_vector_presence(tmp_path):
         facts = (len(page.chars), len(page.images), len(page.rects))
     assert facts == (0, 0, 1), "the old empty-page contract input is vector content rather than object-free"
     # WHEN the public reader retains the source page ordinal
-    actual = service.run(path)
+    actual = rendering_result(service.run(path))
     # THEN the exact new note describes the detected object without changing body or receipt
     body = page_heading(1) + "\nkept body\n\n" + page_heading(2)
     assert actual == expected_pdf(path, body, pages=2, notes=(
@@ -213,7 +215,7 @@ def test_local_caption_preserves_neighbor_prose_and_stops_at_full_width_flow(tmp
         source_letters = Counter(re.findall(r"[A-Za-z0-9]", "".join(char["text"] for char in page.chars)))
     assert caption_lines == CAPTION, "the source caption must be independently readable beyond its numeric rules"
     # WHEN the public reader partitions only the local inset before resuming full-width text
-    actual = service.run(path)
+    actual = rendering_result(service.run(path))
     # THEN table/caption stay adjacent, left prose stays continuous and every source letter survives once
     body = page_heading(1) + "\n" + "\n".join(LEFT) + "\n\n" + GRID_MARKDOWN + "\n" + "\n".join(CAPTION) + "\n\n" + "\n".join(FULL_WIDTH) + "\n"
     rendered_letters = Counter(re.findall(r"[A-Za-z0-9]", "".join(selfcheck.chapter_lines(actual[2], "Page 1"))))
@@ -252,7 +254,7 @@ def test_caption_keeps_second_line_when_later_neighbor_prose_widens(tmp_path):
     assert observations == (left, CAPTION, full_width, (50.63, 348.0, 355.0), (None, None)), (
         "source lanes must remain separate while the wider prose prevents a qualifying density gutter")
     # WHEN the public PDF route renders the widening neighboring prose beside the caption
-    actual = service.run(path)
+    actual = rendering_result(service.run(path))
     # THEN all left lines precede the table, both caption lines follow it and full-width flow resumes whole
     body = page_heading(1) + "\n" + "\n".join(left) + "\n\n" + GRID_MARKDOWN + "\n" + "\n".join(CAPTION) + "\n\n" + "\n".join(full_width) + "\n"
     rendered_letters = Counter(re.findall(r"[A-Za-z0-9]", "".join(selfcheck.chapter_lines(actual[2], "Page 1"))))
@@ -277,7 +279,7 @@ def test_nonlocal_caption_guards_preserve_existing_full_output(tmp_path, command
     assert source_words[:3] == ["Item Qty Cost", "A 2 5", "B 3 7"], (
         "the guard source must preserve the same complete numeric table independently of caption routing")
     # WHEN the existing PDF route handles geometry outside local caption admission
-    actual = service.run(path)
+    actual = rendering_result(service.run(path))
     # THEN unrelated source flow and unchanged table cells retain their exact old contract
     assert actual == expected_pdf(path, body, tables=1, regions=regions, columns=columns), (
         "local caption association must not change full-width tables or unrelated neighboring text")

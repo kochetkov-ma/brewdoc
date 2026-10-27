@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from brewdoc import run
+from inspection_contract import rendering_result, rendering_stdout
 from brewdoc.cli import main
 
 
@@ -62,8 +63,8 @@ def test_text_api_and_output_preserve_every_utf8_byte(tmp_path, suffix, payload)
     assert payload.decode("utf-8").encode("utf-8") == payload, "input must be strict UTF-8"
 
     # WHEN the public API returns text and writes a destination
-    direct = run(source)
-    written = run(source, out)
+    direct = rendering_result(run(source))
+    written = rendering_result(run(source, out), out)
 
     # THEN both receipts and body bytes follow the pass-through contract
     assert (direct, written, out.read_bytes(), source.read_bytes(),
@@ -95,7 +96,7 @@ def test_text_cli_ascii_stdout_emits_exact_receipt_and_utf8_body(
     # THEN ASCII JSON framing precedes the unchanged body, including an empty body
     expected = (json.dumps(_success(source), ensure_ascii=True, sort_keys=True)
                 + os.linesep).encode("ascii") + payload
-    assert (exit_code, stdout, captured.out, captured.err) == (
+    assert (exit_code, rendering_stdout(stdout), captured.out, captured.err) == (
         0, expected, "", "",
     ), "CLI must emit Unicode through its byte buffer with exactly one receipt line"
 
@@ -113,7 +114,7 @@ def test_text_cli_out_writes_only_raw_bytes_and_prints_only_receipt(
     captured = capsys.readouterr()
 
     # THEN stdout has only the full receipt and the file has no generated envelope
-    assert (exit_code, captured.out, captured.err) == (
+    assert (exit_code, rendering_stdout(captured.out), captured.err) == (
         0, json.dumps(_success(source, str(out)), ensure_ascii=True, sort_keys=True) + "\n",
         "",
     ), "--out must succeed with one receipt before the destination is inspected"
@@ -136,7 +137,7 @@ def test_text_invalid_encoding_refuses_before_output_staging(tmp_path, suffix, p
         payload.decode("utf-8")
 
     # WHEN the public API is asked to publish this invalid source
-    exit_code, receipt, markdown = run(source, out)
+    exit_code, receipt, markdown = rendering_result(run(source, out), out)
 
     # THEN encoding refusal retains the complete envelope and creates no stage
     assert (exit_code, receipt, markdown, out.read_bytes(),
@@ -151,11 +152,11 @@ def test_text_invalid_encoding_refuses_before_output_staging(tmp_path, suffix, p
                  "--sheet and --artifact are workbook-only options", id="sheet"),
     pytest.param({"artifact_outputs": {"formula/sheet/000001": "artifact.json"}},
                  ["--artifact", "formula/sheet/000001=artifact.json"],
-                 "--sheet and --artifact are workbook-only options", id="artifact"),
+                 "unknown artifact key: formula/sheet/000001", id="unknown-artifact"),
     pytest.param({"article": True}, ["--article"],
                  "--article is an HTML-only option", id="article"),
 ])
-def test_text_rejects_format_specific_api_and_cli_options(
+def test_text_rejects_invalid_or_format_specific_api_and_cli_options(
         tmp_path, monkeypatch, capsys, options, cli_options, reason):
     # GIVEN valid text and a guarded existing destination
     monkeypatch.chdir(tmp_path)
@@ -166,18 +167,18 @@ def test_text_rejects_format_specific_api_and_cli_options(
         "no artifact or stage must exist before the request"
     )
 
-    # WHEN workbook or HTML options reach both public entry points
-    api = run(source, out, **options)
+    # WHEN invalid artifact keys or format-specific options reach both entry points
+    api = rendering_result(run(source, out, **options), out)
     exit_code = main([str(source), "--out", str(out), *cli_options])
     captured = capsys.readouterr()
 
     # THEN both entry points refuse without writing any destination or artifact
-    assert (api, exit_code, captured.out, captured.err, out.read_bytes(),
+    assert (api, exit_code, rendering_stdout(captured.out), captured.err, out.read_bytes(),
             sorted(path.name for path in tmp_path.iterdir())) == (
         (1, _refusal(source, reason), ""), 1,
         json.dumps(_refusal(source, reason), ensure_ascii=True, sort_keys=True) + "\n",
         "", b"keep destination\r\n", ["output.md", "source.md"],
-    ), "text must retain workbook-only and HTML-only option refusals"
+    ), "invalid artifact keys and format-specific options must refuse before any output write"
 
 
 def test_text_output_cannot_replace_its_source(tmp_path):
@@ -188,7 +189,7 @@ def test_text_output_cannot_replace_its_source(tmp_path):
     assert source.is_file() is True, "alias validation needs an existing source file"
 
     # WHEN output targets that exact source
-    conversion = run(source, source)
+    conversion = rendering_result(run(source, source))
 
     # THEN the source is preserved and the normal alias refusal is returned
     assert (conversion, source.read_bytes(), list(tmp_path.iterdir())) == (
@@ -206,7 +207,7 @@ def test_text_linked_output_alias_preserves_source(tmp_path, link):
     assert source.samefile(alias) is True, "the output must alias the source inode"
 
     # WHEN the public service validates the linked destination
-    conversion = run(source, alias)
+    conversion = rendering_result(run(source, alias))
 
     # THEN alias refusal preserves both names and creates no stage
     assert (conversion, source.read_bytes(), alias.read_bytes(),
@@ -233,7 +234,7 @@ def test_licensed_text_fixture_is_passed_through_exactly(tmp_path, name, sha256,
     )
 
     # WHEN the public API publishes the original corpus bytes
-    conversion = run(source, out)
+    conversion = rendering_result(run(source, out), out)
 
     # THEN syntax, aligned tables and full receipt are preserved without parsing
     assert conversion == (0, _success(source, str(out)), payload.decode("utf-8")), (

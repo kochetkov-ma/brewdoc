@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from inspection_contract import (readable_markdown, rendering_bytes, rendering_receipt,
+                                 rendering_result)
+
 from brewdoc import service
 
 # Every test here opens a real document, so the whole module stays out of the fast gate.
@@ -62,6 +65,7 @@ EPUB_FIXTURES = fixture_files((".epub",))
 
 def snapshot(rc: int, line: dict) -> dict:
     """Keep selected receipt fields; successful snapshots add navigation and artifacts."""
+    line = rendering_receipt(line)
     keys = SNAPSHOT_KEYS[line["file_ok"]]
     return {"rc": rc, "file_ok": line["file_ok"], **{key: line[key] for key in keys}}
 
@@ -83,7 +87,11 @@ def test_a_supported_fixture_renders_deterministically_to_its_snapshot(rel, enco
     second = service.run(path)[2]
     # THEN the selected receipt fields match and both renders preserve the route's encoding
     assert snapshot(rc, line) == RECEIPTS[rel], "receipt drifted for %s: %s" % (rel, line["reason"])
-    assert (second.encode(encoding), out.read_bytes()) == (first.encode(encoding), first.encode(encoding)), (
+    assert (second.encode("utf-8"), out.read_bytes()) == (first.encode("utf-8"), first.encode("utf-8")), (
+        "complete inspected renders and --out must preserve identical UTF-8 bytes for %s" % rel)
+    first_readable = readable_markdown(first).encode(encoding)
+    second_readable = readable_markdown(second).encode(encoding)
+    assert (second_readable, rendering_bytes(out.read_bytes())) == (first_readable, first_readable), (
         "both renders and --out must preserve identical bytes for %s" % rel)
 
 
@@ -147,13 +155,13 @@ def test_original_html_without_article_or_main_falls_back_to_the_default_documen
     # GIVEN licensed original HTML with no article or main, its pinned default run and a stale destination
     path, out = FIXTURES / rel, tmp_path / "article.md"
     out.write_bytes(b"stale")
-    default_rc, default_receipt, default_markdown = service.run(path)
+    default_rc, default_receipt, default_markdown = rendering_result(service.run(path))
     assert (hashlib.sha256(path.read_bytes()).hexdigest(), snapshot(default_rc, default_receipt)) == (
         sha256, RECEIPTS[rel]), "article corpus input and its default receipt must match provenance"
     # WHEN article mode finds no candidate in the original document
-    result = service.run(path, out, article=True)
+    result = rendering_result(service.run(path, out, article=True), out)
     # THEN the default document is published and the receipt adds only out and the fallback signal
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, {**default_receipt, "out": str(out), "article_fallback": True}, default_markdown),
         default_markdown.encode("utf-8"),
     ), "original forms and unmarked references must fall back to the whole clean page"
@@ -184,9 +192,9 @@ def test_original_mdn_peer_articles_render_in_order_without_the_page_header(tmp_
     expected = article_document(path, content, 7, title="Flexbox 0 — starting code").replace(
         "sample.html", "mdn-flexbox0.html")
     # WHEN article mode selects every top-level article of the original page
-    result = service.run(path, out, article=True)
+    result = rendering_result(service.run(path, out, article=True), out)
     # THEN all three articles keep source order and the header outside them is not carried
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, article_receipt(path, out, 7), expected), expected.encode("utf-8")
     ), "licensed peer articles must all render in DOM order with the article disclosure"
 
@@ -223,9 +231,9 @@ def test_original_mdn_structure_article_keeps_sections_and_excludes_page_chrome(
     expected = article_document(path, content, 14, title="My page title").replace(
         "sample.html", "mdn-document-structure.html")
     # WHEN article mode renders the whole main, which holds the article and an aside
-    result = service.run(path, out, article=True)
+    result = rendering_result(service.run(path, out, article=True), out)
     # THEN article and in-main aside keep source order with no page header, navigation, search or footer
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, article_receipt(path, out, 14), expected), expected.encode("utf-8")
     ), "licensed article evidence must render the whole main in source order and drop only page chrome"
 
@@ -244,17 +252,17 @@ def test_epub_fixture_preserves_reviewed_utf8_bytes_and_full_receipt(rel, tmp_pa
     # WHEN the offline service renders the same source twice, including --out
     rc, first_receipt, first = service.run(path, out)
     second_rc, second_receipt, second = service.run(path)
-    # THEN complete receipts and Markdown match accepted evidence with only out normalized
+    # THEN the readable receipt and prefix match accepted evidence after additive fields are separated
     assert (rc, second_rc, snapshot(rc, first_receipt)) == (0, 0, RECEIPTS[rel]), (
         "both EPUB conversions must succeed with the reviewed counters and ordered unit keys")
-    assert ({**first_receipt, "out": None}, second_receipt) == (
+    assert ({**rendering_receipt(first_receipt), "out": None}, rendering_receipt(second_receipt)) == (
         accepted["receipt"], accepted["receipt"],
-    ), "both complete public receipts must match after only out normalization"
-    first_bytes = first.encode("utf-8")
+    ), "both established receipt projections must match after out normalization"
+    first_bytes = readable_markdown(first).encode("utf-8")
     assert (hashlib.sha256(first_bytes).hexdigest(), len(first_bytes)) == (
         accepted["markdown_sha256"], accepted["markdown_utf8_bytes"],
-    ), "complete EPUB Markdown must retain its independently accepted UTF-8 hash and byte length"
-    assert (second.encode("utf-8"), out.read_bytes()) == (first_bytes, first_bytes), (
+    ), "readable EPUB Markdown must retain its independently accepted UTF-8 hash and byte length"
+    assert (second.encode("utf-8"), out.read_bytes()) == (first.encode("utf-8"), first.encode("utf-8")), (
         "repeated API conversion and --out must preserve exact reviewed UTF-8 bytes")
 
 

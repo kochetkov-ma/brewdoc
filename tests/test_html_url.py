@@ -14,6 +14,7 @@ import pytest
 import truststore
 
 from brewdoc import run, selfcheck
+from inspection_contract import readable_markdown, rendering_result
 from brewdoc.common import BrewdocError
 from brewdoc.service import ROUTES
 from test_contract import docx, text_op, zero_tally, zones_book
@@ -313,7 +314,7 @@ def test_run_url_redacts_receipt_fragments_without_changing_runtime_or_identity(
     # WHEN the actual URL orchestration produces provenance and Markdown.
     result = htmlurl._run_url(requested, render_js=render_js)
     # THEN runtime/hash preserve JS state while every displayed URL, including nested errors, hides it.
-    assert (result, seen, rendered_urls, run(local)) == (
+    assert (rendering_result(result), seen, rendered_urls, run(local)) == (
         (0, dict(receipt, source=shown, receipt_schema="brewdoc.receipt/2", acquisition=acquisition), markdown),
         [runtime], expected_render, baseline,
     ), "Only display fields may redact the fragment; existing local conversion must remain exact."
@@ -362,7 +363,7 @@ def test_js_main_response_csp_presence_marks_valid_dom_partial(htmlurl, monkeypa
     # WHEN actual URL orchestration converts the valid DOM.
     result = htmlurl._run_url(url, render_js=True)
     # THEN unsupported CSP is visible instead of claiming settled browser policy.
-    assert result == (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition),
+    assert rendering_result(result) == (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition),
                       markdown), "Main-response CSP must mark useful DOM partial and still convert."
 
 
@@ -528,7 +529,7 @@ def test_invalid_source_base_is_ignored_by_static_url_capture(htmlurl, monkeypat
     code, receipt, markdown = htmlurl._run_url(URL, timeout=10)
     acquisition = receipt["acquisition"]
     # THEN the document URL stays the base, as browsers ignore an invalid base
-    assert (code, markdown.partition(CHAPTER)[2], acquisition["capture_status"], acquisition["refusal_stage"],
+    assert (code, readable_markdown(markdown).partition(CHAPTER)[2], acquisition["capture_status"], acquisition["refusal_stage"],
             acquisition["errors"], acquisition["effective_base_url"]) == (
         0, "See [guide](https://fixture.test/guide?q=1)\n", "static", None, [], URL,
     ), "an invalid <base href> must be ignored, not refuse the capture at snapshot"
@@ -811,7 +812,7 @@ def converted(tmp_path, url, suffix, snapshot):
     folder.mkdir()
     local = folder / ("url-%s%s" % (sha256(url.encode())[:16], suffix))
     local.write_bytes(snapshot)
-    return local.name, run(local)
+    return local.name, rendering_result(run(local))
 
 
 def document_acquisition(url, final_url, body, snapshot, requests=1, http_status=200, redirect_count=0):
@@ -934,7 +935,7 @@ def test_url_document_converts_through_its_detected_route_from_a_frozen_document
     # WHEN static URL acquisition receives the document
     result = htmlurl._run_url(url)
     # THEN the unchanged bytes convert through the detected route with a document receipt
-    assert (result, calls, snapshots) == (
+    assert (rendering_result(result), calls, snapshots) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
                  acquisition=document_acquisition(url, url, body, body)), markdown),
         [url], [(name, body)],
@@ -957,7 +958,7 @@ def test_url_document_with_render_js_records_javascript_as_not_applied(htmlurl, 
     # WHEN JS acquisition receives a document
     result = htmlurl._run_url(url, render_js=True)
     # THEN no script runs and the receipt records JS as not applied
-    assert (result, renders) == (
+    assert (rendering_result(result), renders) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition), markdown), [],
     ), "documents must skip JS capture and say so in the receipt"
 
@@ -1060,7 +1061,7 @@ def test_redirect_to_an_octet_stream_document_routes_by_the_final_url_suffix(htm
     # WHEN static URL acquisition follows the redirect
     result = htmlurl._run_url(url)
     # THEN the final URL suffix routes the document and the snapshot keeps the requested URL hash
-    assert (result, calls) == (
+    assert (rendering_result(result), calls) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
                  acquisition=document_acquisition(url, final, body, body, requests=2, redirect_count=1)), markdown),
         [url, final],
@@ -1078,7 +1079,7 @@ def test_url_success_records_the_final_main_document_status_and_redirect_count(h
     # WHEN static URL acquisition follows the redirect
     result = htmlurl._run_url(url)
     # THEN the receipt carries the final 203 status and one redirect
-    assert (result, calls) == (
+    assert (rendering_result(result), calls) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
                  acquisition=document_acquisition(url, final, body, body, requests=2, http_status=203,
                                                   redirect_count=1)), markdown),
@@ -1479,7 +1480,7 @@ def test_url_header_charset_decodes_legacy_cyrillic_into_a_utf8_snapshot(
     # WHEN static URL acquisition converts the page
     code, receipt, markdown = htmlurl._run_url(url)
     # THEN the header label decodes the page into a UTF-8 snapshot
-    assert (code, receipt["acquisition"]["refusal_stage"], snapshots, markdown.splitlines()[-1:]) == (
+    assert (code, receipt["acquisition"]["refusal_stage"], snapshots, readable_markdown(markdown).splitlines()[-1:]) == (
         0, None, [("url-%s%s" % (sha256(url.encode())[:16], suffix), snapshot)], ["Привет"],
     ), "header charsets must decode legacy pages instead of refusing them"
 
@@ -1515,7 +1516,7 @@ def test_url_html_receipt_names_the_decoding_charset_and_its_source_without_loca
     # WHEN static URL acquisition decodes and converts the page
     result = htmlurl._run_url(url)
     # THEN acquisition names charset and source; receipt/2 has no top-level charset_fallback key
-    assert (result, calls, snapshots) == (
+    assert (rendering_result(result), calls, snapshots) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2", acquisition=acquisition), markdown),
         [url], [(name, snapshot)],
     ), "URL HTML receipts must disclose the decoding charset only inside acquisition"
@@ -1818,7 +1819,7 @@ def test_existing_challenge_rule_converts_pages_with_only_half_of_its_evidence(h
     # WHEN static URL acquisition checks the page
     result = htmlurl._run_url(PAGE)
     # THEN it converts with the exact static receipt
-    assert (result, calls) == (
+    assert (rendering_result(result), calls) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=static_page(PAGE, body, body)), markdown), [PAGE],
     ), "half of the challenge or login evidence must not refuse a page"
@@ -1982,7 +1983,7 @@ def test_page_check_converts_ordinary_pages_with_weak_markers_or_little_text(
     # WHEN static URL acquisition checks and converts it
     result = htmlurl._run_url(PAGE)
     # THEN it converts with the exact static receipt
-    assert (result, calls) == (
+    assert (rendering_result(result), calls) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=static_page(PAGE, body, body)), markdown), [PAGE],
     ), "weak markers on long pages and short pages without shell evidence must not refuse"
@@ -2001,7 +2002,7 @@ def test_javascript_modes_render_a_static_shell_once_from_the_decoded_source(
     # WHEN URL acquisition runs in auto or always mode
     result = htmlurl._run_url(PAGE, render_js=render_js)
     # THEN JS runs once on the decoded source, with no second request, and the receipt names the mode
-    assert (result, events) == (
+    assert (rendering_result(result), events) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=js_page(PAGE, body, snapshot, recorded)), markdown),
         ["runtime", PAGE, ("render", HN_SHELL, PAGE)],
@@ -2019,7 +2020,7 @@ def test_auto_renders_a_shell_that_also_loads_a_recaptcha_script(htmlurl, monkey
     # WHEN URL acquisition runs in auto mode
     result = htmlurl._run_url(PAGE, render_js="auto")
     # THEN shell evidence beats the captcha script host, so JS runs once and the capture converts
-    assert (result, events) == (
+    assert (rendering_result(result), events) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=js_page(PAGE, body, snapshot, "auto")), markdown),
         ["runtime", PAGE, ("render", html, PAGE)],
@@ -2035,7 +2036,7 @@ def test_auto_keeps_an_ordinary_page_static_after_checking_js_prerequisites_firs
     # WHEN URL acquisition runs in auto mode
     result = htmlurl._run_url(PAGE, render_js="auto")
     # THEN prerequisites run before the request, no script runs and the static receipt says auto
-    assert (result, events) == (
+    assert (rendering_result(result), events) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=static_page(PAGE, body, body) | {"render_js": "auto"}), markdown),
         ["runtime", PAGE],
@@ -2076,7 +2077,7 @@ def test_static_shell_with_embedded_page_text_converts_a_partial_embedded_data_s
     # WHEN static URL acquisition checks the decoded page
     result = htmlurl._run_url(PAGE)
     # THEN it converts title, description and body items as a partial capture that keeps the JS error
-    assert (result, calls) == (
+    assert (rendering_result(result), calls) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=embedded(static_page(PAGE, body, snapshot.encode()), snapshot.encode())), markdown),
         [PAGE],
@@ -2095,7 +2096,7 @@ def test_javascript_modes_build_embedded_data_from_the_static_source_when_the_ca
     # WHEN URL acquisition runs JS on it
     result = htmlurl._run_url(PAGE, render_js=render_js)
     # THEN one request and one render run, and the static source supplies the partial embedded-data snapshot
-    assert (result, events) == (
+    assert (rendering_result(result), events) == (
         (0, dict(receipt, source=PAGE, receipt_schema="brewdoc.receipt/2",
                  acquisition=embedded(js_page(PAGE, body, snapshot, recorded), snapshot)), markdown),
         ["runtime", PAGE, ("render", AIRBNB_SHELL, PAGE)],
@@ -2181,7 +2182,7 @@ def test_auto_on_a_document_keeps_the_static_receipt_and_runs_no_script(htmlurl,
     # WHEN URL acquisition runs in auto mode
     result = htmlurl._run_url(url, render_js="auto")
     # THEN the document converts with the static receipt and render_js auto
-    assert (result, events) == (
+    assert (rendering_result(result), events) == (
         (0, dict(receipt, source=url, receipt_schema="brewdoc.receipt/2",
                  acquisition=document_acquisition(url, url, body, body) | {"render_js": "auto"}), markdown),
         ["runtime", url],

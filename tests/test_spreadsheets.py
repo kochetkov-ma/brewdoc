@@ -13,6 +13,7 @@ import brewdoc
 from brewdoc import common
 from brewdoc.cli import main
 from brewdoc.sheets import _sheet_grid
+from inspection_contract import readable_markdown, rendering_receipt, rendering_result
 from test_contract import schema_two
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -29,8 +30,10 @@ SHEET_RECEIPT = {
     "receipt_schema": "brewdoc.receipt/1", "route": "sheet", "source": "book.xlsx",
     "text_regions": 0, "unit_kind": "sheet",
 }
-INPUTS = '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Inputs"\n\n| 1.0 |\n| --- |\n| 2.0 |\n| 3.0 |\n'
-CALC_TABLE = "| 3.0 | 2.0 |  |\n| --- | --- | --- |\n|  | 4.0 |  |\n|  |  | 1.0 |\n"
+INPUTS = ('<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Inputs"\n\nSource range: A1:A3\n\n'
+          '| Row | A |\n| --- | --- |\n| 1 | A1: 1.0 |\n| 2 | A2: 2.0 |\n| 3 | A3: 3.0 |\n')
+CALC_TABLE = ('Source range: A1:C3\n\n| Row | A | B | C |\n| --- | --- | --- | --- |\n'
+              '| 1 | A1: 3.0 | B1: 2.0 |  |\n| 2 |  | B2: 4.0 |  |\n| 3 |  |  | C3: 1.0 |\n')
 CALC = '<a id="brewdoc-sheet-000002"></a>\n## Sheet 2: "Calc"\n\n' + CALC_TABLE
 EMPTY = '<a id="brewdoc-sheet-000003"></a>\n## Sheet 3: "Empty"\n'
 
@@ -344,7 +347,7 @@ def test_run_reports_mixed_sheet_name_types_before_malformed_sheet(tmp_path):
     out = tmp_path / "book.md"
     assert out.exists() is False, "selection refusal must start with no output file"
     # WHEN the service receives a mixed-type selection
-    result = brewdoc.run(path, out, sheets=("Inputs", 1))
+    result = rendering_result(brewdoc.run(path, out, sheets=("Inputs", 1)))
     # THEN the complete refusal receipt names the selection and publishes no bytes
     assert (result, out.exists()) == (
         (1, refused("sheet selection names must be strings"), ""), False,
@@ -417,7 +420,7 @@ def test_combined_formula_vba_outputs_keep_sheet_and_artifact_request_orders(tmp
                          artifact_outputs={VBA_KEY: vba_out, FORMULA_KEYS[0]: inputs_out,
                                            FORMULA_KEYS[1]: calc_out})
     # THEN all outputs preserve sheet order, source ordinals and exact passive project bytes
-    assert (references, rendered, result, out.read_bytes(), vba_out.read_bytes(),
+    assert (references, rendered, rendering_result(result, out), readable_markdown(out.read_text()).encode("ascii"), vba_out.read_bytes(),
             inputs_out.read_bytes(), calc_out.read_bytes()) == (
         (formula_ref(2, 4), formula_ref(1, 1), vba_ref(project)), (expected, tally(2, 2)),
         (0, receipt, expected), expected.encode("ascii"), project, inputs_payload, calc_payload,
@@ -923,11 +926,13 @@ def test_artifact_request_does_not_change_markdown_and_receipt_names_output(tmp_
     requested = brewdoc.run(path, markdown_out, sheets=("Calc",),
                             artifact_outputs={FORMULA_KEYS[1]: artifact_out})
     # THEN Markdown is invariant and the receipt identifies the exact written artifact
-    assert (plain, requested, markdown_out.read_bytes(), artifact_out.read_bytes()) == (
+    assert ((plain[0], rendering_receipt(plain[1]), plain[2]),
+            (requested[0], rendering_receipt(requested[1]), requested[2]),
+            markdown_out.read_bytes(), artifact_out.read_bytes()) == (
         (0, {**receipt, "artifacts": [formula_row(2, 4, None)], "out": None}, plain[2]),
         (0, {**receipt, "artifacts": [formula_row(2, 4, artifact_out)],
              "out": str(markdown_out)}, plain[2]),
-        plain[2].encode("ascii"),
+        plain[2].encode("utf-8"),
         brewdoc.read_book_artifact(path, FORMULA_KEYS[1], sheets=("Calc",)),
     ), "artifact retrieval must not alter Markdown and must name every written output"
 
@@ -957,7 +962,7 @@ def test_cli_repeats_sheet_and_artifact_options_in_caller_order(tmp_path, capsys
     code = main([str(path), "--out", str(markdown_out), "--sheet", "Calc", "--sheet", "Inputs",
                  "--artifact", "formula/sheet/000002=%s" % artifact_out])
     # THEN selection order, full-source keys, and the written artifact are exact
-    assert (code, json.loads(capsys.readouterr().out), artifact_out.read_bytes()) == (0, {
+    assert (code, rendering_receipt(json.loads(capsys.readouterr().out)), artifact_out.read_bytes()) == (0, {
         **SHEET_RECEIPT, "artifacts": [formula_row(2, 4, artifact_out), formula_row(1, 1, None)],
         "file_ok": True, "markdown_schema": "brewdoc.markdown/2", "out": str(markdown_out),
         "reason": "sheet rendered: 2 sheets, 2 tables, 0 text regions, 0 column splits",
@@ -982,7 +987,8 @@ def test_a_pipe_in_a_workbook_cell_is_escaped_once_not_twice(tmp_path):
     # THEN the pipe keeps exactly one escaping backslash, so the cell stays one column
     assert markdown[markdown.index('<a id="brewdoc-sheet-'):] == (
         '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Inputs"\n\n'
-        "| a\\|b |\n| --- |\n| 2.0 |\n| 3.0 |\n"
+        "Source range: A1:A3\n\n| Row | A |\n| --- | --- |\n"
+        "| 1 | A1: a\\|b |\n| 2 | A2: 2.0 |\n| 3 | A3: 3.0 |\n"
     ), "a workbook cell's pipe must be escaped once, not twice"
 
 

@@ -10,7 +10,7 @@ from brewdoc import common, sheets
 from test_contract import schema_two
 from test_output import tree_state
 from test_spreadsheets import (CALC, FORMULA_KEYS, SHEET_RECEIPT, VBA_KEY, exact,
-                               formula_book, formula_ref, refused, tally, vba_book,
+                               formula_book, formula_ref, readable_markdown, rendering_result, refused, tally, vba_book,
                                vba_ref, vba_relationship)
 
 
@@ -128,7 +128,7 @@ def test_formula_artifact_and_run_accept_the_complete_operation_limit(tmp_path, 
     result = brewdoc.run(path, markdown_out, sheets=("Calc",),
                          artifact_outputs={FORMULA_KEYS[1]: artifact_out})
     # THEN every payload byte, Markdown byte and receipt field remains exact
-    assert (artifact, result, markdown_out.read_bytes(), artifact_out.read_bytes()) == (
+    assert (artifact, rendering_result(result, markdown_out), readable_markdown(markdown_out.read_text()).encode("ascii"), artifact_out.read_bytes()) == (
         payload, (0, receipt, markdown), markdown.encode("ascii"), payload,
     ), "the inclusive budget must preserve complete output and reset between public operations"
 
@@ -170,9 +170,9 @@ def test_run_aggregate_refusal_preserves_outputs_and_creates_no_stages(
     result = brewdoc.run(path, markdown_out, sheets=("Calc",),
                          artifact_outputs={FORMULA_KEYS[1]: tmp_path / destination})
     # THEN the exact refusal leaves prior bytes, directories, modes and resources intact
-    assert (result, tree_state(tmp_path), [archive.fp is None for archive in archives],
+    assert (rendering_result(result), tree_state(tmp_path), [archive.fp is None for archive in archives],
             [stream.closed for stream in streams]) == (
-        (1, refused(reason), ""), before, [True, True], [True] * 8,
+        (1, refused(reason), ""), before, [True] * 3, [True] * 15,
     ), "aggregate refusal must preserve destinations and leave no new parent, temporary file or open handle"
 
 
@@ -192,17 +192,20 @@ def test_many_legal_workbook_xml_members_share_one_formula_read_budget(tmp_path,
     assert str(refusal.value) == reason, "aggregate refusal must name the exact exhausted budget and part"
 
 
-@pytest.mark.parametrize(("call", "expected"), [
-    (lambda path: brewdoc.read_formulas(path, sheets=("Calc",)), expected_formulas),
-    (lambda path: brewdoc.list_book_artifacts(path, sheets=("Calc",)), lambda path: (formula_ref(2, 4),)),
-    (lambda path: brewdoc.render_book(path, sheets=("Calc",)), expected_render),
+@pytest.mark.parametrize(("call", "expected", "limits"), [
+    (lambda path: brewdoc.read_formulas(path, sheets=("Calc",)), expected_formulas,
+     {"consumed_bytes": 1552, "total_elements": 28, "total_characters": 519}),
+    (lambda path: brewdoc.list_book_artifacts(path, sheets=("Calc",)), lambda path: (formula_ref(2, 4),),
+     {"consumed_bytes": 1552, "total_elements": 28, "total_characters": 519}),
+    (lambda path: brewdoc.render_book(path, sheets=("Calc",)), expected_render,
+     {"consumed_bytes": 2638, "total_elements": 48, "total_characters": 985}),
 ], ids=["read-formulas", "list-artifacts", "render-book"])
-def test_each_public_workbook_call_starts_with_fresh_exact_budgets(tmp_path, monkeypatch, call, expected):
+def test_each_public_workbook_call_starts_with_fresh_exact_budgets(tmp_path, monkeypatch, call, expected, limits):
     # GIVEN inclusive limits for one complete selected-sheet inventory pass
     path = formula_book(tmp_path / "book.xlsx")
     wanted = expected(path)
     assert call(path) == wanted, "the unbounded synthetic source must have exact expected output"
-    set_limits(monkeypatch, consumed_bytes=1552, total_elements=28, total_characters=519)
+    set_limits(monkeypatch, **limits)
     # WHEN the same public operation runs twice on the same source
     first, second = call(path), call(path)
     # THEN state is local to each call and all results remain complete

@@ -14,6 +14,7 @@ from brewdoc.common import (UNIT_COUNTERS, _escape_markdown_text, cell_text, mar
                             new_tally, sanitise, sha256)
 from brewdoc.docx import render_doc
 from brewdoc.epub import render_epub
+from brewdoc.inspection import readable_projection
 from brewdoc.pdf import render_pdf
 from brewdoc.pptx import render_presentation
 from brewdoc.service import EXIT_FAIL, EXIT_OK, run
@@ -371,13 +372,17 @@ def self_check() -> int:
              ['## Sheet 1: "Zones"'])
         want("the sheet's measured types survive",
              chapter_lines(book_md, "Zones"),
-             ["| Zone | Area | Sown |", "| --- | --- | --- |",
-              "| café 東京 | 12.5 | 2026-07-18 |", "| South | 9.0 |  |"])
+             ["Source range: A1:C3", "| Row | A | B | C |", "| --- | --- | --- | --- |",
+              "| 1 | A1: Zone | B1: Area | C1: Sown |",
+              "| 2 | A2: café 東京 | B2: 12.5 | C2: 2026-07-18 |",
+              "| 3 | A3: South | B3: 9.0 | C3: [blank] |"])
         want("the sheet route counts its sheets", book_tally["sheets"], 1)
         out = Path(tmp, "out.md")
-        rc, line, _ = run(book_path, out=out)
+        rc, line, inspected_book = run(book_path, out=out)
         want("a written workbook preserves exact UTF-8",
-             (rc, line["route"], out.read_bytes()), (EXIT_OK, "sheet", book_md.encode("utf-8")))
+             (rc, line["route"], out.read_bytes(), readable_projection(inspected_book),
+              line["inspection"]["schema"]),
+             (EXIT_OK, "sheet", inspected_book.encode("utf-8"), book_md, "brewdoc.inspection/1"))
         rc, line, _ = run(Path(tmp, "absent.pdf"))
         want("a missing file names the path", (rc, line["reason"]),
              (EXIT_FAIL, "no such file: %s" % Path(tmp, "absent.pdf")))
@@ -417,9 +422,9 @@ def self_check() -> int:
              (EXIT_OK, True, "epub", "chapter", ["chapter/000001", "chapter/000002"]))
         expected_tally = new_tally()
         expected_tally.update(chapters=2, text_regions=2)
-        want("EPUB preserves Unicode and its public wrapper matches the service",
+        want("EPUB preserves Unicode and its public wrapper matches the readable projection",
              (render_epub(epub_path), chapter_lines(epub_md, "First"), chapter_lines(epub_md, "Second")),
-             ((epub_md, expected_tally), ["café 東京\u00a0"], ["Back matter."]))
+             ((readable_projection(epub_md), expected_tally), ["café 東京\u00a0"], ["Back matter."]))
         want("EPUB conversion is deterministic", run(epub_path), (rc, line, epub_md))
         epub_out = Path(tmp, "epub.md")
         written_rc, written_line, written_md = run(epub_path, out=epub_out)
@@ -438,7 +443,7 @@ def self_check() -> int:
             code, receipt, content = run(source, out=target)
             raw = unit == "none"
             new_routes.append((code, receipt["route"], receipt.get("markdown_schema"),
-                               receipt.get("unit_keys"), content == ending if raw else content.endswith(ending),
+                               receipt.get("unit_keys"), content == ending if raw else readable_projection(content).endswith(ending),
                                target.read_bytes() == content.encode("utf-8") if target.exists() else False))
             expected_routes.append((EXIT_OK, "text" if raw else suffix,
                                     "brewdoc.markdown/passthrough/1" if raw else "brewdoc.markdown/2",
@@ -456,7 +461,7 @@ def self_check() -> int:
 
 def chapter_lines(markdown: str, heading: str) -> list[str]:
     """Return content under a plain heading or any registered unit display label."""
-    lines = markdown.splitlines()
+    lines = readable_projection(markdown).splitlines()
     label = ': "%s"' % _escape_markdown_text(heading, quoted=True)
     unit_headings = tuple("## %s " % kind.title() for kind in UNIT_COUNTERS)
     unit_anchor = r'<a id="brewdoc-(?:%s)-\d{6}"></a>' % "|".join(

@@ -9,6 +9,8 @@ import zipfile
 
 import pytest
 
+from inspection_contract import rendering_result, rendering_stdout
+
 import brewdoc
 from brewdoc import common
 from brewdoc.cli import main
@@ -288,7 +290,7 @@ def test_docx_refusal_preserves_api_cli_destinations_and_closes_resources(tmp_pa
     def record_open(package, *args, **kwargs):
         """Keep the real member stream for post-refusal closure evidence."""
         stream = original_open(package, *args, **kwargs)
-        streams.append(stream)
+        streams.append((package.filename, stream))
         return stream
 
     monkeypatch.setattr(zipfile.ZipFile, "__init__", record_init)
@@ -298,14 +300,16 @@ def test_docx_refusal_preserves_api_cli_destinations_and_closes_resources(tmp_pa
     expected = doc_refusal(path, reason)
     assert out.read_bytes() == b"previous Markdown\n", "the destination must start with its sentinel"
     # WHEN API and CLI refuse before output staging
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), out)
     code = main([str(path), "--out", str(out)])
     captured = capsys.readouterr()
     # THEN the complete refusal, file tree and every owned resource are exact
-    assert (result, code, captured.out, captured.err, tree_state(tmp_path),
-            [package.fp for package in packages], [stream.closed for stream in streams]) == (
+    assert (result, code, rendering_stdout(captured.out), captured.err, tree_state(tmp_path),
+            [(package.filename, package.fp) for package in packages],
+            [(name, stream.closed) for name, stream in streams]) == (
         (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "",
-        before, [None, None], [True, True],
+        before, [(None, None), (str(path), None)] * 2,
+        ([(None, True)] * 2 + [(str(path), True)]) * 2,
     ), "limit refusal must preserve both public contracts, destinations and resource closure"
     limits(monkeypatch)
     assert brewdoc.run(path)[0] == 0, "an independent operation must receive a fresh allowance"
@@ -479,20 +483,20 @@ def test_repeated_embedded_images_drain_bounded_reads_and_charge_actual_bytes(tm
     accepted_reads = reads["deck/media/image.bin"].copy()
     accepted_materializations = materialized.copy()
     limits(monkeypatch, member_bytes=70_000, consumed_bytes=141_695)
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), out)
     reason = "OOXML consumed_bytes limit exceeded: deck/media/image.bin: 141695"
     image_line = ('Image: name="Photo"; size=120x80 EMU; alt="Alt"; caption="Caption"; '
                   'source=embedded; bytes=70000')
     # THEN both exact image facts survive, while repeated work refuses before output replacement
     assert (presentation_body(markdown), tally, accepted_reads, accepted_materializations,
-            result, tree_state(tmp_path), [stream.closed for stream in streams],
-            [package.fp for package in archives]) == (
+            result, tree_state(tmp_path),
+            [(package.filename, stream.closed, package.fp) for stream, package in zip(streams, archives, strict=True)]) == (
         '<a id="brewdoc-slide-000001"></a>\n## Slide 1: "Untitled"\n\n'
         + image_line + "\n\n" + image_line + "\n",
         {**zero_tally(), "slides": 1, "text_regions": 2},
         [(65_536, 65_536), (4_465, 4_464), (1, 0)] * 2,
         list(picture_parts()), (1, presentation_refusal(path, reason), ""), before,
-        [True] * 14, [None] * 14,
+        [(str(path), True, None)] * 7 + [(None, True, None)] * 6 + [(str(path), True, None)] * 7,
     ), "image counting must bound reads, avoid payload materialization and charge every physical occurrence"
 
 
@@ -514,10 +518,11 @@ def test_corrupt_stored_image_crc_refuses_and_preserves_destinations(tmp_path, m
     limits(monkeypatch, member_bytes=70_000)
     _reads, streams, archives = observe_member_reads(monkeypatch)
     # WHEN image counting exhausts the real ZIP stream and validates its CRC
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), out)
     reason = "presentation unreadable: %s: Bad CRC-32 for file 'deck/media/image.bin'" % path
     # THEN binary counting keeps EOF validation and refuses without output or resource leaks
-    assert (result, tree_state(tmp_path), [stream.closed for stream in streams],
-            [package.fp for package in archives]) == (
-        (1, presentation_refusal(path, reason), ""), before, [True] * 6, [None] * 6,
+    assert (result, tree_state(tmp_path),
+            [(package.filename, stream.closed, package.fp) for stream, package in zip(streams, archives, strict=True)]) == (
+        (1, presentation_refusal(path, reason), ""), before,
+        [(None, True, None)] * 6 + [(str(path), True, None)] * 6,
     ), "image drain must retain CRC refusal, prior destinations and all owned resource cleanup"

@@ -187,27 +187,29 @@ def test_ci_scope_keeps_smoke_for_untrusted_or_partial_push_evidence(tmp_path, m
     assert [call for call in calls if call[3] == "diff"] == [], "invalid event evidence never reaches Git diff"
 
 
-def npm_archives(output, targets):
+def npm_archives(output, targets, *, version=VERSION, source_sha=SOURCE):
     """Produce small real tarballs through the npm owner's exact metadata contract."""
     builder = RELEASE.helper("build_npm")
     output.mkdir()
     records = []
     for target in [*builder.PACKAGES, None]:
-        metadata = builder.package_metadata(VERSION, target)
+        metadata = builder.package_metadata(version, target)
         payloads = {"package.json": json.dumps(metadata).encode()}
-        record = {"version": VERSION, "source_sha": SOURCE, "metadata": metadata}
+        record = {"version": version, "source_sha": source_sha, "metadata": metadata}
         if target is not None:
             native = targets[target]
-            verified = {"verdict": "PASS", "target": target, "version": VERSION, "source_sha": SOURCE,
+            verified = {"verdict": "PASS", "target": target, "version": version, "source_sha": source_sha,
                         "archive_sha256": native["archive"]["sha256"]}
             scope = native.get("verification_scope", "full")
             verified.update(verification_scope=scope, schema=1, self_check=38, fixtures=[],
                             probes=[row["probe"] for row in native["probes"]])
+            if "inspection" in native:
+                verified["inspection"] = RELEASE.helper("verify_install").expected_inspection_result(native["inspection"])
             payloads.update({"native-manifest.json": json.dumps(native).encode(),
                              "native-verification.json": json.dumps(verified).encode(),
                              "binary/" + native["executable"].removeprefix("brewdoc/"): b"synthetic native executable"})
             record.update({"target": target, "native_archive": native["archive"], "links": {}})
-        filename = metadata["name"] + "-" + VERSION + ".tgz"
+        filename = metadata["name"] + "-" + version + ".tgz"
         inventory = {}
         with tarfile.open(output / filename, "w:gz") as archive:
             for name, payload in payloads.items():
@@ -220,7 +222,7 @@ def npm_archives(output, targets):
                        "integrity": builder.integrity(payload), "files": inventory,
                        "verification_scope": next(iter(targets.values())).get("verification_scope", "full")})
         records.append(record)
-    RELEASE.write_json(output / "npm-manifest.json", {"schema": 1, "version": VERSION, "source_sha": SOURCE,
+    RELEASE.write_json(output / "npm-manifest.json", {"schema": 1, "version": version, "source_sha": source_sha,
                        "node": builder.NODE_VERSION, "npm": builder.NPM_VERSION, "packages": records,
                        "verification_scope": next(iter(targets.values())).get("verification_scope", "full")})
 
@@ -386,6 +388,524 @@ def zip_directory(directory, destination):
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for item in sorted(path for path in directory.rglob("*") if path.is_file()):
             archive.write(item, item.relative_to(directory).as_posix())
+
+
+def native_inspection_control(tmp_path, monkeypatch, version):
+    """Retain valid smoke evidence while binding its real archive to the test version."""
+    ci_smoke_artifacts(tmp_path, monkeypatch)
+    directory = tmp_path / "ci-native"
+    native = RELEASE.read_json(directory / "binaries.json")["targets"]["linux-x64"]
+    report = RELEASE.read_json(directory / "verification/linux-x64.json")
+    builder = RELEASE.helper("build_standalone")
+    builder.validate_manifest(native)
+    builder.validate_verification(native, report)
+    archive = directory / native["archive"]["filename"]
+    filename = f"brewdoc-{version}-linux-x64.tar.gz"
+    archive.rename(directory / filename)
+    native["version"], native["archive"]["filename"], report["version"] = version, filename, version
+    assert RELEASE.identity(directory / filename) == {
+        key: native["archive"][key] for key in ("bytes", "sha256")
+    }, "versioned control retains the real archive bytes and digest"
+    assert (native["schema"], report["schema"], native["oracle"], report["fixtures"],
+            [row["probe"] for row in native["probes"]], report["probes"]) == (
+        1, 1, [], [], ["epub2", "formula"], ["epub2", "formula"]
+    ), "schema-one smoke controls preserve the empty oracle and exact two original probes"
+    return native, report
+
+
+def test_native_publisher_accepts_historical_smoke_without_inspection(tmp_path, monkeypatch):
+    # GIVEN a complete historical schema-one smoke record without additive evidence
+    native, report = native_inspection_control(tmp_path, monkeypatch, "0.7.1")
+    assert ("inspection" in native, "inspection" in report) == (False, False), \
+        "the historical control has no inspection extension"
+    # WHEN the actual publisher checks the immutable historical profile
+    actual = RELEASE.native_report(report, native, SOURCE, "0.7.1", "linux-x64")
+    # THEN the old profile remains valid without new mandatory fields
+    assert actual is None, "the unchanged historical smoke profile passes real publisher admission"
+
+
+def test_native_publisher_refuses_missing_inspection_at_external_new_version(tmp_path, monkeypatch):
+    # GIVEN a valid schema-one smoke profile at the externally requested new version
+    native, report = native_inspection_control(tmp_path, monkeypatch, "0.8.0")
+    assert (native["version"], report["version"], "inspection" in native, "inspection" in report) == (
+        "0.8.0", "0.8.0", False, False), "only the mandatory inspection extension is absent"
+    # WHEN the actual publisher admits the externally requested 0.8.0 release
+    # THEN missing inspection evidence is refused before it can establish release acceptance
+    with pytest.raises(ValueError, match="(?i)inspection"):
+        RELEASE.native_report(report, native, SOURCE, "0.8.0", "linux-x64")
+
+
+@pytest.mark.parametrize("version", ["0.7.1", "0.8.0"])
+def test_native_publisher_refuses_unknown_inspection_schema_at_every_version(tmp_path, monkeypatch, version):
+    # GIVEN otherwise valid smoke records with an explicitly unknown inspection extension
+    native, report = native_inspection_control(tmp_path, monkeypatch, version)
+    native["inspection"] = {"schema": "brewdoc.delivery-inspection/999"}
+    report["inspection"] = {"schema": "brewdoc.delivery-inspection/999"}
+    assert (native["inspection"], report["inspection"]) == (
+        {"schema": "brewdoc.delivery-inspection/999"}, {"schema": "brewdoc.delivery-inspection/999"}
+    ), "matching unknown schemas cannot manufacture a supported inspection profile"
+    # WHEN the actual publisher checks either a historical or a new external version
+    # THEN a present unknown extension is refused independently of the version gate
+    with pytest.raises(ValueError, match="(?i)inspection"):
+        RELEASE.native_report(report, native, SOURCE, version, "linux-x64")
+
+
+@pytest.mark.parametrize("delta", [
+    {"probes": ["epub2", "formula", "inspection"]},
+    {"probes": ["epub2"]},
+    {"fixtures": [{"path": "tests/fixtures/foreign.pdf", "markdown_sha256": "c" * 64}]},
+    {"source_sha": "b" * 40},
+    {"archive_sha256": "d" * 64},
+])
+def test_native_publisher_retains_exact_historical_smoke_identities(tmp_path, monkeypatch, delta):
+    # GIVEN a valid old profile admitted by the real publisher before one identity changes
+    native, report = native_inspection_control(tmp_path, monkeypatch, "0.7.1")
+    assert RELEASE.native_report(report, native, SOURCE, "0.7.1", "linux-x64") is None, \
+        "the complete historical control passes before the isolated mutation"
+    report.update(delta)
+    # WHEN the publisher checks a changed old probe, oracle, source or archive identity
+    # THEN additive inspection support must retain the existing exact identity refusal
+    with pytest.raises(ValueError, match="Native public consumer evidence differs"):
+        RELEASE.native_report(report, native, SOURCE, "0.7.1", "linux-x64")
+
+
+@pytest.fixture
+def inspection_delivery():
+    """Reuse one independently sealed complete packet and package descriptor."""
+    from test_install_verification import complete_inspection_packet
+
+    packet = complete_inspection_packet()
+    packages = RELEASE.helper("verify_install")
+    descriptor = packages.inspection_descriptor(packet, version=packet["version"], source_sha=packet["source_sha"],
+                                                module_sources_sha256=packet["module_sources_sha256"])
+    return packet, descriptor
+
+
+def current_native_inspection_control(tmp_path, monkeypatch, delivery):
+    """Attach admitted fifteen-format evidence to the exact old smoke control."""
+    packet, descriptor = delivery
+    native, report = native_inspection_control(tmp_path, monkeypatch, packet["version"])
+    native.update(source_sha=packet["source_sha"], inspection=copy.deepcopy(packet))
+    report.update(source_sha=packet["source_sha"], inspection=copy.deepcopy(descriptor["result"]))
+    return native, report
+
+
+def current_release_inputs(tmp_path, monkeypatch, delivery):
+    """Reuse sealed sources while creating complete real publisher archive controls."""
+    packet, descriptor = delivery
+    checkout, rows, transports, responses = ci_smoke_artifacts(tmp_path, monkeypatch)
+    packages = RELEASE.helper("verify_install")
+    modules = packages.module_sources(CHECKOUT)
+    assert hashlib.sha256(packages.canonical_json(modules)).hexdigest() == packet["module_sources_sha256"], \
+        "the complete fixture packet must retain the current independently checked source module map"
+    version, source_sha = packet["version"], packet["source_sha"]
+    (checkout / "pyproject.toml").write_text(f'[project]\nversion = "{version}"\n', encoding="utf-8")
+    for name in modules:
+        destination = checkout / "src" / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CHECKOUT / "src" / name, destination)
+    bundle = tmp_path / "bundle"
+    old_wheel, old_sdist = packages.distributions(bundle / "dist")
+    old_wheel.unlink()
+    old_sdist.unlink()
+    wheel = bundle / f"dist/brewdoc-{version}-py3-none-any.whl"
+    sdist = bundle / f"dist/brewdoc-{version}.tar.gz"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name in modules:
+            archive.write(checkout / "src" / name, name)
+    with tarfile.open(sdist, "w:gz") as archive:
+        for name in modules:
+            archive.add(checkout / "src" / name, arcname=f"brewdoc-{version}/src/{name}")
+    producer = {"version": version, "checkout_sha": source_sha, "verification_scope": "smoke",
+                "module_sources": modules, "module_sources_sha256": packet["module_sources_sha256"],
+                "source": {"uv.lock": packages.digest(checkout / "uv.lock")}}
+    for name in packages.INSPECTION_SOURCE_FILES:
+        destination = checkout / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(CHECKOUT / name, destination)
+        producer["source"][name] = packages.digest(destination)
+    packet_path = bundle / "ci-package/inspection.json"
+    packet_path.write_bytes(packages.canonical_json(packet))
+    producer["files"] = {path.relative_to(bundle).as_posix(): {"size": path.stat().st_size, "sha256": packages.digest(path)}
+                         for path in (wheel, sdist, packet_path)}
+    producer["inspection"] = {"path": "ci-package/inspection.json", **producer["files"]["ci-package/inspection.json"]}
+    RELEASE.write_json(bundle / "ci-package/manifest.json", producer)
+    native = tmp_path / "ci-native"
+    binaries = RELEASE.read_json(native / "binaries.json")
+    binaries.update(version=version, source_sha=source_sha)
+    for target, record in binaries["targets"].items():
+        archive = native / record["archive"]["filename"]
+        filename = record["archive"]["filename"].replace(VERSION, version)
+        archive.rename(native / filename)
+        record["archive"]["filename"] = filename
+        record.update(version=version, source_sha=source_sha, wheel_sha256=packages.digest(wheel), inspection=packet)
+        path = native / f"verification/{target}.json"
+        report = RELEASE.read_json(path)
+        report.update(version=version, source_sha=source_sha, inspection=descriptor["result"])
+        RELEASE.write_json(path, report)
+    RELEASE.write_json(native / "binaries.json", binaries)
+    npm = tmp_path / "current-npm"
+    npm_archives(npm, binaries["targets"], version=version, source_sha=source_sha)
+    npm_manifest = RELEASE.read_json(npm / "npm-manifest.json")
+    integrities = {row["metadata"]["name"]: row["integrity"] for row in npm_manifest["packages"]}
+    consumers = {}
+    for target in RELEASE.NPM_TARGETS:
+        directory = tmp_path / f"ci-npm-consumer-{target}"
+        consumers[directory.name] = directory
+        path = directory / f"ci-npm-probe-{target}.json"
+        report = RELEASE.read_json(path)
+        report.update(version=version, source_sha=source_sha, packages=integrities)
+        for consumer in report["consumers"].values():
+            consumer["inspection"] = descriptor["result"]
+        RELEASE.write_json(path, report)
+    original_command = RELEASE.command
+    monkeypatch.setattr(RELEASE, "command", lambda arguments, payload=None:
+                        original_command(arguments, payload) if arguments[-2:] == ["ls-files", "-z"] else source_sha.encode())
+    RELEASE.write_json(bundle / "ci-package/producer-inputs.json", RELEASE.source_inputs(checkout, source_sha))
+    inputs = {"ci-dist": bundle, "ci-native-assets": native, "ci-npm-release": npm, **consumers}
+    for row in rows:
+        transport = transports[row["id"]]
+        zip_directory(inputs[row["name"]], transport)
+        row.update(size_in_bytes=transport.stat().st_size, digest="sha256:" + RELEASE.identity(transport)["sha256"])
+        row["workflow_run"]["head_sha"] = source_sha
+    run = responses["actions/runs/17"]
+    run["head_sha"] = source_sha
+    responses[f"git/ref/tags/v{version}"] = {"ref": f"refs/tags/v{version}", "object": {"type": "commit", "sha": source_sha}}
+    responses[f"actions/workflows/ci.yml/runs?event=push&branch=main&status=success&head_sha={source_sha}&per_page=100"] = {
+        "total_count": 1, "workflow_runs": [run]}
+    return checkout, bundle, native, npm
+
+
+def test_current_publisher_reuse_prepare_and_admit_bind_the_independent_package(tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN complete real package/native/npm archive controls and independent source expectations
+    packet, descriptor = inspection_delivery
+    checkout, bundle, native, npm = current_release_inputs(tmp_path, monkeypatch, inspection_delivery)
+    assert RELEASE.helper("verify_install").load_inspection_packet(
+        bundle, RELEASE.read_json(bundle / "ci-package/manifest.json")) == packet, "the package loader admits the entire sealed packet"
+    # WHEN actual CI reuse, preparation and subsequent admission consume the same packet
+    reused = RELEASE.reuse_ci(checkout, tmp_path / "reused", "v" + packet["version"], packet["source_sha"])
+    folder = tmp_path / "current-release"
+    manifest = RELEASE.prepare(checkout, bundle, native, folder, tmp_path / "body.md", npm)
+    admitted = RELEASE.admit(folder, manifest["tag"], packet["source_sha"], inspection=descriptor)
+    # THEN each real call path retains the independently derived descriptor exactly
+    assert (reused["inspection"], manifest["inspection"], admitted["inspection"]) == (descriptor, descriptor, descriptor), \
+        "reuse, prepare and re-admission all bind to package expectations"
+
+
+def test_current_release_readmission_refuses_removed_package_descriptor(tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN a complete prepared release before its independent package descriptor is removed
+    packet, descriptor = inspection_delivery
+    checkout, bundle, native, npm = current_release_inputs(tmp_path, monkeypatch, inspection_delivery)
+    folder = tmp_path / "current-release"
+    manifest = RELEASE.prepare(checkout, bundle, native, folder, tmp_path / "body.md", npm)
+    assert RELEASE.admit(folder, manifest["tag"], packet["source_sha"], inspection=descriptor) == manifest, \
+        "the unchanged complete release passes before descriptor removal"
+    manifest.pop("inspection")
+    RELEASE.write_json(folder / "release-manifest.json", manifest)
+    # WHEN re-admission still uses the externally requested current source and version
+    # THEN complete embedded native/npm packets cannot replace the removed package descriptor
+    with pytest.raises(ValueError, match="release inspection descriptor"):
+        RELEASE.admit(folder, manifest["tag"], packet["source_sha"])
+
+
+@pytest.mark.parametrize("operation", ["reuse", "prepare"])
+def test_current_publisher_refuses_foreign_consistent_native_before_release_admission(
+        tmp_path, monkeypatch, inspection_delivery, operation):
+    # GIVEN complete publisher inputs before native and verification substitute a matching foreign module map
+    packet, descriptor = inspection_delivery
+    checkout, bundle, native, npm = current_release_inputs(tmp_path, monkeypatch, inspection_delivery)
+    assert RELEASE.package_inspection(checkout, bundle, RELEASE.read_json(bundle / "ci-package/manifest.json"),
+                                      version=packet["version"], source_sha=packet["source_sha"]) == descriptor, \
+        "the independently admitted package remains valid before native substitution"
+    binaries = RELEASE.read_json(native / "binaries.json")
+    foreign = copy.deepcopy(packet)
+    foreign["module_sources_sha256"] = "f" * 64
+    binaries["targets"]["linux-x64"]["inspection"] = foreign
+    RELEASE.write_json(native / "binaries.json", binaries)
+    report_path = native / "verification/linux-x64.json"
+    report = RELEASE.read_json(report_path)
+    report["inspection"] = RELEASE.helper("verify_install").expected_inspection_result(foreign)
+    RELEASE.write_json(report_path, report)
+    archive = tmp_path / "ci-native-assets.zip"
+    zip_directory(native, archive)
+    rows = RELEASE.api("actions/runs/17/artifacts?per_page=100")["artifacts"]
+    native_row = next(row for row in rows if row["name"] == "ci-native-assets")
+    native_row.update(size_in_bytes=archive.stat().st_size, digest="sha256:" + RELEASE.identity(archive)["sha256"])
+    calls = {"reuse": lambda: RELEASE.reuse_ci(checkout, tmp_path / "reused", "v" + packet["version"], packet["source_sha"]),
+             "prepare": lambda: RELEASE.prepare(checkout, bundle, native, tmp_path / "current-release", tmp_path / "body.md", npm)}
+    # WHEN either actual publisher path receives the internally matching foreign records
+    # THEN no native/npm agreement replaces the independent package descriptor
+    with pytest.raises(ValueError, match="independent package descriptor"):
+        calls[operation]()
+
+
+def test_current_ci_reuse_refuses_foreign_embedded_npm_packet_before_producer_receipt(
+        tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN complete real CI inputs accepted against the genuine package and aggregate native descriptor
+    packet, descriptor = inspection_delivery
+    checkout, _bundle, native, _npm = current_release_inputs(tmp_path, monkeypatch, inspection_delivery)
+    control = RELEASE.reuse_ci(checkout, tmp_path / "valid-reuse", "v" + packet["version"], packet["source_sha"])
+    assert control["inspection"] == descriptor, "the unchanged complete modern reuse control passes before npm substitution"
+    binaries = RELEASE.read_json(native / "binaries.json")
+    foreign_targets = copy.deepcopy(binaries["targets"])
+    for target in foreign_targets.values():
+        target["inspection"]["module_sources_sha256"] = "f" * 64
+    foreign_npm = tmp_path / "foreign-npm"
+    npm_archives(foreign_npm, foreign_targets, version=packet["version"], source_sha=packet["source_sha"])
+    admitted_npm = RELEASE.helper("build_npm").verify_release(foreign_npm)
+    assert (admitted_npm["version"], RELEASE.read_json(native / "binaries.json")) == (packet["version"], binaries), \
+        "the foreign npm tarballs remain internally valid while the genuine native aggregate is unchanged"
+    integrities = {row["metadata"]["name"]: row["integrity"] for row in admitted_npm["packages"]}
+    inputs = {"ci-npm-release": foreign_npm}
+    for target in RELEASE.NPM_TARGETS:
+        directory = tmp_path / f"ci-npm-consumer-{target}"
+        path = directory / f"ci-npm-probe-{target}.json"
+        report = RELEASE.read_json(path)
+        report["packages"] = integrities
+        RELEASE.write_json(path, report)
+        inputs[directory.name] = directory
+    rows = RELEASE.api("actions/runs/17/artifacts?per_page=100")["artifacts"]
+    selected = [row for row in rows if row["name"] in inputs]
+    assert len(selected) == 3, "only the npm archive and its two matching consumer transports are replaced"
+    for row in selected:
+        archive = tmp_path / (row["name"] + ".zip")
+        zip_directory(inputs[row["name"]], archive)
+        row.update(size_in_bytes=archive.stat().st_size, digest="sha256:" + RELEASE.identity(archive)["sha256"])
+    refused = tmp_path / "foreign-reuse"
+    # WHEN actual reuse sees valid transports and consumers paired with foreign embedded npm inspection
+    with pytest.raises(ValueError, match="independent package descriptor"):
+        RELEASE.reuse_ci(checkout, refused, "v" + packet["version"], packet["source_sha"])
+    # THEN independent package admission fails before release-ready provenance is written
+    assert (refused / "producer.json").exists() is False, "foreign embedded npm evidence cannot write a producer receipt"
+
+
+@pytest.mark.parametrize("consumer", ["global", "npx"])
+def test_npm_publisher_requires_complete_inspection_beside_original_smoke_probes(
+        tmp_path, monkeypatch, inspection_delivery, consumer):
+    # GIVEN complete current native/npm evidence, including the previously conversion-empty npx route
+    packet, descriptor = inspection_delivery
+    _checkout, _bundle, native_folder, npm_folder = current_release_inputs(tmp_path, monkeypatch, inspection_delivery)
+    native = RELEASE.read_json(native_folder / "binaries.json")["targets"]["linux-x64"]
+    npm = RELEASE.read_json(npm_folder / "npm-manifest.json")
+    report = RELEASE.read_json(tmp_path / "ci-npm-consumer-linux-x64/ci-npm-probe-linux-x64.json")
+    manifest = {"version": packet["version"], "source_sha": packet["source_sha"]}
+    assert RELEASE.npm_report(report, "linux-x64", manifest, native, npm, "local", inspection=descriptor) is None, \
+        "the complete actual npm publisher path admits both independent inspection results"
+    report["consumers"][consumer].pop("inspection")
+    # WHEN either required consumer loses its complete additive result
+    # THEN original conversion probes and self-check cannot replace inspection evidence
+    with pytest.raises(ValueError, match="inspection evidence differs"):
+        RELEASE.npm_report(report, "linux-x64", manifest, native, npm, "local", inspection=descriptor)
+
+
+def current_public_inputs(tmp_path, monkeypatch, delivery):
+    """Keep byte/network validators real while supplying complete public consumer records."""
+    packet, descriptor = delivery
+    real_command = RELEASE.command
+    real_api = RELEASE.api
+    checkout, bundle, native, npm = current_release_inputs(tmp_path, monkeypatch, delivery)
+    folder = tmp_path / "current-release"
+    manifest = RELEASE.prepare(checkout, bundle, native, folder, tmp_path / "body.md", npm)
+    monkeypatch.setattr(RELEASE, "command", real_command)
+    monkeypatch.setattr(RELEASE, "api", real_api)
+    responses, calls = fake_api(monkeypatch, folder, manifest, draft=False, changes={"target_commitish": packet["source_sha"]})
+    responses[f"git/ref/tags/{manifest['tag']}"]["object"]["sha"] = packet["source_sha"]
+    public_io(monkeypatch, folder)
+    public_registry(monkeypatch, folder, manifest)
+    evidence = tmp_path / "public-evidence"
+    assets = responses["releases/42/assets?per_page=100"]
+    binaries = RELEASE.read_json(folder / "binaries.json")
+    for target in RELEASE.TARGETS:
+        directory = evidence / target
+        directory.mkdir(parents=True)
+        archive = binaries["targets"][target]["archive"]
+        RELEASE.write_json(directory / "archive.download.json", {
+            "schema": 1, "tag": manifest["tag"], "source_sha": packet["source_sha"], "target": target,
+            "release_id": 42, "asset_id": next(row["id"] for row in assets if row["name"] == archive["filename"]),
+            "asset_filename": archive["filename"], "url": RELEASE.public_url(manifest["tag"], archive["filename"]),
+            "download_sha256": archive["sha256"], "bytes": archive["bytes"], "verified_at": "2026-01-01T00:00:00+00:00"})
+        shutil.copyfile(native / f"verification/{target}.json", directory / "verification.json")
+    for target in RELEASE.NPM_TARGETS:
+        report = RELEASE.read_json(tmp_path / f"ci-npm-consumer-{target}/ci-npm-probe-{target}.json")
+        report.update(mode="public", signatures={"verified_packages": 2, "verified_attestations": 2, "stdout_sha256": "f" * 64})
+        RELEASE.write_json(evidence / target / "npm-public.json", report)
+    npm_manifest = RELEASE.read_json(folder / "npm-manifest.json")
+    RELEASE.write_json(evidence / "npm-public-registry.json", {
+        "schema": 1, "verdict": "PASS", "version": packet["version"], "source_sha": packet["source_sha"],
+        "verification_scope": "smoke", "packages": {row["metadata"]["name"]: row["integrity"] for row in npm_manifest["packages"]}})
+    public_python_reports(evidence, packet, descriptor)
+    return folder, manifest, evidence, calls
+
+
+def test_current_public_publisher_and_finalization_readmit_installed_routes(tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN actual public byte admission controls and both complete installed Python route reports
+    _packet, descriptor = inspection_delivery
+    folder, manifest, evidence, calls = current_public_inputs(tmp_path, monkeypatch, inspection_delivery)
+    accepted = RELEASE.admit_public(folder, manifest, evidence, inspection=descriptor)
+    assert (accepted["pypi"], accepted["pypi_consumers"]) == (
+        {"published": True}, {"wheel": "PASS", "sdist": "PASS"}), "both installed routes accompany the unchanged public guide contract"
+    availability = tmp_path / "public-acceptance.json"
+    RELEASE.write_json(availability, RELEASE.admit_public(folder, manifest, evidence, inspection=descriptor))
+    guide = RELEASE.helper("release_guide")
+    body = tmp_path / "public-body.md"
+    body.write_text(guide.render(guide.admit(RELEASE.CHECKOUT, folder / "binaries.json", folder / "npm-manifest.json",
+                                           "public", availability)), encoding="utf-8")
+    # WHEN finalization repeats the entire independent admission before the exact notes edit
+    RELEASE.finalize(folder, manifest, evidence, body, inspection=descriptor)
+    # THEN only the admitted notes are edited after both installed routes pass again
+    assert [call for call in calls if call[1] == "release"] == [
+        ["gh", "release", "edit", manifest["tag"], "--notes-file", str(body), "--repo", RELEASE.REPOSITORY]
+    ], "finalization retains the exact existing public edit contract"
+
+
+@pytest.mark.parametrize("operation", ["admit", "finalize"])
+def test_current_public_paths_refuse_missing_installed_route_before_notes_edit(
+        tmp_path, monkeypatch, inspection_delivery, operation):
+    # GIVEN otherwise complete native/npm/registry evidence with the installed sdist result removed
+    _packet, descriptor = inspection_delivery
+    folder, manifest, evidence, calls = current_public_inputs(tmp_path, monkeypatch, inspection_delivery)
+    assert RELEASE.admit_public(folder, manifest, evidence, inspection=descriptor)["inspection"] == descriptor, \
+        "the complete public control passes before removing one installed route"
+    (evidence / "pypi-sdist.json").unlink()
+    operations = {"admit": lambda: RELEASE.admit_public(folder, manifest, evidence, inspection=descriptor),
+                  "finalize": lambda: RELEASE.finalize(folder, manifest, evidence, tmp_path / "absent-body.md", inspection=descriptor)}
+    # WHEN either public admission or finalization repeats installed-route admission
+    with pytest.raises(ValueError, match="exactly wheel and sdist"):
+        operations[operation]()
+    # THEN no final notes edit occurs even though all public package bytes are correct
+    assert [call for call in calls if call[1] == "release"] == [], "missing installed evidence refuses before notes publication"
+
+
+def test_native_publisher_accepts_complete_independently_bound_inspection(tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN real old smoke fields plus an independently sealed complete fifteen-case packet
+    packet, descriptor = inspection_delivery
+    native, report = current_native_inspection_control(tmp_path, monkeypatch, inspection_delivery)
+    assert [row["id"] for row in report["inspection"]["cases"]] == sorted(RELEASE.helper("verify_install").SUFFIXES), \
+        "the positive control contains every supported format in exact order"
+    # WHEN the publisher compares the actual consumer result with package expectations
+    actual = RELEASE.native_report(report, native, packet["source_sha"], packet["version"], "linux-x64",
+                                   inspection=descriptor)
+    # THEN the additive result passes without changing the exact two old probes
+    assert (actual, report["probes"], native["oracle"]) == (None, ["epub2", "formula"], []), \
+        "independent inspection evidence is admitted beside the unchanged smoke profile"
+
+
+@pytest.mark.parametrize("version", ["0.8.0", "0.10.0", "1.0.0"])
+def test_native_publisher_requires_independent_descriptor_at_external_numeric_version(
+        tmp_path, monkeypatch, inspection_delivery, version):
+    # GIVEN a complete mutually matching packet and result without independent publisher authority
+    native, report = current_native_inspection_control(tmp_path, monkeypatch, inspection_delivery)
+    assert report["inspection"]["suite_sha256"] == inspection_delivery[1]["suite_sha256"], \
+        "native and consumer agree before independent descriptor admission"
+    # WHEN the externally requested current release supplies no independent descriptor
+    # THEN embedded agreement cannot bypass the numeric version gate
+    with pytest.raises(ValueError, match="independent package inspection descriptor"):
+        RELEASE.native_report(report, native, native["source_sha"], version, "linux-x64")
+
+
+@pytest.mark.parametrize("field,value", [("source_sha", "e" * 40), ("module_sources_sha256", "f" * 64)])
+def test_native_publisher_refuses_mutually_consistent_foreign_inspection(
+        tmp_path, monkeypatch, inspection_delivery, field, value):
+    # GIVEN a complete foreign packet whose own native and observed results agree
+    packet, descriptor = inspection_delivery
+    native, report = current_native_inspection_control(tmp_path, monkeypatch, inspection_delivery)
+    foreign = native["inspection"]
+    foreign[field] = value
+    packages = RELEASE.helper("verify_install")
+    report["inspection"] = packages.expected_inspection_result(foreign)
+    assert packages.validate_inspection_packet(foreign, version=foreign["version"], source_sha=foreign["source_sha"]) == foreign, \
+        "the adversary remains a complete internally valid packet"
+    # WHEN publisher admission uses independent package source and descriptor controls
+    # THEN matching foreign native/consumer declarations cannot establish this release
+    with pytest.raises(ValueError, match="(?i)inspection"):
+        RELEASE.native_report(report, native, packet["source_sha"], packet["version"], "linux-x64",
+                              inspection=descriptor)
+
+
+def test_native_publisher_refuses_inner_historical_version_downgrade(tmp_path, monkeypatch, inspection_delivery):
+    # GIVEN a new external release whose native and consumer records claim an old profile
+    packet, descriptor = inspection_delivery
+    native, report = native_inspection_control(tmp_path, monkeypatch, "0.7.1")
+    assert (native["version"], report["version"], "inspection" in native) == ("0.7.1", "0.7.1", False), \
+        "the downgrade has unchanged historical fields without an inspection packet"
+    # WHEN the publisher retains the externally requested current release controls
+    # THEN inner relabelling cannot remove mandatory inspection evidence
+    with pytest.raises(ValueError, match="(?i)inspection"):
+        RELEASE.native_report(report, native, packet["source_sha"], packet["version"], "linux-x64",
+                              inspection=descriptor)
+
+
+@pytest.mark.parametrize("record", ["native", "report"])
+@pytest.mark.parametrize("block", [None, {}, {"schema": "brewdoc.delivery-inspection/999"}])
+def test_historical_publisher_refuses_present_malformed_inspection_on_either_record(
+        tmp_path, monkeypatch, record, block):
+    # GIVEN a historical valid profile before one side presents a malformed extension
+    native, report = native_inspection_control(tmp_path, monkeypatch, "0.7.1")
+    assert RELEASE.native_report(report, native, SOURCE, "0.7.1", "linux-x64") is None, \
+        "a truly absent historical extension remains valid"
+    {"native": native, "report": report}[record]["inspection"] = block
+    # WHEN a null, empty or unknown extension appears on either old record
+    # THEN presence remains distinct from the supported historical absence
+    with pytest.raises(ValueError, match="(?i)inspection"):
+        RELEASE.native_report(report, native, SOURCE, "0.7.1", "linux-x64")
+
+
+def public_python_reports(directory, packet, descriptor):
+    """Write distinct route-bound installed reports with the whole observed result."""
+    directory.mkdir(parents=True, exist_ok=True)
+    manifest = {"version": packet["version"], "source_sha": packet["source_sha"], "inspection": descriptor}
+    for route in ("wheel", "sdist"):
+        RELEASE.write_json(directory / f"pypi-{route}.json", {
+            "schema": 1, "verdict": "PASS", "route": route, "version": packet["version"],
+            "source_sha": packet["source_sha"], "distribution": {"name": "brewdoc", "version": packet["version"]},
+            "inspection": descriptor["result"]})
+    return manifest
+
+
+def test_public_pypi_inspection_accepts_distinct_complete_installed_routes(tmp_path, inspection_delivery):
+    # GIVEN separate complete reports from wheel and forced-sdist installed consumers
+    packet, descriptor = inspection_delivery
+    manifest = public_python_reports(tmp_path, packet, descriptor)
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["pypi-sdist.json", "pypi-wheel.json"], \
+        "both registry installation routes have distinct report files"
+    # WHEN final public admission compares both complete results to package expectations
+    actual = RELEASE.pypi_inspection(tmp_path, manifest, inspection=descriptor)
+    # THEN both installed routes pass together
+    assert actual is None, "the exact independently bound installed reports satisfy public admission"
+
+
+@pytest.mark.parametrize("route", ["wheel", "sdist"])
+def test_public_pypi_inspection_refuses_missing_installed_route(tmp_path, inspection_delivery, route):
+    # GIVEN complete installed evidence before one required route disappears
+    packet, descriptor = inspection_delivery
+    manifest = public_python_reports(tmp_path, packet, descriptor)
+    assert RELEASE.pypi_inspection(tmp_path, manifest, inspection=descriptor) is None, \
+        "both original route reports pass before removal"
+    (tmp_path / f"pypi-{route}.json").unlink()
+    # WHEN public admission attempts to use only one installation route
+    # THEN registry bytes and one successful install cannot replace the missing route
+    with pytest.raises(ValueError, match="exactly wheel and sdist"):
+        RELEASE.pypi_inspection(tmp_path, manifest, inspection=descriptor)
+
+
+@pytest.mark.parametrize("delta", [
+    {"route": "wheel"}, {"source_sha": "e" * 40}, {"inspection": {"verdict": "PASS"}},
+    {"distribution": {"name": "brewdoc", "version": "0.7.1"}},
+])
+def test_public_pypi_inspection_refuses_duplicate_route_or_foreign_installed_result(tmp_path, inspection_delivery, delta):
+    # GIVEN two valid route-bound reports before one sdist report is substituted
+    packet, descriptor = inspection_delivery
+    manifest = public_python_reports(tmp_path, packet, descriptor)
+    assert RELEASE.pypi_inspection(tmp_path, manifest, inspection=descriptor) is None, \
+        "the complete original wheel/sdist result pair passes admission"
+    path = tmp_path / "pypi-sdist.json"
+    report = RELEASE.read_json(path)
+    report.update(delta)
+    RELEASE.write_json(path, report)
+    # WHEN a duplicate route or foreign installed identity reaches public admission
+    # THEN the entire route-bound record must still equal package expectations
+    with pytest.raises(ValueError, match="installed report differs"):
+        RELEASE.pypi_inspection(tmp_path, manifest, inspection=descriptor)
 
 
 def download_process(monkeypatch, payload, accept, *, status=0):
@@ -758,7 +1278,7 @@ def public_registry(monkeypatch, folder, manifest):
     packages = RELEASE.read_json(folder / "npm-manifest.json")["packages"]
     pypi = {"urls": [{"filename": name, "size": row["bytes"], "digests": {"sha256": row["sha256"]},
                      "yanked": False, "url": "https://files.pythonhosted.org/" + name}
-                    for name, row in manifest["assets"].items() if name.endswith(".whl") or name == f"brewdoc-{VERSION}.tar.gz"]}
+                    for name, row in manifest["assets"].items() if name.endswith(".whl") or name == f"brewdoc-{manifest['version']}.tar.gz"]}
 
     def open_url(url, **kwargs):
         if url.startswith("https://pypi.org/"):

@@ -6,6 +6,8 @@ import json
 
 import pytest
 
+from inspection_contract import (rendering_bytes, rendering_result, rendering_stdout)
+
 import brewdoc
 from brewdoc import cli, htmljs, htmltext, htmlurl, service
 from test_contract import docx, zero_tally
@@ -55,10 +57,10 @@ def test_single_article_keeps_unicode_and_excludes_surrounding_body(tmp_path):
                     encoding="utf-8")
     assert out.exists() is False, "article output must start absent"
     # WHEN the public service selects article mode
-    result = brewdoc.run(path, out, article=True)
+    result = rendering_result(brewdoc.run(path, out, article=True), output=out)
     # THEN the exact document and complete receipt describe only selected content
     expected = article_document(path, "café 東京\n", 1)
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, article_receipt(path, out, 1), expected), expected.encode("utf-8")
     ), "article mode must preserve Unicode, exclude outer paragraphs and disclose its scope"
 
@@ -174,7 +176,7 @@ def test_article_selection_preserves_exact_supported_descendants(tmp_path, sourc
     path.write_text(source, encoding="utf-8")
     assert path.read_text(encoding="utf-8") == source, "selection input must retain its exact source"
     # WHEN article mode selects every visible root and renders its descendants in order
-    result = brewdoc.run(path, article=True)
+    result = rendering_result(brewdoc.run(path, article=True))
     # THEN source order, Unicode, metadata and counters match the full expected envelope
     assert result == (0, article_receipt(path, None, regions, tables=tables),
                       article_document(path, content, regions, tables=tables)), (
@@ -223,10 +225,10 @@ def test_article_fallback_renders_clean_whole_body_with_one_receipt_signal(
     out.write_bytes(b"replaced output\n")
     assert out.read_bytes() == b"replaced output\n", "the fallback destination must start populated"
     # WHEN article mode finds nothing to select
-    result = brewdoc.run(path, out, article=True)
+    result = rendering_result(brewdoc.run(path, out, article=True), output=out)
     # THEN the default clean document is published; the receipt adds only article_fallback
     expected = expected_document(path, content, regions, tables=tables)
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, fallback_receipt(path, out, regions, tables=tables), expected), expected.encode("utf-8")
     ), "article fallback must equal the default run except for the article_fallback receipt key"
 
@@ -253,7 +255,7 @@ def test_default_mode_renders_nothing_under_a_hidden_body_ancestor(tmp_path, htm
     path.write_text('<html %s><body><p>Secret</p></body></html>' % html_attribute, encoding="utf-8")
     assert path.is_file() is True, "the hidden-ancestor source must exist"
     # WHEN default mode converts the page
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN no body content is carried and the receipt has no fallback key
     assert result == (0, dict(expected_receipt(path, None, 0), out=None),
                       expected_document(path, "", 0)), (
@@ -270,7 +272,7 @@ def test_default_local_mode_preserves_complete_markdown_and_receipt(tmp_path):
                 expected_document(path, "Before\n\nFirst\n\nSecond\n\nAfter\n", 4))
     assert path.is_file() is True, "the complete-page source must exist"
     # WHEN the public API is called positionally and with explicit article=False
-    results = (brewdoc.run(path), brewdoc.run(path, article=False))
+    results = (rendering_result(brewdoc.run(path)), rendering_result(brewdoc.run(path, article=False)))
     # THEN default mode keeps every original byte and its complete unchanged receipt
     assert results == (expected, expected), "article mode must remain opt-in for local conversion"
 
@@ -284,7 +286,7 @@ def test_public_article_arguments_are_keyword_only_and_render_html_agrees_with_r
         "public exports must retain their original identities")
     # WHEN both public APIs render the article with the new keyword
     rendered = brewdoc.render_html(path, article=True)
-    result = brewdoc.run(path, article=True)
+    result = rendering_result(brewdoc.run(path, article=True))
     # THEN return shapes, complete tally and keyword-only default are preserved
     tally = dict(zero_tally(), chapters=1, text_regions=1)
     assert (rendered, result, tuple((inspect.signature(function).parameters["article"].kind,
@@ -316,7 +318,7 @@ def test_complete_body_resource_limits_apply_before_article_selection(
     monkeypatch.setattr(htmltext, "_DEPTH_LIMIT", depth_limit)
     assert out.read_bytes() == b"preserved", "resource refusal output must start intact"
     # WHEN article extraction validates the complete source before selecting roots
-    result = brewdoc.run(path, out, article=True)
+    result = rendering_result(brewdoc.run(path, out, article=True), output=out)
     # THEN complete-tree and complete-body budgets take priority over article selection
     assert (result, out.read_bytes()) == ((1, refused_receipt(path, reason), ""), b"preserved"), (
         "selection must never bypass global table or tree resource guards")
@@ -359,9 +361,11 @@ def test_local_article_cli_publishes_selected_or_fallback_output_without_refusin
     # WHEN local CLI conversion requests article extraction
     code = cli.main([str(path), "--article", "--out", str(out)])
     captured = capsys.readouterr()
+    complete = brewdoc.run(path, article=True)[2]
+    assert out.read_bytes() == complete.encode("utf-8"), "CLI files must retain all inspected article findings"
     # THEN stdout is one success receipt, the fallback key appears only on fallback
     document, receipt = builders
-    assert (code, captured.out, captured.err, out.read_bytes()) == (
+    assert (code, rendering_stdout(captured.out), captured.err, rendering_bytes(out.read_bytes())) == (
         0, json.dumps(receipt(path, out, regions), ensure_ascii=True, sort_keys=True) + "\n", "",
         document(path, content, regions).encode("utf-8"),
     ), "article CLI must publish selected or fallback output instead of refusing"
@@ -373,17 +377,17 @@ def test_non_html_article_api_and_cli_return_normal_refusal_before_output(tmp_pa
     path, out = tmp_path / "sample.docx", tmp_path / "preserved.md"
     docx(path, '<w:p><w:r><w:t>Ordinary document</w:t></w:r></w:p>')
     out.write_bytes(b"preserved")
-    assert brewdoc.run(path)[0] == 0, "the non-HTML source must otherwise convert successfully"
+    assert rendering_result(brewdoc.run(path))[0] == 0, "the non-HTML source must otherwise convert successfully"
     expected = dict(refused_receipt(path, "--article is an HTML-only option"), route="doc",
                     not_carried=["images, charts and the text drawn inside them",
                                  "tracked changes, comments, footnotes, headers and footers",
                                  "a table's own formatting - only its cells, row by row"])
     # WHEN public API and CLI request article mode for a non-HTML document
-    result = brewdoc.run(path, out, article=True)
+    result = rendering_result(brewdoc.run(path, out, article=True), output=out)
     code = cli.main([str(path), "--article", "--out", str(out)])
     captured = capsys.readouterr()
     # THEN both return the complete ordinary refusal and preserve the destination
-    assert (result, code, captured.out, captured.err, out.read_bytes()) == (
+    assert (result, code, rendering_stdout(captured.out), captured.err, out.read_bytes()) == (
         (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n",
         "", b"preserved",
     ), "non-HTML article requests must fail with a normal receipt before output publication"
@@ -399,7 +403,7 @@ def test_local_article_cli_stdout_contains_exact_receipt_then_unicode_markdown(t
     code = cli.main([str(path), "--article"])
     captured = capsys.readouterr()
     # THEN receipt framing precedes the exact selected UTF-8 Markdown
-    assert (code, captured.out, captured.err) == (
+    assert (code, rendering_stdout(captured.out), captured.err) == (
         0, json.dumps(article_receipt(path, None, 1), ensure_ascii=True, sort_keys=True) + "\n"
         + article_document(path, "café 東京\n", 1), "",
     ), "article CLI stdout must retain one JSON receipt followed by exact Unicode Markdown"
@@ -413,7 +417,7 @@ def test_article_mode_preserves_document_title_without_promoting_visible_metadat
                     '<p>By Maksim</p></article>', encoding="utf-8")
     assert path.is_file() is True, "the titled source must exist"
     # WHEN article mode selects the explicit subtree
-    result = brewdoc.run(path, article=True)
+    result = rendering_result(brewdoc.run(path, article=True))
     # THEN the existing title remains the chapter title and byline remains ordinary content
     assert result == (0, article_receipt(path, None, 2),
                       article_document(path, "### Article heading\n\nBy Maksim\n", 2, title="Page title")), (
@@ -431,7 +435,7 @@ def test_article_cli_invalid_artifact_retains_article_omission_in_normal_refusal
     code = cli.main([str(path), "--article", "--artifact", "malformed", "--out", str(out)])
     captured = capsys.readouterr()
     # THEN the complete article refusal envelope includes its required omission
-    assert (code, captured.out, captured.err, out.read_bytes()) == (
+    assert (code, rendering_stdout(captured.out), captured.err, out.read_bytes()) == (
         1, json.dumps(refused_receipt(path, "malformed artifact assignment: malformed"),
                       ensure_ascii=True, sort_keys=True) + "\n", "", b"preserved",
     ), "early CLI refusals in article mode must retain its omission and normal receipt schema"
@@ -518,7 +522,7 @@ def test_url_article_and_default_modes_preserve_complete_frozen_receipts_and_has
                     acquisition=url_acquisition(body, snapshot, render_js))
     assert calls == [], "the URL boundary must start without requests"
     # WHEN existing URL orchestration converts the final frozen snapshot
-    result = htmlurl._run_url(URL, render_js=render_js, article=article)
+    result = rendering_result(htmlurl._run_url(URL, render_js=render_js, article=article))
     # THEN default bytes, article scope and complete source/snapshot/partial evidence are exact
     assert (result, calls) == ((0, expected, document), [URL]), (
         "article selection must act only on the frozen snapshot without changing URL provenance")
@@ -542,12 +546,24 @@ def test_url_article_cli_publishes_selected_or_fallback_output_with_complete_acq
     expected = dict(receipt(path, out, regions), source=URL,
                     receipt_schema="brewdoc.receipt/2", acquisition=url_acquisition(body, snapshot, render_js))
     arguments = ["--url", URL, "--article", "--out", str(out)] + ["--render-js"] * render_js
+    converted = []
+    local_run = htmlurl.run
+
+    def observe(*args, **options):
+        """Capture full local conversion without replacing its behavior or writer."""
+        result = local_run(*args, **options)
+        converted.append(result[2])
+        return result
+
+    monkeypatch.setattr(htmlurl, "run", observe)
     assert (calls, out.read_bytes()) == ([], b"replaced"), "URL conversion must start without requests"
     # WHEN static or frozen JS CLI conversion requests article selection
     code = cli.main(arguments)
     captured = capsys.readouterr()
+    assert len(converted) == 1, "URL acquisition must invoke exactly one real local conversion"
+    assert out.read_bytes() == converted[0].encode("utf-8"), "URL files must preserve the full inspected snapshot Markdown"
     # THEN the success receipt keeps URL provenance and the snapshot document is published
-    assert (code, captured.out, captured.err, calls, out.read_bytes()) == (
+    assert (code, rendering_stdout(captured.out), captured.err, calls, rendering_bytes(out.read_bytes())) == (
         0, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n", "", [URL],
         document.encode("utf-8"),
     ), "URL article mode must publish selected or fallback output with exact acquisition evidence"

@@ -12,6 +12,8 @@ import zipfile
 
 import pytest
 
+from inspection_contract import (rendering_bytes, rendering_result, rendering_stdout)
+
 import brewdoc
 from test_contract import NOT_APPLICABLE, SCHEMA_TWO, zero_tally
 
@@ -201,7 +203,7 @@ def test_valid_epub_publications_render_through_the_existing_public_api(tmp_path
     path = write_epub(tmp_path / "sample.epub", members_factory())
     assert zipfile.is_zipfile(path) is True, "the RED input must be a valid ZIP publication"
     # WHEN the existing public service converts the declared publication
-    rc, receipt, markdown = brewdoc.run(path)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN valid EPUB 2 and EPUB 3 are successful chapter routes
     assert (rc, receipt["file_ok"], receipt["route"], receipt["unit_kind"],
             receipt["units"], receipt.get("unit_keys")) == (
@@ -419,7 +421,7 @@ def test_static_xhtml_preserves_ordered_content_regions(tmp_path, content, expec
     assert zipfile.is_zipfile(path) is True, "content probes must retain valid EPUB packaging"
     body = TWO_CHAPTER_BODY.replace("café 東京\n", expected)
     # WHEN the publication renders through the public API
-    rc, receipt, markdown = brewdoc.run(path)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path))
     # THEN source order, containment, counters and the complete Markdown envelope are exact
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, regions=regions + 1, tables=tables),
@@ -427,21 +429,22 @@ def test_static_xhtml_preserves_ordered_content_regions(tmp_path, content, expec
     ), "static XHTML must preserve the independently specified content and full receipt"
 
 
-@pytest.mark.parametrize("options", [{"sheets": ("One",)},
-                                    {"artifact_outputs": {"formula/sheet/000001": "calc.json"}}],
+@pytest.mark.parametrize("options,reason", [({"sheets": ("One",)}, "--sheet and --artifact are workbook-only options"),
+                                    ({"artifact_outputs": {"formula/sheet/000001": "calc.json"}},
+                                     "unknown artifact key: formula/sheet/000001")],
                          ids=["sheet-selection", "artifact-output"])
-def test_epub_refuses_workbook_options_without_replacing_output(tmp_path, options):
+def test_epub_refuses_workbook_options_without_replacing_output(tmp_path, options, reason):
     # GIVEN a valid publication and an existing output sentinel
     path = write_epub(tmp_path / "sample.epub", epub3_members())
     out = tmp_path / "preserved.md"
     out.write_bytes(b"existing output\n")
     assert out.read_bytes() == b"existing output\n", "the destination sentinel must start intact"
     # WHEN workbook-only options are supplied to EPUB conversion
-    rc, receipt, markdown = brewdoc.run(path, out, **options)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path, out, **options), output=out)
     # THEN refusal has no partial units or output replacement
     assert (rc, receipt["file_ok"], receipt["route"], receipt["units"], receipt["reason"],
             markdown, out.read_bytes()) == (
-        1, False, "epub", 0, "--sheet and --artifact are workbook-only options", "",
+        1, False, "epub", 0, reason, "",
         b"existing output\n",
     ), "workbook options must refuse EPUB before output writes"
 
@@ -452,7 +455,7 @@ def test_public_epub_wrapper_and_uppercase_suffix_preserve_tally_and_utf8(tmp_pa
     assert path.suffix == ".EPUB", "the public wrapper probe must exercise suffix normalization"
     # WHEN the public wrapper and service each convert the same publication
     markdown, tally = brewdoc.render_epub(path)
-    rc, receipt, api_markdown = brewdoc.run(path)
+    rc, receipt, api_markdown = rendering_result(brewdoc.run(path))
     # THEN the wrapper retains its two-value shape and the service retains full Unicode output
     expected = expected_document(path).replace('"sample.epub"', '"sample.EPUB"')
     expected_tally = dict(zero_tally(), chapters=2, text_regions=2)
@@ -472,7 +475,7 @@ def test_xml_preflight_accepts_bare_doctype_and_utf16_without_fetching(tmp_path,
     path = write_epub_bytes(tmp_path / "sample.epub", members)
     assert members["OPS/b.xhtml"][:2] == codecs.BOM_UTF16, "the XML probe must carry a UTF-16 BOM"
     # WHEN Expat and ElementTree consume the same bounded required member bytes
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN XML encodings and inert bare doctypes retain the full Unicode contract
     assert result == (0, expected_receipt(path), expected_document(path)), (
         "UTF-16 and bare doctypes must render exact Unicode without external entity resolution")
@@ -485,7 +488,7 @@ def test_empty_qualified_body_remains_a_declared_spine_unit(tmp_path):
     path = write_epub(tmp_path / "sample.epub", members)
     assert members["OPS/b.xhtml"].count("<body></body>") == 1, "the first body must be qualified and empty"
     # WHEN the package converts through the public service
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN an empty body preserves its ordinal and adds no source text region
     body = TWO_CHAPTER_BODY.replace("café 東京\n\n", "")
     assert result == (0, expected_receipt(path, regions=1),
@@ -504,7 +507,7 @@ def test_hidden_qualified_body_preserves_unit_without_included_regions(tmp_path,
     assert members["OPS/b.xhtml"].count("<body %s>" % attribute) == 1, (
         "the hiding guard must apply to the body itself")
     # WHEN the included publication flow excludes the entire hidden body
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN the declared unit stays in order without source text or an available hidden anchor
     body = TWO_CHAPTER_BODY.replace("café 東京\n\n", "")
     assert result == (0, expected_receipt(path, regions=1),
@@ -520,7 +523,7 @@ def test_list_item_fragments_stay_at_their_own_source_region(tmp_path):
     path = write_epub(tmp_path / "sample.epub", members)
     assert members["OPS/b.xhtml"].count('id="') == 2, "the second item must own both source IDs"
     # WHEN ordered list regions acquire their generated fragment destinations
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN second-item anchors follow the first item and start the second item's region
     listing = ('- One\n-\n  <a id="brewdoc-chapter-000001-fragment-000001"></a>\n'
                '  <a id="brewdoc-chapter-000001-fragment-000002"></a>\n  Two inline\n')
@@ -540,7 +543,7 @@ def test_inline_code_keeps_literal_bytes_emphasis_and_fragment_position(tmp_path
     assert members["OPS/b.xhtml"].count('\n\t  literal') == 1, (
         "literal code must include whitespace to preserve")
     # WHEN inline code is lowered to a native safe fenced region at its source position
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN prose keeps independent emphasis while the code and its fragment remain literal
     content = ('Before *soft*\n\n<a id="brewdoc-chapter-000001-fragment-000001"></a>\n'
                '````\n<x> & ```\n\t  literal\n````\n\n'
@@ -561,14 +564,14 @@ def test_http_link_output_limit_uses_actual_quoted_bytes_and_is_inclusive(tmp_pa
     out = tmp_path / "preserved.md"
     body = TWO_CHAPTER_BODY.replace("café 東京\n", "[web](%s)\n" % target)
     expected = expected_document(path, body)
-    maximum = len(expected.encode("utf-8"))
+    maximum = len(brewdoc.run(path)[2].encode("utf-8"))
     assert len(target) == 2024, "the URL must contain exactly the bounded ASCII target bytes"
     # WHEN the complete Markdown budget equals its exact byte count and then drops by one
     monkeypatch.setitem(epub.LIMITS, "markdown_bytes", maximum)
-    accepted = brewdoc.run(path)
+    accepted = rendering_result(brewdoc.run(path))
     monkeypatch.setitem(epub.LIMITS, "markdown_bytes", maximum - 1)
     out.write_bytes(b"existing output\n")
-    rc, receipt, markdown = brewdoc.run(path, out)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path, out), output=out)
     # THEN actual URL quoting accepts the inclusive boundary and one-over refuses atomically
     assert accepted == (0, expected_receipt(path), expected), (
         "HTTP link accounting must use actual quoted bytes rather than a pessimistic multiplier")
@@ -586,7 +589,7 @@ def test_inline_code_inside_a_link_preserves_safe_segments_and_internal_fragment
     path = write_epub(tmp_path / "sample.epub", members)
     assert members["OPS/b.xhtml"].count('<a href=') == 2, "the probe requires external and internal links"
     # WHEN inline code splits the enclosing link into native source-order regions
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN safe surrounding link segments stay linked and code fragment identity remains available
     content = ('[Before](https://example.invalid/)\n\n'
                '<a id="brewdoc-chapter-000001-fragment-000001"></a>\n```\n<x> &\n```\n\n'
@@ -613,7 +616,7 @@ def test_recognized_manifest_font_obfuscation_does_not_block_reading_content(tmp
     assert members["OPS/book.opf"].count('media-type="font/otf"') == 1, (
         "font acceptance requires a declared font media type")
     # WHEN the EPUB reader validates encryption before reading chapter XML
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN font-only obfuscation leaves the publication's exact text and receipts available
     assert result == (0, expected_receipt(path), expected_document(path)), (
         "recognized font obfuscation must not attempt font decoding or refuse reading text")
@@ -629,7 +632,7 @@ def test_images_render_as_markdown_images_and_drop_without_alt_text(tmp_path):
     path = write_epub(tmp_path / "sample.epub", members)
     assert len(members) == 6, "image rendering must not require archive image payloads"
     # WHEN image content renders without extraction or fetching
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN alt text images become Markdown images at source position and the rest drop
     image_text = ('![\\[x\\] \\*y\\*](pictures/a%20%28b%29.png)\n\n![none]()\n\n'
                   'See ![fig](f.png) here\n')
@@ -649,7 +652,7 @@ def test_block_inline_and_cross_chapter_links_use_source_order_fragment_anchors(
     path = write_epub(tmp_path / "sample.epub", members)
     assert members["OPS/b.xhtml"].count('id="') == 2, "the anchor probe requires two ordered source IDs"
     # WHEN source-local and cross-document links resolve against included fragments
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN generated anchors appear at the containing region and rewritten links remain local
     first = ('<a id="brewdoc-chapter-000001-fragment-000001"></a>\n'
              '<a id="brewdoc-chapter-000001-fragment-000002"></a>\n'
@@ -675,7 +678,7 @@ def test_distinct_spine_items_converging_on_one_fallback_keep_occurrence_identit
     assert members["OPS/book.opf"].count('fallback="b"') == 1, (
         "the unsupported item must declare its endpoint")
     # WHEN fallback resolution retains both original spine occurrences
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN self-links use current occurrence while repeated navigation targets use the first
     body = ('<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Alpha"\n\n'
             '<a id="brewdoc-chapter-000001-fragment-000001"></a>\n'
@@ -700,12 +703,14 @@ def test_epub_cli_ascii_stdout_and_file_preserve_the_same_utf8_bytes(tmp_path):
                             env=environment, capture_output=True, check=False)
     file_run = subprocess.run([sys.executable, "-m", "brewdoc.cli", str(path), "--out", str(out)],
                               env=environment, capture_output=True, check=False)
-    receipt_bytes, _, markdown_bytes = stdout.stdout.partition(os.linesep.encode("ascii"))
+    assert (stdout.returncode, file_run.returncode) == (0, 0), "both CLI routes must succeed before byte comparison"
+    assert stdout.stdout.partition(os.linesep.encode("ascii"))[2] == out.read_bytes(), "full inspected CLI bytes must equal the written file"
+    receipt_bytes, _, markdown_bytes = rendering_stdout(stdout.stdout).partition(os.linesep.encode("ascii"))
     # THEN ASCII JSON precedes exact UTF-8 Markdown and --out emits receipt-only stdout
     expected = expected_document(path).encode("utf-8")
     file_receipt = dict(expected_receipt(path), out=str(out))
     assert (stdout.returncode, stdout.stderr, receipt_bytes, markdown_bytes,
-            file_run.returncode, file_run.stderr, file_run.stdout, out.read_bytes()) == (
+            file_run.returncode, file_run.stderr, rendering_stdout(file_run.stdout), rendering_bytes(out.read_bytes())) == (
         0, b"", json.dumps(expected_receipt(path), sort_keys=True, ensure_ascii=True).encode("ascii"),
         expected, 0, b"", (json.dumps(file_receipt, sort_keys=True, ensure_ascii=True) + os.linesep)
         .encode("ascii"), expected,
@@ -765,7 +770,7 @@ def test_required_content_refusals_are_atomic_and_named(tmp_path, member, replac
     out.write_bytes(b"existing output\n")
     assert out.read_bytes() == b"existing output\n", "the refusal sentinel must start intact"
     # WHEN a hard EPUB refusal occurs after package or chapter parsing
-    rc, receipt, markdown = brewdoc.run(path, out)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path, out), output=out)
     # THEN the named refusal carries the entire zero-unit receipt and no partial Markdown
     assert re.sub(r"\A(?:" + reason_pattern + r")\Z", "MATCH", receipt["reason"]) == "MATCH", (
         "the refusal must name the intended required-content violation: " + receipt["reason"])
@@ -798,7 +803,7 @@ def test_navigation_hidden_by_ancestor_or_list_refuses_atomically(tmp_path, navi
     out.write_bytes(b"existing output\n")
     assert out.read_bytes() == b"existing output\n", "the hidden-navigation sentinel must start intact"
     # WHEN the reader resolves the publication's required navigation labels and destinations
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), output=out)
     # THEN excluded navigation never contributes labels or partial units or replaces output
     assert (result, out.read_bytes()) == (
         (1, expected_refusal(path, reason), ""), b"existing output\n",
@@ -820,7 +825,7 @@ def test_visible_navigation_omits_hidden_optional_branches(tmp_path, navigation)
     assert navigation.count("not-in-spine.xhtml") == 1, (
         "the hidden branch must have an unavailable target")
     # WHEN included navigation walks only the visible publication flow
-    result = brewdoc.run(path)
+    result = rendering_result(brewdoc.run(path))
     # THEN optional hidden entries contribute neither labels nor required target validation
     assert result == (0, expected_receipt(path), expected_document(path)), (
         "hidden optional TOC branches must preserve exact visible navigation and declared chapter order")
@@ -837,7 +842,7 @@ def test_duplicate_zip_member_names_refuse_before_output_replacement(tmp_path):
         with zipfile.ZipFile(path, "a") as archive:
             archive.writestr("OPS/b.xhtml", members["OPS/b.xhtml"])
     # WHEN archive admission sees both declarations before reading chapters
-    rc, receipt, markdown = brewdoc.run(path, out)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path, out), output=out)
     # THEN duplicate-member ambiguity returns a named complete refusal with unchanged bytes
     assert re.sub(r"\AEPUB .*duplicate.*\Z", "DUPLICATE", receipt["reason"]) == "DUPLICATE", (
         "the archive refusal must identify duplicate member names")
@@ -855,7 +860,7 @@ def test_casefold_archive_name_collisions_refuse_ambiguous_lookup(tmp_path):
     out.write_bytes(b"existing output\n")
     assert len(members) == 7, "the ambiguity probe must retain both exact member spellings"
     # WHEN archive admission checks the member-name lookup boundary
-    rc, receipt, markdown = brewdoc.run(path, out)
+    rc, receipt, markdown = rendering_result(brewdoc.run(path, out), output=out)
     # THEN ambiguous lookup refuses deterministically and preserves the output sentinel
     assert re.sub(r"\AEPUB .*(?:ambiguous|collision|duplicate).*\Z", "AMBIGUOUS", receipt["reason"]) == (
         "AMBIGUOUS"
@@ -890,17 +895,17 @@ def test_epub_limits_accept_the_boundary_and_refuse_one_over(tmp_path, monkeypat
         "consumed_bytes": sum(lengths.values()) + lengths["OPS/a.xhtml"] + lengths["OPS/b.xhtml"],
         "document_elements": 14, "total_elements": 71, "depth": 6, "spine_items": 2,
         "table_columns": 2, "table_slots": 4, "total_table_slots": 8,
-        "markdown_bytes": len(expected.encode("utf-8")),
+        "markdown_bytes": len(brewdoc.run(path)[2].encode("utf-8")),
     }
     assert tuple(lengths) == ("mimetype", "META-INF/container.xml", "OPS/book.opf",
                              "OPS/a.xhtml", "OPS/b.xhtml", "OPS/nav.xhtml"), (
         "the boundary calculation requires exactly the six declared synthetic members")
     # WHEN the limit equals the consumed amount and then drops by exactly one
     monkeypatch.setitem(epub.LIMITS, budget, limits[budget])
-    accepted = brewdoc.run(path)
+    accepted = rendering_result(brewdoc.run(path))
     monkeypatch.setitem(epub.LIMITS, budget, limits[budget] - 1)
     out.write_bytes(b"existing output\n")
-    refused = brewdoc.run(path, out)
+    refused = rendering_result(brewdoc.run(path, out), output=out)
     # THEN the inclusive case succeeds and the one-over case preserves all output bytes
     assert accepted == (0, expected_receipt(path, regions=0, tables=2), expected), (
         "the EPUB %s budget must accept its exact inclusive boundary" % budget)

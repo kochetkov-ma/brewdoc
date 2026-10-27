@@ -2,6 +2,7 @@
 
 import hashlib
 import base64
+import copy
 import importlib.util
 import io
 import json
@@ -886,6 +887,7 @@ def test_existing_registry_version_refuses_semantic_or_byte_mismatch(npm_builder
 def test_smoke_consumer_uses_sealed_synthetic_epub_without_corpus_or_full_replay(tmp_path, monkeypatch, npm_builder):
     # GIVEN the real native synthetic EPUB with source-sensitive receipt and Markdown.
     import brewdoc
+    from inspection_contract import readable_markdown, rendering_receipt
     sealed = tmp_path / "seal"
     sealed.mkdir()
     case = npm_builder.native_builder().synthetic_cases(npm_builder.ROOT, sealed)[0]
@@ -895,7 +897,8 @@ def test_smoke_consumer_uses_sealed_synthetic_epub_without_corpus_or_full_replay
     row = {"probe": "epub2", "path": "sample.epub", "bytes_base64": npm_builder.base64.b64encode(payload).decode(),
            "source_sha256": npm_builder.digest(payload), "code": 0, "receipt": receipt,
            "markdown_bytes": len(markdown), "markdown_sha256": npm_builder.digest(markdown)}
-    native = {"verification_scope": "smoke", "oracle": [], "probes": [row, {"probe": "formula"}]}
+    native = {"version": "0.7.1", "source_sha": "a" * 40,
+              "verification_scope": "smoke", "oracle": [], "probes": [row, {"probe": "formula"}]}
     calls = []
     arguments = [sys.executable, "-I", "-c", "from brewdoc.cli import main; raise SystemExit(main())"]
     original_cli = npm_builder.cli_result
@@ -905,8 +908,9 @@ def test_smoke_consumer_uses_sealed_synthetic_epub_without_corpus_or_full_replay
         return original_cli(arguments, suffix, *parameters)
     monkeypatch.setattr(npm_builder, "cli_result", run)
     assert native["oracle"] == [], "Smoke must have no licensed inputs before execution"
-    assert (code, {"receipt": receipt, "markdown_sha256": npm_builder.digest(markdown)}) == (
-        0, case["expected"]), "Native EPUB literals must match the real source-sensitive seal"
+    assert (code, {"receipt": rendering_receipt(receipt),
+                   "markdown_sha256": npm_builder.digest(readable_markdown(text).encode("utf-8"))}) == (
+        0, case["expected"]), "Native EPUB readable literals must match before sealing full inspected output"
     assert receipt["source"] == "sample.epub", "The source basename belongs to the sealed receipt"
 
     # WHEN the installed global consumer verifies its smoke contract.
@@ -1094,7 +1098,7 @@ def test_public_smoke_refuses_unbound_central_evidence_before_registry_calls(tmp
 
 def test_smoke_epub_payload_drift_refuses_before_conversion_write(tmp_path, monkeypatch, npm_builder):
     # GIVEN synthetic bytes differing from their sealed native source hash.
-    native = {"verification_scope": "smoke", "oracle": [], "probes": [
+    native = {"version": "0.7.1", "source_sha": "a" * 40, "verification_scope": "smoke", "oracle": [], "probes": [
         {"probe": "epub2", "bytes_base64": npm_builder.base64.b64encode(b"altered").decode(), "source_sha256": "a" * 64},
         {"probe": "formula"}]}
     calls = []
@@ -1130,7 +1134,7 @@ def test_legacy_full_consumer_retains_help_fixture_and_atomic_refusal(tmp_path, 
         return subprocess.CompletedProcess([], next(codes), next(responses), b"")
     monkeypatch.setattr(npm_builder, "ROOT", source)
     monkeypatch.setattr(npm_builder, "cli_result", cli)
-    native = {"oracle": [row]}
+    native = {"version": "0.7.1", "source_sha": "a" * 40, "oracle": [row]}
     assert npm_builder.verification_scope(native) == "full", "Legacy seal must remain full coverage"
     # WHEN the original full consumer route runs outside its source folder.
     result = npm_builder.consumer_probe(["brewdoc"], tmp_path, {}, native, "brewdoc-darwin-arm64")
@@ -1312,3 +1316,286 @@ def test_windows_tree_fallback_timeout_still_reaps_known_launcher(tmp_path, monk
         npm_builder.cancellation_probe(tmp_path / "launcher.cjs", tmp_path, {}, False, binary)
     # THEN known launcher kill, reap and pipe cleanup run despite the error.
     assert (events, child.stdout.closed) == ([("kill-launcher", None), ("wait", 5), ("communicate", 5)], True), "Tree timeout prevented guaranteed Popen cleanup"
+
+
+@pytest.fixture
+def npm_inspection_packet():
+    """Reuse the source-sealed complete packet without regenerating consumer inputs."""
+    from test_install_verification import complete_inspection_packet
+
+    return complete_inspection_packet()
+
+
+def inspection_platform_tarball(tmp_path, builder, packet, *, version=None, inspection=True,
+                                native_payload=b"native executable", observed=None):
+    """Carry complete smoke and inspection evidence through actual npm tar members."""
+    version = version or packet["version"]
+    helper = builder.native_builder().verifier()
+    probes = [{"probe": name, "path": path, "source_sha256": builder.digest(b"old probe"),
+               "bytes_base64": base64.b64encode(b"old probe").decode(), "code": 0,
+               "receipt": {"out": None, "route": route}, "markdown_bytes": 1,
+               "markdown_sha256": "e" * 64} for name, path, route in (
+                   ("epub2", "sample.epub", "epub"), ("formula", "formulas.xlsx", "sheet"))]
+    probes[1]["artifact"] = {"key": "formula/sheet/000002", "bytes": 1, "sha256": "f" * 64}
+    archive = {"filename": f"brewdoc-{version}-macos-arm64.tar.gz", "bytes": 1, "sha256": "a" * 64}
+    native = {"schema": 1, "target": "macos-arm64", "version": version, "source_sha": packet["source_sha"],
+              "python": "3.12.14", "wheel_sha256": "b" * 64, "lock_sha256": "c" * 64,
+              "executable": "brewdoc/brewdoc", "archive": archive, "verification_scope": "smoke",
+              "inventory": {"brewdoc": {"kind": "directory", "mode": 0o755}, "brewdoc/brewdoc": {
+                  "kind": "file", "mode": 0o755, "bytes": len(b"native executable"),
+                  "sha256": builder.digest(b"native executable")}}, "oracle": [], "probes": probes}
+    verified = {"schema": 1, "verdict": "PASS", "target": native["target"], "version": version,
+                "source_sha": packet["source_sha"], "archive_sha256": archive["sha256"],
+                "verification_scope": "smoke", "self_check": 38, "fixtures": [], "probes": ["epub2", "formula"]}
+    if inspection:
+        native["inspection"] = packet
+        verified["inspection"] = helper.expected_inspection_result(packet) if observed is None else observed
+    metadata = builder.package_metadata(version, native["target"])
+    payloads = {"package.json": json.dumps(metadata).encode(), "native-manifest.json": json.dumps(native).encode(),
+                "native-verification.json": json.dumps(verified).encode(), "binary/brewdoc": native_payload}
+    path, files = tmp_path / "platform.tgz", {}
+    with tarfile.open(path, "w:gz") as archive_file:
+        for name, body in payloads.items():
+            member = tarfile.TarInfo("package/" + name)
+            member.size, member.mode = len(body), 0o755 if name == "binary/brewdoc" else 0o644
+            archive_file.addfile(member, io.BytesIO(body))
+            files[name] = {"bytes": len(body), "sha256": builder.digest(body), "mode": member.mode}
+    body = path.read_bytes()
+    record = {"target": native["target"], "version": version, "source_sha": packet["source_sha"],
+              "bytes": len(body), "sha256": builder.digest(body), "integrity": builder.integrity(body),
+              "metadata": metadata, "files": files, "native_archive": native["archive"], "links": {},
+              "verification_scope": "smoke"}
+    return path, record
+
+
+def test_npm_tarball_binds_complete_packet_to_independent_package_descriptor(tmp_path, npm_builder, npm_inspection_packet):
+    # GIVEN a complete genuine packet carried by actual native npm tar members.
+    packet = npm_inspection_packet
+    helper = npm_builder.native_builder().verifier()
+    descriptor = helper.inspection_descriptor(packet, version=packet["version"], source_sha=packet["source_sha"],
+                                              module_sources_sha256=packet["module_sources_sha256"])
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, packet)
+    assert len(packet["cases"]) == 15, "the positive control must contain every supported format"
+    # WHEN the real tarball admission receives independent package expectations.
+    result = npm_builder.verify_tarball(path, record, inspection=descriptor)
+    # THEN the existing inventory and the entire inspection packet are admitted together.
+    assert result is None, "a complete package-bound native npm packet must be admitted"
+
+
+@pytest.mark.parametrize("field", ["module_sources_sha256", "source_sha"])
+def test_npm_tarball_refuses_mutually_consistent_foreign_packet(tmp_path, npm_builder, npm_inspection_packet, field):
+    # GIVEN native and verification agree with each other but belong to a foreign package.
+    packet = npm_inspection_packet
+    helper = npm_builder.native_builder().verifier()
+    descriptor = helper.inspection_descriptor(packet, version=packet["version"], source_sha=packet["source_sha"],
+                                              module_sources_sha256=packet["module_sources_sha256"])
+    foreign = copy.deepcopy(packet)
+    foreign[field] = "0" * len(foreign[field])
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, foreign)
+    assert record["sha256"] == npm_builder.digest(path.read_bytes()), "the foreign transport is internally sealed"
+    # WHEN the real tarball entry compares the independently supplied package descriptor.
+    with pytest.raises(ValueError, match="independent package descriptor"):
+        npm_builder.verify_tarball(path, record, inspection=descriptor)
+    # THEN rejection preserves the authoritative producer identity.
+    assert descriptor["suite_sha256"] == helper.expected_inspection_result(packet)["suite_sha256"], "native data cannot redefine package authority"
+
+
+@pytest.mark.parametrize("version", ["0.8.0", "0.10.0", "1.0.0"])
+def test_npm_tarball_requires_profile_at_numeric_current_versions(tmp_path, npm_builder, npm_inspection_packet, version):
+    # GIVEN a real self-consistent npm archive with the inspection profile removed.
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, npm_inspection_packet, version=version, inspection=False)
+    assert record["version"] == version, "the transport must carry the tested external numeric version"
+    # WHEN the actual npm entry admits current release bytes.
+    with pytest.raises(ValueError, match="Required inspection packet is missing"):
+        npm_builder.verify_tarball(path, record)
+    # THEN no profile omission can be hidden behind a valid tarball identity.
+    assert record["sha256"] == npm_builder.digest(path.read_bytes()), "refusal must preserve the inspected archive bytes"
+
+
+def test_npm_tarball_keeps_immutable_historical_profile_absence(tmp_path, npm_builder, npm_inspection_packet):
+    # GIVEN a historical smoke archive with exactly its old fields and no inspection block.
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, npm_inspection_packet, version="0.7.1", inspection=False)
+    assert record["version"] == "0.7.1", "the historical control must precede the new profile requirement"
+    # WHEN old immutable bytes traverse actual npm tarball admission.
+    result = npm_builder.verify_tarball(path, record)
+    # THEN unchanged historical evidence remains valid without profile retrofitting.
+    assert result is None, "historical profile absence must remain compatible"
+
+
+@pytest.mark.parametrize("damage", ["missing-format", "duplicate-format", "payload", "unknown-schema", "second-report"])
+def test_npm_tarball_refuses_profile_damage_after_complete_positive(tmp_path, npm_builder, npm_inspection_packet, damage):
+    # GIVEN a full admitted packet and verification before one field is damaged.
+    packet = npm_inspection_packet
+    helper = npm_builder.native_builder().verifier()
+    observed = helper.expected_inspection_result(packet)
+    assert len(packet["cases"]) == 15, "every adversarial row must start with complete coverage"
+    mutations = {"missing-format": lambda: packet["cases"].pop(),
+                 "duplicate-format": lambda: packet["cases"].__setitem__(-1, copy.deepcopy(packet["cases"][0])),
+                 "payload": lambda: packet["cases"][0]["payload"].update(
+                     helper.inspection_file(b"x" * packet["cases"][0]["payload"]["size"])),
+                 "unknown-schema": lambda: packet.update(schema="brewdoc.delivery-inspection/999"),
+                 "second-report": lambda: observed["cases"][0].update(repeat_report_sha256="0" * 64)}
+    mutations[damage]()
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, packet, observed=observed)
+    # WHEN real native-manifest and verification checks reopen the entire actual npm archive.
+    with pytest.raises(ValueError, match="inspection|Inspection"):
+        npm_builder.verify_tarball(path, record)
+    # THEN self-consistent outer seals cannot replace semantic inspection admission.
+    assert record["sha256"] == npm_builder.digest(path.read_bytes()), "the outer transport was not the cause of refusal"
+
+
+@pytest.mark.parametrize("version", ["0.7.1", "0.8.0"])
+def test_npm_tarball_refuses_present_unknown_profile_even_for_history(tmp_path, npm_builder, npm_inspection_packet, version):
+    # GIVEN an otherwise complete packet with an unknown schema at either version.
+    packet = npm_inspection_packet
+    observed = npm_builder.native_builder().verifier().expected_inspection_result(packet)
+    packet.update(version=version, schema="brewdoc.delivery-inspection/999")
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, packet, observed=observed)
+    assert record["version"] == version, "the archive must reach the requested historical or current gate"
+    # WHEN the real npm admission sees a present malformed profile.
+    with pytest.raises(ValueError, match="inspection packet identity"):
+        npm_builder.verify_tarball(path, record)
+    # THEN no historical compatibility rule permits unknown present evidence.
+    assert record["files"]["binary/brewdoc"]["bytes"] == 17, "the separate native file inventory remains exact"
+
+
+def test_npm_profile_admission_retains_complete_native_file_parity(tmp_path, npm_builder, npm_inspection_packet):
+    # GIVEN a complete valid profile beside a same-size substituted native executable.
+    path, record = inspection_platform_tarball(tmp_path, npm_builder, npm_inspection_packet, native_payload=b"Native executable")
+    assert record["files"]["binary/brewdoc"]["bytes"] == 17, "same-size native substitution must reach byte comparison"
+    # WHEN npm checks every native file after inspection admission.
+    with pytest.raises(ValueError, match="native files"):
+        npm_builder.verify_tarball(path, record)
+    # THEN inspection success never relaxes the existing full native inventory contract.
+    assert record["files"]["binary/brewdoc"]["sha256"] == npm_builder.digest(b"Native executable"), "the adversarial outer inventory stays internally consistent"
+
+
+def inspection_smoke_native(tmp_path, builder, packet):
+    """Add the original synthetic EPUB seal to a complete inspection consumer input."""
+    import brewdoc
+
+    seal = tmp_path / "seal"
+    seal.mkdir()
+    case = builder.native_builder().synthetic_cases(builder.ROOT, seal)[0]
+    source = Path(case["source"])
+    code, receipt, text = brewdoc.run(source)
+    payload, markdown = source.read_bytes(), text.encode("utf-8")
+    row = {"probe": "epub2", "path": "sample.epub", "bytes_base64": base64.b64encode(payload).decode(),
+           "source_sha256": builder.digest(payload), "code": code, "receipt": receipt,
+           "markdown_bytes": len(markdown), "markdown_sha256": builder.digest(markdown)}
+    return {"version": packet["version"], "source_sha": packet["source_sha"], "inspection": packet,
+            "verification_scope": "smoke", "oracle": [], "probes": [row, {"probe": "formula"}]}
+
+
+def test_npm_consumer_runs_complete_packet_without_changing_old_smoke_conversion(tmp_path, npm_builder, npm_inspection_packet):
+    # GIVEN all fifteen sealed sources plus the unchanged original smoke EPUB probe.
+    native = inspection_smoke_native(tmp_path, npm_builder, npm_inspection_packet)
+    arguments = [sys.executable, "-I", "-c", "from brewdoc.cli import main; raise SystemExit(main())"]
+    assert len(native["inspection"]["cases"]) == 15, "the real consumer must receive every supported format"
+    # WHEN the existing npm consumer entry invokes the actual development CLI prefix.
+    result = npm_builder.consumer_probe(arguments, tmp_path, os.environ.copy(), native, "brewdoc-darwin-arm64")
+    # THEN the additive result is exact and the original smoke conversion set stays unchanged.
+    assert result == {"self_check": 38, "selected_package": "brewdoc-darwin-arm64", "fixtures": [],
+                      "probes": [{"probe": "epub2", "path": "sample.epub", "markdown_sha256": native["probes"][0]["markdown_sha256"]}],
+                      "inspection": npm_builder.native_builder().verifier().expected_inspection_result(native["inspection"])}, "npm consumer evidence must contain exact observations beside the original fields"
+
+
+def test_npm_smoke_probe_runs_complete_profile_for_global_and_npx(tmp_path, monkeypatch, npm_builder, npm_inspection_packet):
+    # GIVEN admitted current smoke records and transport-only installation simulation.
+    packet = npm_inspection_packet
+    native = inspection_smoke_native(tmp_path, npm_builder, packet)
+    target, version = "macos-arm64", packet["version"]
+    native.update(target=target, archive={"sha256": "b" * 64})
+    records = [{"target": platform_target, "metadata": {"name": name}, "integrity": "sha512-" + name,
+                "native_archive": native["archive"]} for platform_target, name in npm_builder.PACKAGES.items()]
+    records.append({"metadata": {"name": "brewdoc"}, "integrity": "sha512-main"})
+    manifest = {"version": version, "source_sha": packet["source_sha"], "verification_scope": "smoke", "packages": records}
+    evidence = tmp_path / "public.json"
+    npm_builder.write_json(evidence, {"schema": 1, "verdict": "PASS", "version": version, "source_sha": packet["source_sha"],
+        "verification_scope": "smoke", "packages": {row["metadata"]["name"]: row["integrity"] for row in records}})
+    arguments = [sys.executable, "-I", "-c", "from brewdoc.cli import main; raise SystemExit(main())"]
+    original = subprocess.run
+    invocations = []
+
+    def npm(command, work, environment, **keywords):
+        """Materialize launcher paths while retaining real CLI execution below."""
+        (work / "config/cache/_npx/identity/node_modules/brewdoc").mkdir(parents=True, exist_ok=True)
+        launcher = work / "global/bin/brewdoc"
+        launcher.parent.mkdir(parents=True, exist_ok=True)
+        launcher.write_text("#!" + sys.executable + "\nfrom brewdoc.cli import main\nraise SystemExit(main())\n", encoding="utf-8")
+        launcher.chmod(0o755)
+        outputs = {"install": b"", "--yes": ("self-check: ok (38 checks)" + os.linesep).encode(),
+                   "audit": b"2 packages have verified registry signatures\n2 packages have verified attestations\n"}
+        return subprocess.CompletedProcess(command, 0, outputs[command[0]], b"")
+
+    def run(command, **options):
+        """Resolve the simulated native package and forward actual consumer CLI calls."""
+        if command[1:2] == ["-e"]:
+            folder = Path(options["env"]["HOME"]).parent / "native"
+            folder.mkdir(exist_ok=True)
+            npm_builder.write_json(folder / "native-manifest.json", native)
+            return subprocess.CompletedProcess(command, 0, str(folder / "package.json").encode(), b"")
+        if "--artifact" in command:
+            invocations.append((Path(options["cwd"]), command[command.index("--out") - 1]))
+        return original(command, **options)
+
+    monkeypatch.setattr(npm_builder, "verify_release", lambda unused: manifest)
+    monkeypatch.setattr(npm_builder.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(npm_builder.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(npm_builder, "check_tools", lambda *unused: None)
+    monkeypatch.setattr(npm_builder, "installed_identity", lambda *args, **kwargs: None)
+    monkeypatch.setattr(npm_builder, "public_record", lambda unused: True)
+    monkeypatch.setattr(npm_builder, "npm_command", lambda *args, **kwargs: arguments)
+    monkeypatch.setattr(npm_builder, "run_npm", npm)
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(npm_builder, "cancellation_probe", lambda *args, **kwargs: {"native_terminated": True})
+    assert invocations == [], "global and npx must begin without artifact output history"
+    # WHEN the real npm orchestration runs each installed-prefix CLI through every sealed row.
+    output = tmp_path / "report.json"
+    npm_builder.probe(tmp_path, target, "public", output, smoke=True, public_evidence=evidence)
+    # THEN both consumers have exact observed profiles and disjoint case/run directories.
+    report = npm_builder.read_json(output)
+    expected = npm_builder.native_builder().verifier().expected_inspection_result(packet)
+    assert {name: row["inspection"] for name, row in report["consumers"].items()} == {
+        "global": expected, "npx": expected}, "smoke npx must carry the entire profile beside global evidence"
+    assert report["consumers"]["npx"]["probes"] == [], "the old npx conversion probe list must remain empty"
+    assert (len(invocations), len({path for path, _source in invocations}),
+            sorted({path.parents[2].name for path, _source in invocations})) == (
+                60, 60, ["consumer-global", "consumer-npx"]), "each consumer, case and repeated run must receive fresh paths"
+
+
+@pytest.mark.parametrize("damage,message", [("payload", "payload bytes"),
+    ("second-report", "report or selected payload"), ("stale-output", "artifacts are missing or linked")])
+def test_npm_consumer_refuses_changed_or_stale_cli_artifacts(tmp_path, monkeypatch, npm_builder, npm_inspection_packet,
+                                                           damage, message):
+    # GIVEN the genuine complete consumer packet and real CLI, with only artifact I/O disturbed.
+    native = inspection_smoke_native(tmp_path, npm_builder, npm_inspection_packet)
+    arguments = [sys.executable, "-I", "-c", "from brewdoc.cli import main; raise SystemExit(main())"]
+    original = subprocess.run
+    calls = []
+
+    def run(command, **options):
+        """Alter an observed output or skip only the second fresh invocation."""
+        directory = Path(options.get("cwd", tmp_path))
+        inspection_call = "--artifact" in command
+        if inspection_call:
+            calls.append(SimpleNamespace(path=directory, result=None))
+        if inspection_call and damage == "stale-output" and len(calls) == 2:
+            return subprocess.CompletedProcess(command, calls[0].result.returncode, calls[0].result.stdout, b"")
+        result = original(command, **options)
+        if inspection_call:
+            mutations = {"payload": lambda: (directory / "payload.bin").write_bytes(b"corrupt payload"),
+                         "second-report": lambda: (directory / "report.json").write_bytes(b"{}\n"),
+                         "stale-output": lambda: None}
+            if damage == "payload" or len(calls) == 2:
+                mutations[damage]()
+            calls[-1].result = result
+        return result
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert calls == [], "the no-op child must not inherit any earlier invocation"
+    # WHEN the actual npm consumer reaches the shared native CLI probe.
+    with pytest.raises(ValueError, match=message):
+        npm_builder.consumer_probe(arguments, tmp_path, os.environ.copy(), native, "brewdoc-darwin-arm64")
+    # THEN fresh per-run artifact destinations prevent stale output from manufacturing evidence.
+    assert len(calls) == {"payload": 1, "second-report": 2, "stale-output": 2}[damage], "consumer must stop at the first changed observation"

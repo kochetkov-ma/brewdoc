@@ -11,6 +11,9 @@ import sys
 
 import pytest
 
+from inspection_contract import (readable_markdown, rendering_bytes, rendering_result,
+                                 rendering_stdout)
+
 from brewdoc import cli, htmltext, render_html, service
 from brewdoc.common import BrewdocError
 from test_contract import NOT_APPLICABLE, SCHEMA_TWO, docx, schema_two, zero_tally
@@ -29,6 +32,62 @@ HTML_OMISSIONS = [
     "images without alt text",
     "navigation, header, footer and aside landmarks outside main or article content",
 ]
+
+
+def _bound_inspection(prefix, supplement, separator):
+    """Build test framing independently, with an explicit literal separator."""
+    payload = prefix.encode("utf-8")
+    marker = "<!-- brewdoc-inspection/1 readable-bytes=%d sha256=%s -->\n" % (
+        len(payload), hashlib.sha256(payload).hexdigest())
+    return prefix + separator + marker + supplement
+
+
+@pytest.mark.parametrize("prefix,separator", [("", ""), ("Readable.\n", "\n"), ("Readable.\n\n", "")],
+                         ids=["empty", "one-newline", "two-newlines"])
+def test_inspection_projection_preserves_exact_prefix_and_literal_source_marker(prefix, separator):
+    # GIVEN an explicit generated supplement and the same syntax inside a source code fence
+    marker = "Source inspection findings. Omission notices describe the readable projection."
+    supplement = marker + "\n\n## Links\n\n- separate evidence\n"
+    literal = "```text\n" + supplement + "```\n"
+    assert literal.count(marker) == 1, "the literal source must contain a genuine marker-shaped line"
+    # WHEN only the generated supplement boundary is projected away
+    projected = (readable_markdown(_bound_inspection(prefix, supplement, separator)),
+                 readable_markdown(_bound_inspection(literal, supplement, "\n")))
+    # THEN empty bodies, all original newlines and fenced marker-shaped source remain exact
+    assert readable_markdown(prefix + supplement) == prefix + supplement, "unbound source lookalikes must stay whole"
+    assert projected == (prefix, literal), "projection must remove only the explicit additive section"
+
+
+@pytest.mark.parametrize("route", ["html", "doc", "presentation", "pdf"])
+def test_inspection_projection_preserves_full_file_bytes_and_unrelated_receipt_fields(tmp_path, route):
+    # GIVEN a full inspected output and receipt fields beyond the established renderer contract
+    prefix = "Readable.\n"
+    full = _bound_inspection(prefix,
+                            "Source inspection findings. Omission notices describe the readable projection.\n\n"
+                            "## Active content\n\n```javascript\nshow('café');\n```\n", "\n")
+    output = tmp_path / "complete.md"
+    output.write_bytes(full.encode("utf-8"))
+    legacy = {"key": "formula/sheet/000001", "out": None}
+    receipt = {"route": route, "file_ok": True, "future": {"exact": 7},
+               "artifacts": [legacy, {"key": "inspection/report"}], "inspection": {"schema": "brewdoc.inspection/1"}}
+    assert output.read_bytes() == full.encode("utf-8"), "the file must contain all inspection additions before projection"
+    # WHEN the compatibility assertion first checks full file identity and then projects additions
+    projected = rendering_result((0, receipt, full), output=output)
+    # THEN unrelated fields and artifacts stay exact and no published bytes are changed
+    assert (projected, output.read_bytes()) == ((0, {
+        "route": route, "file_ok": True, "future": {"exact": 7}, "artifacts": [legacy],
+    }, prefix), full.encode("utf-8")), "legacy assertions must preserve full published output and unrelated fields"
+
+
+def test_inspection_projection_keeps_text_pass_through_marker_bytes():
+    # GIVEN pass-through text whose own source resembles a generated inspection supplement
+    source = "Source inspection findings. Omission notices describe the readable projection.\n\n## Links\n"
+    receipt = {"route": "text", "file_ok": True, "artifacts": [], "inspection": {"schema": "brewdoc.inspection/1"}}
+    assert source.endswith("## Links\n") is True, "the source must contain the full marker-shaped sequence"
+    # WHEN the readable receipt projection is used on a text route
+    projected = rendering_result((0, receipt, source))
+    # THEN the source bytes remain untouched rather than being mistaken for an appended section
+    assert projected == (0, {"route": "text", "file_ok": True, "artifacts": []}, source), "text routes must remain exact pass-through"
 CHAPTER = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Untitled"\n\n'
 LINKS_OMISSION = "link destinations: omitted by --no-links"
 ARTICLE_OMISSION = (
@@ -101,9 +160,9 @@ def test_empty_style_guards_preserve_visibility_utf8_and_complete_receipt(
     expected = expected_document(path, content, regions)
     assert out.exists() is False, "visibility output must start absent"
     # WHEN the service renders the document and publishes its UTF-8 output
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN hiding guards dominate the no-style path without altering Unicode or counters
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, expected_receipt(path, out, regions), expected), expected.encode("utf-8"),
     ), "empty styles must retain exact visible content, full receipt and UTF-8 file bytes"
 
@@ -246,11 +305,11 @@ def test_static_html_renders_exact_document_receipt_and_output_bytes(
     assert out.exists() is False, "successful output must start absent"
     expected = expected_document(path, content, regions, title=title)
     # WHEN the public service converts the source to a file and returned Markdown
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN all content, metadata, loss accounting and receipt fields match exactly
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, regions), expected), (
         "static HTML must match its complete schema envelope, body and receipt")
-    assert out.read_bytes() == expected.encode("utf-8"), "file bytes must equal returned UTF-8 Markdown"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "file bytes must equal returned UTF-8 Markdown"
 
 
 @supported_html
@@ -273,11 +332,11 @@ def test_utf8_preflight_retains_raw_source_hash_and_unicode_bytes(tmp_path, payl
     assert path.read_bytes() == payload, "source bytes including any BOM must remain unchanged"
     expected = expected_document(path, "café 東京\n", 1)
     # WHEN HTML passes decoding preflight and rendering
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN raw source hashes and UTF-8 body hashes describe their distinct exact bytes
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "accepted UTF-8 source must preserve Unicode and hash unmodified source bytes")
-    assert out.read_bytes() == expected.encode("utf-8"), "HTML output must be UTF-8 without a BOM"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "HTML output must be UTF-8 without a BOM"
 
 
 CHARSET_REFUSED = "HTML charset declaration refused"
@@ -340,11 +399,11 @@ def test_legacy_charsets_decode_local_html_with_raw_source_hash(tmp_path, payloa
     assert path.read_bytes() == payload, "the source bytes must reach decoding unchanged"
     expected = expected_document(path, content, 1, title=title)
     # WHEN local HTML decoding applies BOM, then first meta, then UTF-8 precedence
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN text converts to exact Unicode while the source hash stays on the raw bytes
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "declared legacy charsets must decode to exact Unicode Markdown and a complete receipt")
-    assert out.read_bytes() == expected.encode("utf-8"), "charset file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "charset file and API bytes must match"
 
 
 @supported_html
@@ -380,7 +439,7 @@ def test_charset_refusals_keep_exact_reason_and_atomic_failure_receipt(tmp_path,
     out.write_bytes(b"keep existing output\n")
     assert out.read_bytes() == b"keep existing output\n", "the atomicity sentinel must exist first"
     # WHEN decoding or label resolution refuses HTML
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the designed reason, zero counts and the untouched destination are exact
     assert (result, out.read_bytes()) == ((1, expected_refusal(reason), ""), b"keep existing output\n"), (
         "charset refusals must carry the designed reason and the complete atomic failure envelope")
@@ -497,11 +556,11 @@ def test_charset_fallback_decodes_local_html_and_discloses_only_fallback_codecs(
     assert path.read_bytes() == payload, "the source bytes must reach decoding unchanged"
     expected = expected_document(path, content, 1, title=title)
     # WHEN local HTML conversion decodes them
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN text is exact and only a fallback-sourced charset adds charset_fallback to receipt/1
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1) | disclosed, expected), (
         "charset fallback must recover exact text and disclose only statistical or lossy decoding")
-    assert out.read_bytes() == expected.encode("utf-8"), "fallback file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "fallback file and API bytes must match"
 
 
 @supported_html
@@ -544,12 +603,12 @@ def test_quote_and_table_structures_preserve_full_data_order_and_accounting(
     assert out.exists() is False, "structured output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN the existing service renders the source in recovered DOM order
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN structures and counters describe every source datum once in its original position
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "quotation boundaries and table records must retain complete data and exact accounting"
-    assert out.read_bytes() == expected.encode("utf-8"), "structured file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "structured file and API bytes must match"
 
 
 @supported_html
@@ -600,11 +659,11 @@ def test_form_controls_drop_while_transparent_containers_keep_prose(tmp_path, so
     assert out.exists() is False, "control output must start absent"
     expected = expected_document(path, content, regions)
     # WHEN static HTML renders with the clean default profile
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN control subtrees leave no record or value and container text stays plain prose
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, regions), expected), (
         "controls must drop whole subtrees while form, label, legend and details text remain prose")
-    assert out.read_bytes() == expected.encode("utf-8"), "control file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "control file and API bytes must match"
 
 
 def input_limit_source(size):
@@ -661,12 +720,12 @@ def test_real_resource_limits_accept_values_below_and_at_the_boundary(
     assert path.read_bytes() == source, "the boundary source must reach the parser unchanged"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN HTML enforces the declared inclusive default limit
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN the complete output remains exact at and below the limit
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "inclusive real resource boundaries must retain valid HTML and exact output"
-    assert out.read_bytes() == expected.encode("utf-8"), "accepted boundary bytes must match the API"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "accepted boundary bytes must match the API"
 
 
 def assert_resource_refusal(path, out, result):
@@ -697,7 +756,7 @@ def test_real_resource_limits_refuse_one_over_atomically(tmp_path, build, limit)
     out.write_bytes(b"keep destination\n")
     assert out.read_bytes() == b"keep destination\n", "the refusal sentinel must exist before rendering"
     # WHEN the resource boundary rejects conversion before output staging
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the registered HTML failure envelope is atomic and explicitly identifies the limit
     assert_resource_refusal(path, out, result)
 
@@ -711,11 +770,11 @@ def test_real_table_span_limit_accepts_exact_expanded_grid(tmp_path, cells, size
     assert len(path.read_bytes()) == size, "span amplification must start from a tiny source"
     expected = expected_document(path, expanded_table_content(cells), 0, tables=1)
     # WHEN the real 100000 expanded-cell limit is enforced inclusively
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN every continuation remains empty and the full emitted table is deterministic
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 0, tables=1), expected), (
         "the actual table boundary must retain the whole span grid without truncation")
-    assert out.read_bytes() == expected.encode("utf-8"), "large grid file and API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "large grid file and API bytes must agree"
 
 
 @supported_html
@@ -729,7 +788,7 @@ def test_scaled_visible_text_limit_counts_utf8_before_whitespace_reduction(tmp_p
     path.write_bytes(("<p>" + text + "</p>").encode("utf-8"))
     expected = expected_document(path, "é" * 16 + "\n", 1)
     # WHEN included source text reaches the scaled inclusive limit before normalization
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN normalizing whitespace does not invalidate acceptable source byte totals
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "scaled visible-text boundaries must use decoded bytes before whitespace reduction")
@@ -745,7 +804,7 @@ def test_scaled_visible_text_limit_refuses_one_over_before_reduction(tmp_path, m
     path.write_bytes(("<p>" + text + "</p>").encode("utf-8"))
     out.write_bytes(b"keep destination\n")
     # WHEN accounting precedes whitespace normalization and output assembly
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the oversized source text is refused even though its reduced text is short
     assert_resource_refusal(path, out, result)
 
@@ -760,7 +819,7 @@ def test_dropped_landmark_text_still_counts_toward_the_visible_text_limit(tmp_pa
     path.write_bytes(source.encode("utf-8"))
     out.write_bytes(b"keep destination\n")
     # WHEN rendering drops the landmark but limits still cover the whole body
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the oversized source is refused even though rendered text would fit
     assert_resource_refusal(path, out, result)
 
@@ -772,11 +831,12 @@ def test_scaled_markdown_limit_counts_complete_utf8_envelope(tmp_path, monkeypat
     path, out = tmp_path / "sample.html", tmp_path / "markdown.md"
     path.write_bytes('<p>café 東京</p>'.encode("utf-8"))
     expected = expected_document(path, "café 東京\n", 1)
-    limit = len(expected.encode("utf-8")) + slack
+    complete = service.run(path)[2]
+    limit = len(complete.encode("utf-8")) + slack
     monkeypatch.setattr(htmltext, "_MARKDOWN_BYTE_LIMIT", limit, raising=False)
-    assert len(expected.encode("utf-8")) == limit - slack, "the scaled bound must include the whole envelope"
+    assert len(complete.encode("utf-8")) == limit - slack, "the scaled bound must include the complete inspected output"
     # WHEN final Markdown is checked at or below its exact complete UTF-8 byte limit
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN output includes metadata and all framing bytes without false refusal
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "the Markdown limit must use the complete UTF-8 envelope rather than characters or body alone")
@@ -788,11 +848,12 @@ def test_scaled_markdown_limit_refuses_one_over_complete_envelope(tmp_path, monk
     path, out = tmp_path / "sample.html", tmp_path / "markdown.md"
     path.write_bytes('<p>café 東京</p>'.encode("utf-8"))
     expected = expected_document(path, "café 東京\n", 1)
-    monkeypatch.setattr(htmltext, "_MARKDOWN_BYTE_LIMIT", len(expected.encode("utf-8")) - 1, raising=False)
+    complete = service.run(path)[2]
+    monkeypatch.setattr(htmltext, "_MARKDOWN_BYTE_LIMIT", len(complete.encode("utf-8")) - 1, raising=False)
     out.write_bytes(b"keep destination\n")
     assert len(expected.encode("utf-8")) - len(expected) == 5, "Unicode must distinguish characters from bytes"
     # WHEN final byte accounting includes both body and schema envelope
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the oversized complete document is refused before destination publication
     assert_resource_refusal(path, out, result)
 
@@ -811,7 +872,7 @@ def test_scaled_nested_span_budget_sums_parent_and_nested_grids(
     assert 3 + nested_cells == total, "the nested total must be exactly below or at six positions"
     expected = expected_document(path, content, 0, tables=1)
     # WHEN a single global expanded-position budget accounts for both grids
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN the layout parent renders its nested table while the aggregate limit stays inclusive
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 0, tables=1), expected), (
         "parent and nested grids must share the same expanded-cell budget")
@@ -826,7 +887,7 @@ def test_scaled_nested_span_budget_refuses_aggregate_one_over(tmp_path, monkeypa
     out.write_bytes(b"keep destination\n")
     assert 3 + 4 == 7, "the aggregate must exceed the six-position bound by one"
     # WHEN the table plan checks aggregate amplification before allocating grids
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN individual per-table checks cannot admit the oversized nested total
     assert_resource_refusal(path, out, result)
 
@@ -839,7 +900,7 @@ def test_deep_malformed_html_refuses_without_recursive_parser_traceback(tmp_path
     out.write_bytes(b"keep destination\n")
     assert path.stat().st_size == 10244, "depth refusal must not depend on raw input size"
     # WHEN malformed recovery produces a deeply nested body
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN an explicit resource refusal reaches the normal atomic failure contract
     assert_resource_refusal(path, out, result)
 
@@ -881,12 +942,12 @@ def test_security_and_fallback_edges_preserve_exact_inert_data(tmp_path, source,
     assert out.exists() is False, "security output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN rendering preserves source data without activating syntax or inventing empty regions
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN the complete document retains only approved syntax, data and counters
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "safety edges must preserve useful inert source data and exact accounting"
-    assert out.read_bytes() == expected.encode("utf-8"), "safe file and API output bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "safe file and API output bytes must agree"
 
 
 @supported_html
@@ -898,7 +959,7 @@ def test_charset_preflight_does_not_extend_past_the_inspected_window(tmp_path):
     path.write_bytes(prefix + '<meta charset="latin1"><p>café 東京</p>'.encode("utf-8"))
     expected = expected_document(path, "café 東京\n", 1)
     # WHEN the bounded preflight leaves declarations outside its window unexamined
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN strict UTF-8 decoding still preserves exact Unicode and source hashes
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "charset inspection must honor its explicit 1024-byte bound")
@@ -983,7 +1044,7 @@ def test_ascii_configured_cli_stdout_matches_api_and_utf8_file_bytes(tmp_path):
     path.write_bytes('<p>café 東京</p>'.encode("utf-8"))
     expected = expected_document(path, "café 東京\n", 1)
     assert out.exists() is False, "the byte-equivalence file must start absent"
-    api_rc, api_line, api_markdown = service.run(path, out)
+    api_rc, api_line, api_markdown = rendering_result(service.run(path, out), output=out)
     stdout_line = {**expected_receipt(path, out, 1), "out": None}
     environment = {**os.environ, "PYTHONIOENCODING": "ascii", "TMPDIR": str(tmp_path)}
     # WHEN the CLI must emit HTML through an ASCII-configured Python stream
@@ -991,8 +1052,8 @@ def test_ascii_configured_cli_stdout_matches_api_and_utf8_file_bytes(tmp_path):
                                capture_output=True, env=environment, timeout=30)
     # THEN JSON remains ASCII and Markdown bytes equal API/file UTF-8 without a traceback or BOM
     expected_stdout = json.dumps(stdout_line, ensure_ascii=True, sort_keys=True).encode("ascii")
-    assert (api_rc, api_line, api_markdown, out.read_bytes(), completed.returncode,
-            completed.stdout, completed.stderr) == (
+    assert (api_rc, api_line, api_markdown, rendering_bytes(out.read_bytes()), completed.returncode,
+            rendering_stdout(completed.stdout), completed.stderr) == (
         0, expected_receipt(path, out, 1), expected, expected.encode("utf-8"), 0,
         expected_stdout + os.linesep.encode("ascii") + expected.encode("utf-8"), b"",
     ), "ASCII-configured CLI output must deliberately preserve exact ordered HTML UTF-8 bytes"
@@ -1017,11 +1078,11 @@ def test_table_cells_drop_controls_and_inline_alt_images_without_extra_regions(t
     assert out.exists() is False, "table-control output must start absent"
     expected = expected_document(path, content, 0, tables=1)
     # WHEN the table cell emitter renders the clean default profile
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN controls vanish, alt images stay inline and only the outer table is counted
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 0, tables=1), expected), (
         "cells must drop controls, keep alt images inline and add zero text regions")
-    assert out.read_bytes() == expected.encode("utf-8"), "table-control file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "table-control file and API bytes must match"
 
 
 @supported_html
@@ -1081,12 +1142,12 @@ def test_inline_fences_and_list_children_keep_balanced_semantic_scopes(
     assert out.exists() is False, "inline/list output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN standalone child blocks and inline-code fallbacks preserve their semantic contexts
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN generated delimiters balance, list identity survives and every semantic block counts once
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "inline/list boundaries must retain source order, containment and exact emitted-block accounting"
-    assert out.read_bytes() == expected.encode("utf-8"), "inline/list file and API bytes must match"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "inline/list file and API bytes must match"
 
 
 @supported_html
@@ -1104,11 +1165,11 @@ def test_charset_examples_in_inert_lexical_contexts_do_not_declare_an_encoding(t
     assert path.stat().st_size == size, "the apparent declaration must be inside the inspected byte window"
     expected = expected_document(path, "café\n", 1)
     # WHEN bounded preflight recognizes actual HTML tags rather than source examples
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN no false encoding refusal suppresses the included Unicode paragraph
     assert (rc, receipt, markdown) == (0, expected_receipt(path, out, 1), expected), (
         "comments, script raw text and quoted attributes must not become encoding declarations")
-    assert out.read_bytes() == expected.encode("utf-8"), "valid lexical-context file and API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "valid lexical-context file and API bytes must agree"
 
 
 @supported_html
@@ -1135,12 +1196,12 @@ def test_emphasis_whitespace_stays_outside_valid_body_cell_and_fence_delimiters(
     assert out.exists() is False, "emphasis output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN whitespace normalization preserves word separation and generated emphasis semantics
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN markers surround non-whitespace text independently in each body/cell/fence segment
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "whitespace-padded delimiters must not turn source emphasis into literal markers or list syntax"
-    assert out.read_bytes() == expected.encode("utf-8"), "valid emphasis file and API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "valid emphasis file and API bytes must agree"
 
 
 @supported_html
@@ -1162,7 +1223,7 @@ def test_link_label_whitespace_moves_outside_the_brackets(tmp_path, source, cont
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "link source must reach the parser unchanged"
     # WHEN body and cell writers emit link brackets
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN the label is trimmed and its word separation stays outside the brackets
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1177,7 +1238,7 @@ def test_text_bang_before_a_generated_link_is_escaped(tmp_path, source, content,
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "bang source must reach the parser unchanged"
     # WHEN body and cell writers join the text and the generated link opener
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN `!` is written `\!`, so the link stays a link and the text keeps its `!`
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1192,7 +1253,7 @@ def test_code_split_images_and_blank_link_labels_match_epub(tmp_path, source, co
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "inline source must reach the parser unchanged"
     # WHEN body and cell writers render the shared rows
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN the image block stays and a blank-label link renders as its plain text
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1240,7 +1301,7 @@ def test_inline_whitespace_collapses_across_inline_element_boundaries(tmp_path, 
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "inline source must reach the parser unchanged"
     # WHEN body and cell writers join text across the element boundaries
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN meeting runs become one space while pre, code and verse keep their own rules
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1300,7 +1361,10 @@ def test_native_initialization_failures_preserve_package_legacy_and_html_refusal
                                capture_output=True, env=environment, timeout=60)
     # THEN package imports, complete legacy output and supported-parser refusal remain available
     assert (completed.returncode, completed.stderr) == (0, b""), "native initialization must not break package import"
-    assert (json.loads(completed.stdout), out.read_bytes()) == ({
+    observed = json.loads(completed.stdout)
+    observed["html"] = list(rendering_result(observed["html"]))
+    observed["legacy"] = list(rendering_result(observed["legacy"]))
+    assert (observed, out.read_bytes()) == ({
         "suffix_registered": True, "api_exported": True, "self_check": 1,
         "html": [1, {
             "file_ok": False, "route": "html",
@@ -1390,12 +1454,12 @@ def test_consumed_literal_and_image_anchors_preserve_each_safe_target_once(
     assert out.exists() is False, "link-target output must start absent"
     expected = expected_document(path, content, regions, tables=tables)
     # WHEN body or cell rendering preserves targets without modifying consumed literal text
-    rc, receipt, markdown = service.run(path, out)
+    rc, receipt, markdown = rendering_result(service.run(path, out), output=out)
     # THEN each safe anchor is one standard Markdown link at its position, without records
     assert (rc, receipt, markdown) == (
         0, expected_receipt(path, out, regions, tables=tables), expected,
     ), "consumed content must preserve each safe anchor occurrence without fabricated or duplicate records"
-    assert out.read_bytes() == expected.encode("utf-8"), "target-preserving file and API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "target-preserving file and API bytes must agree"
 
 
 def disclosed_document(path, content, regions, omissions, *, tables=0):
@@ -1428,9 +1492,9 @@ def test_no_links_keeps_anchor_text_and_discloses_omitted_destinations(tmp_path,
     assert out.exists() is False, "no-links output must start absent"
     expected = disclosed_document(path, content, regions, [LINKS_OMISSION], tables=tables)
     # WHEN the public service renders without link destinations
-    result = service.run(path, out, links=False)
+    result = rendering_result(service.run(path, out, links=False), output=out)
     # THEN anchor text stays, no link syntax appears and both receipt and document disclose the omission
-    assert (result, out.read_bytes()) == ((0, dict(
+    assert (result, rendering_bytes(out.read_bytes())) == ((0, dict(
         expected_receipt(path, out, regions, tables=tables), not_carried=[*HTML_OMISSIONS, LINKS_OMISSION]),
         expected), expected.encode("utf-8")), "--no-links must keep anchor text and disclose omitted destinations"
 
@@ -1448,7 +1512,7 @@ def test_no_links_omission_survives_article_selection_and_fallback(tmp_path, sou
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "the linked source must exist unchanged"
     # WHEN article mode and --no-links are combined
-    result = service.run(path, article=True, links=False)
+    result = rendering_result(service.run(path, article=True, links=False))
     # THEN the links omission follows any article omission, also when article mode falls back
     assert result == (0, dict(expected_receipt(path, None, 1), out=None,
                               not_carried=[*HTML_OMISSIONS, *omissions], **fallback),
@@ -1465,7 +1529,7 @@ def test_no_links_strips_destinations_after_attribute_limits_are_checked(tmp_pat
     monkeypatch.setattr(htmltext, "_ATTRIBUTE_BYTE_LIMIT", 4)
     assert out.read_bytes() == b"preserved", "limit refusal output must start intact"
     # WHEN --no-links rendering validates the recovered tree
-    result = service.run(path, out, links=False)
+    result = rendering_result(service.run(path, out, links=False), output=out)
     # THEN the unchanged limit refuses with the links omission and the destination stays intact
     assert (result, out.read_bytes()) == ((1, dict(
         expected_refusal("HTML attribute byte limit exceeded: 4"),
@@ -1484,9 +1548,11 @@ def test_no_links_cli_writes_plain_anchor_text_and_prints_the_disclosing_receipt
     # WHEN the CLI converts with --no-links
     code = cli.main([str(path), "--no-links", "--out", str(out)])
     captured = capsys.readouterr()
+    complete = service.run(path, links=False)[2]
+    assert out.read_bytes() == complete.encode("utf-8"), "CLI files must retain the complete inspected no-links output"
     # THEN stdout is the disclosing receipt and the file holds plain anchor text
     receipt = dict(expected_receipt(path, out, 1), not_carried=[*HTML_OMISSIONS, LINKS_OMISSION])
-    assert (code, captured.out, captured.err, out.read_bytes()) == (
+    assert (code, rendering_stdout(captured.out), captured.err, rendering_bytes(out.read_bytes())) == (
         0, json.dumps(receipt, ensure_ascii=True, sort_keys=True) + "\n", "", expected.encode("utf-8"),
     ), "--no-links CLI must publish plain anchor text with the omission in the receipt"
 
@@ -1500,7 +1566,7 @@ def test_render_html_without_links_matches_run_without_links(tmp_path):
     assert path.read_bytes() == b'<p>See <a href="https://example.com/docs">docs</a> now</p>', "source must exist"
     # WHEN the public renderer and the service both drop link destinations
     rendered = render_html(path, links=False)
-    result = service.run(path, links=False)
+    result = rendering_result(service.run(path, links=False))
     # THEN both keep anchor text, omit the destination and disclose the omission
     assert (rendered, result) == (
         (expected, dict(zero_tally(), chapters=1, text_regions=1)),
@@ -1515,17 +1581,17 @@ def test_non_html_no_links_api_and_cli_return_normal_refusal_before_output(tmp_p
     path, out = tmp_path / "sample.docx", tmp_path / "preserved.md"
     docx(path, '<w:p><w:r><w:t>Ordinary document</w:t></w:r></w:p>')
     out.write_bytes(b"preserved")
-    assert service.run(path)[0] == 0, "the non-HTML source must otherwise convert successfully"
+    assert rendering_result(service.run(path))[0] == 0, "the non-HTML source must otherwise convert successfully"
     expected = dict(expected_refusal("--no-links is an HTML-only option"), route="doc", source="sample.docx",
                     not_carried=["images, charts and the text drawn inside them",
                                  "tracked changes, comments, footnotes, headers and footers",
                                  "a table's own formatting - only its cells, row by row"])
     # WHEN public API and CLI request --no-links for a non-HTML document
-    result = service.run(path, out, links=False)
+    result = rendering_result(service.run(path, out, links=False), output=out)
     code = cli.main([str(path), "--no-links", "--out", str(out)])
     captured = capsys.readouterr()
     # THEN both refuse at options with the HTML-only message and preserve the destination
-    assert (result, code, captured.out, captured.err, out.read_bytes()) == (
+    assert (result, code, rendering_stdout(captured.out), captured.err, out.read_bytes()) == (
         (1, expected, ""), 1, json.dumps(expected, ensure_ascii=True, sort_keys=True) + "\n",
         "", b"preserved",
     ), "non-HTML --no-links requests must fail with a normal receipt before output publication"
@@ -1566,11 +1632,11 @@ def test_data_table_cell_structure_preserves_word_boundaries_and_inline_adjacenc
     assert out.exists() is False, "table word-boundary output must start absent"
     expected = expected_document(path, '| H |\n| --- |\n| ' + words + ' |\n', 0, tables=1)
     # WHEN the shared static adapter renders the recovered cell contents
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN separate blocks keep every word while inline siblings and escaping remain exact
     assert result == (0, expected_receipt(path, out, 0, tables=1), expected), (
         "data cell structure must preserve word boundaries without changing inline adjacency or escaping")
-    assert out.read_bytes() == expected.encode("utf-8"), "table file and public API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "table file and public API bytes must agree"
 
 
 @supported_html
@@ -1583,11 +1649,11 @@ def test_single_cell_layout_table_renders_cell_blocks_as_body_blocks(tmp_path, c
     assert out.exists() is False, "layout output must start absent"
     expected = expected_document(path, content, regions)
     # WHEN the adapter classifies it as a layout table
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN the cell blocks render exactly as body blocks and no table is counted
     assert result == (0, expected_receipt(path, out, regions), expected), (
         "layout cells must render lists, quotes, headings and paragraphs as ordinary blocks")
-    assert out.read_bytes() == expected.encode("utf-8"), "layout file and public API bytes must agree"
+    assert rendering_bytes(out.read_bytes()) == expected.encode("utf-8"), "layout file and public API bytes must agree"
 
 
 @supported_html
@@ -1630,9 +1696,9 @@ def test_page_chrome_follows_sectioning_scope_explicit_roles_and_page_title(tmp_
     assert out.exists() is False, "chrome output must start absent"
     expected = expected_document(path, content, regions)
     # WHEN the clean default profile drops only page chrome
-    result = service.run(path, out)
+    result = rendering_result(service.run(path, out), output=out)
     # THEN sectioned, role-overridden and titled chrome stays while plain page chrome goes
-    assert (result, out.read_bytes()) == ((0, expected_receipt(path, out, regions), expected),
+    assert (result, rendering_bytes(out.read_bytes())) == ((0, expected_receipt(path, out, regions), expected),
                                           expected.encode("utf-8")), (
         "header/footer scoping, explicit roles, page h1 and contained main must decide chrome exactly")
 
@@ -1658,7 +1724,7 @@ def test_link_and_image_targets_escape_ampersands_that_start_references(
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "target source must reach the parser unchanged"
     # WHEN body and cell writers emit link and image destinations
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN destinations escape the ampersand exactly as body text does
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1685,7 +1751,7 @@ def test_adjacent_and_flanking_emphasis_stays_valid_commonmark(tmp_path, source,
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "emphasis source must reach the parser unchanged"
     # WHEN body and cell writers emit generated delimiters
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN every delimiter opens and closes under CommonMark or is omitted
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1716,7 +1782,7 @@ def test_adjacent_same_type_lists_alternate_markers_to_stay_separate(tmp_path, s
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "list source must reach the parser unchanged"
     # WHEN the shared list helper writes adjacent lists
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN the second list switches bullet or delimiter, so CommonMark starts a new list
     assert result == (0, dict(expected_receipt(path, None, regions), out=None),
                       expected_document(path, content, regions)), (
@@ -1748,7 +1814,7 @@ def test_layout_tables_render_cells_as_blocks_while_data_tables_stay(tmp_path, s
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "table source must reach the parser unchanged"
     # WHEN the adapter classifies layout and data tables
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN layout cells render as ordinary blocks and only data tables are counted as tables
     assert result == (0, dict(expected_receipt(path, None, regions, tables=tables), out=None),
                       expected_document(path, content, regions, tables=tables)), (
@@ -1770,7 +1836,7 @@ def test_list_numbers_accept_only_ascii_digits(tmp_path, source, content, region
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "list source must reach the parser unchanged"
     # WHEN start and value attributes are parsed
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN only ASCII digits set the number, like the EPUB adapter
     assert result == (0, dict(expected_receipt(path, None, regions), out=None),
                       expected_document(path, content, regions)), (
@@ -1790,7 +1856,7 @@ def test_table_cells_drop_page_landmarks_and_empty_links_like_the_body(tmp_path,
     path.write_bytes(source.encode("utf-8"))
     assert path.read_bytes() == source.encode("utf-8"), "cell source must reach the parser unchanged"
     # WHEN the cell writer renders the clean default profile
-    result = service.run(path)
+    result = rendering_result(service.run(path))
     # THEN the cell keeps only text the body would also keep
     assert result == (0, dict(expected_receipt(path, None, 0, tables=1), out=None),
                       expected_document(path, content, 0, tables=1)), (

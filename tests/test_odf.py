@@ -10,6 +10,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from brewdoc import run
+from inspection_contract import rendering_bytes, rendering_result
 from brewdoc import odf
 from test_contract import NOT_APPLICABLE, SCHEMA_TWO, zero_tally
 
@@ -157,13 +158,13 @@ def test_odt_public_run_preserves_exact_blocks_receipt_and_utf8_output(
         "the regression must start with a readable package and a protected old output")
 
     # WHEN the existing public API renders the document
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN whole Markdown, counters, receipt and UTF-8 bytes match the source-derived contract
     assert code == 0, "ODT must render rather than return an unsupported-suffix receipt"
     omissions = OMISSIONS["odt"]
     expected = expected_document(path, "odt", body, labels, omissions, tables, text_regions)
-    assert (line, markdown, out.read_bytes(), sorted(item.name for item in tmp_path.iterdir())) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes()), sorted(item.name for item in tmp_path.iterdir())) == (
         success(path, "odt", labels, omissions, tables, text_regions, out), expected,
         expected.encode("utf-8"), ["output.md", "source.odt"],
     ), "paragraphs, headings, table slots and omission tails must survive exactly once"
@@ -190,7 +191,7 @@ def test_odp_public_run_keeps_hidden_empty_and_grouped_pages_in_source_order(tmp
     assert out.exists() is False, "presentation output must start absent"
 
     # WHEN public run renders direct pages in XML order
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN hidden and empty slides retain keys and grouped blocks retain table order
     assert code == 0, "ODP must render rather than return an unsupported-suffix receipt"
@@ -201,7 +202,7 @@ def test_odp_public_run_keeps_hidden_empty_and_grouped_pages_in_source_order(tmp
     labels = ["Étage", "Untitled", "first"]
     omissions = OMISSIONS["odp"]
     expected = expected_document(path, "odp", body, labels, omissions, 1, 3)
-    assert (line, markdown, out.read_bytes()) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes())) == (
         success(path, "odp", labels, omissions, 1, 3, out), expected, expected.encode("utf-8"),
     ), "slide title must label once, notes stay omitted and draw:name must not reorder pages"
 
@@ -220,7 +221,7 @@ def test_odf_missing_required_member_refuses_without_replacing_output(tmp_path, 
     assert names.count(missing) == 0, "the required member must actually be absent"
 
     # WHEN the public service attempts conversion
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN a named ODF missing-part refusal preserves all old destination bytes
     assert re.search(r"(?i)ODF.*missing.*" + re.escape(missing), line["reason"]) is not None, (
@@ -246,7 +247,7 @@ def test_odf_duplicate_required_member_refuses_without_replacing_output(tmp_path
     assert names.count(duplicate) == 2, "the fixture must contain two identical required names"
 
     # WHEN the public service encounters the ambiguous member
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN ambiguity is refused and the existing output survives
     assert re.search(r"(?i)ODF.*(duplicate|multiple|unique|more than once).*"
@@ -296,7 +297,7 @@ def test_odf_invalid_required_boundaries_preserve_existing_destination(
     assert actual == payload.encode("utf-8"), "the invalid part must retain its exact test payload"
 
     # WHEN conversion validates the package before output staging
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN the boundary failure is named and has the exact zero-unit refusal envelope
     assert re.search(reason_pattern, line["reason"]) is not None, (
@@ -320,22 +321,23 @@ def test_odf_manifest_encryption_is_refused_before_content_is_opened(tmp_path, m
 
     def tracked_open(archive, name, *args, **kwargs):
         """Observe selected reads without changing ordinary ZIP behavior."""
-        opened.append(getattr(name, "filename", name))
+        opened.append((archive.filename, getattr(name, "filename", name)))
         return original_open(archive, name, *args, **kwargs)
 
     monkeypatch.setattr(zipfile.ZipFile, "open", tracked_open)
     assert opened == [], "the read spy must begin without consumed-part observations"
 
     # WHEN public conversion checks manifest encryption
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
-    # THEN encrypted content is rejected without opening content.xml or publishing output
+    # THEN only inspection retains raw ciphertext; readable conversion never opens its content
     assert re.search(r"(?i)ODF.*encrypt.*content\.xml", line["reason"]) is not None, (
         "the refusal must identify encryption on the consumed member")
     expected = receipt(path, kind, line["reason"]) | {"not_carried": OMISSIONS[kind]}
-    assert (code, line, markdown, opened.count("content.xml"), out.read_bytes()) == (
-        1, expected, "", 0, b"protected destination",
-    ), "manifest encryption must be checked before reading the consumed part"
+    assert (code, line, markdown, opened.count((str(path), "content.xml")),
+            opened.count((None, "content.xml")), out.read_bytes()) == (
+        1, expected, "", 0, 1, b"protected destination",
+    ), "encryption must precede readable content reads while inspection preserves the opaque payload"
 
 
 @pytest.mark.parametrize("optional_name", ["styles.xml", "meta.xml", "settings.xml", "../ignored.xml"])
@@ -347,14 +349,14 @@ def test_odt_ignores_malformed_unconsumed_optional_members(tmp_path, optional_na
     assert out.exists() is False, "optional-part coverage must begin without an output file"
 
     # WHEN only fixed consumed members feed public conversion
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN optional malformed bytes and ignored member names create no admission requirement
     assert code == 0, "unconsumed optional members must not prevent valid body rendering"
     omissions = OMISSIONS["odt"]
     body = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\nkept\n'
     expected = expected_document(path, "odt", body, ["Body"], omissions, 0, 1)
-    assert (line, markdown, out.read_bytes()) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes())) == (
         success(path, "odt", ["Body"], omissions, 0, 1, out), expected, expected.encode("utf-8"),
     ), "only consumed package boundaries should govern body extraction"
 
@@ -375,7 +377,7 @@ def test_odt_invalid_table_counts_refuse_without_fabricating_cells(tmp_path, att
     assert f'table:{attribute}="{value}"' in blocks, "the invalid explicit count must be in the source"
 
     # WHEN conversion attempts to expand the table grid
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN invalid counts are refused instead of silently becoming one fabricated cell
     assert re.search(r"(?i)ODF.*(repeat|span|integer|positive|count|number)", line["reason"]) is not None, (
@@ -399,7 +401,7 @@ def test_odt_invalid_row_repeat_refuses_before_materializing_rows(tmp_path, valu
     assert path.stat().st_size < 8192, "even decimal-overflow coverage must use a small source"
 
     # WHEN conversion admits explicit repeat counts
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN invalid counts and decimal overflow produce a bounded refusal without output
     assert re.search(r"(?i)ODF.*(repeat|integer|positive|count|number|limit)", line["reason"]) is not None, (
@@ -426,7 +428,7 @@ def test_odt_contradictory_merged_grid_refuses_instead_of_shifting_columns(tmp_p
     assert cells in blocks, "the contradictory source grid must be present unchanged"
 
     # WHEN conversion checks merged-cell occupancy
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN unsupported occupancy is refused rather than rewritten into fabricated columns
     assert re.search(r"(?i)ODF.*(covered|span|grid|merge|overlap)", line["reason"]) is not None, (
@@ -454,13 +456,13 @@ def test_odt_exact_namespaces_ignore_lookalike_tags_and_accept_alias_prefixes(tm
         "aliases must preserve both exact office and text namespace URIs")
 
     # WHEN public conversion follows expanded namespace names
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN only exactly qualified text nodes contribute while skipped tails survive
     assert code == 0, "prefix aliases must be accepted without including lookalike text"
     body = '<a id="brewdoc-chapter-000001"></a>\n## Chapter 1: "Body"\n\nkept span tail\n'
     expected = expected_document(path, "odt", body, ["Body"], OMISSIONS["odt"], 0, 1)
-    assert (line, markdown, out.read_bytes()) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes())) == (
         success(path, "odt", ["Body"], OMISSIONS["odt"], 0, 1, out), expected, expected.encode("utf-8"),
     ), "namespace suffixes, unqualified tags and different local-name case must stay excluded"
 
@@ -509,7 +511,7 @@ def test_odf_licensed_original_bytes_render_only_source_backed_features(
         "fixture bytes and source structure must match the licensed provenance and audit correction")
 
     # WHEN the public service renders the existing corpus document
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN route units and only features present in these original sources are claimed
     assert (code, line["route"], line["unit_kind"], line["units"], line["tables"]) == (
@@ -518,7 +520,7 @@ def test_odf_licensed_original_bytes_render_only_source_backed_features(
     expression = r"(?!)" + "".join("|" + re.escape(fragment) for fragment in fragments)
     anchor = '<a id="brewdoc-%s-000001"></a>' % KINDS[kind]
     matched = re.findall(expression, markdown[markdown.index(anchor):])
-    assert (matched, out.read_bytes(), path.read_bytes()) == (
+    assert (matched, rendering_bytes(out.read_bytes()), path.read_bytes()) == (
         fragments, markdown.encode("utf-8"), raw,
     ), "source-backed text/table fragments retain order and conversion preserves original bytes"
 
@@ -535,14 +537,14 @@ def test_odp_licensed_empty_slides_have_exact_body_receipt_and_zero_text_regions
     assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, "licensed source bytes must stay original"
 
     # WHEN public run renders the empty declared slide
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN the named slide remains navigable without fabricated notes or image text
     assert code == 0, "the existing empty ODP fixture must be accepted"
     body = '<a id="brewdoc-slide-000001"></a>\n## Slide 1: "page1"\n'
     omissions = OMISSIONS["odp"]
     expected = expected_document(path, "odp", body, ["page1"], omissions, 0, 0)
-    assert (line, markdown, out.read_bytes()) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes())) == (
         success(path, "odp", ["page1"], omissions, 0, 0, out), expected, expected.encode("utf-8"),
     ), "master/footer and macro corpus fixtures prove one empty slide and no body text regions"
 
@@ -591,12 +593,12 @@ def test_odf_exact_injected_expansion_boundaries_accept_complete_output(
     assert getattr(odf, constant) == limit, "the test must use the assigned injected expansion limit"
 
     # WHEN public conversion admits the exact boundary
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN equality is accepted and generated framing is not charged as extracted source text
     assert code == 0, "the exact admitted boundary must remain readable"
     expected = expected_document(path, "odt", body, labels, OMISSIONS["odt"], tables, text_regions)
-    assert (line, markdown, out.read_bytes()) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes())) == (
         success(path, "odt", labels, OMISSIONS["odt"], tables, text_regions, out),
         expected, expected.encode("utf-8"),
     ), "exact repeat, character and cumulative limits must preserve complete output semantics"
@@ -637,7 +639,7 @@ def test_odf_one_over_injected_expansion_boundaries_preserve_destination(
         "the one-over check must use the injected policy and a protected destination")
 
     # WHEN public conversion checks prospective operation growth
-    result = run(path, out)
+    result = rendering_result(run(path, out), out)
 
     # THEN the exact named refusal retains zero-unit receipt semantics and old output bytes
     expected = receipt(path, "odt", reason) | {"not_carried": OMISSIONS["odt"]}
@@ -662,7 +664,7 @@ def test_odf_character_refusal_precedes_space_materialization(tmp_path, monkeypa
     assert allocations == [], "space allocation observations must begin empty"
 
     # WHEN text:s would grow extracted characters from one to six
-    result = run(path)
+    result = rendering_result(run(path))
 
     # THEN the character refusal happens before multiplying the spaces string
     expected = receipt(path, "odt", "ODF expanded characters limit exceeded: 5") | {
@@ -686,7 +688,7 @@ def test_odf_slot_refusal_precedes_repeated_row_materialization(tmp_path, monkey
     assert allocations == [], "row materialization observations must begin empty"
 
     # WHEN the source row count exceeds the admitted slot count by one
-    result = run(path)
+    result = rendering_result(run(path))
 
     # THEN no ODF repeat or grid loop begins before the named refusal
     expected = receipt(path, "odt", "ODF table slots limit exceeded: 4") | {
@@ -720,13 +722,13 @@ def test_odf_zero_width_huge_row_repeat_skips_decimal_conversion_and_iteration(t
         "a huge repeat must still be represented by a small source with fresh observations")
 
     # WHEN public conversion reaches a repeated row with no explicit cell slots
-    code, line, markdown = run(path, out)
+    code, line, markdown = rendering_result(run(path, out), out)
 
     # THEN the unrenderable row is skipped and later prose remains exact without numeric work
     assert code == 0, "a positive zero-width repeat must not be converted into a huge integer"
     body = BODY_START + "kept\n"
     expected = expected_document(path, "odt", body, ["Body"], OMISSIONS["odt"], 0, 1)
-    assert (line, markdown, out.read_bytes(), counts, loops) == (
+    assert (line, markdown, rendering_bytes(out.read_bytes()), counts, loops) == (
         success(path, "odt", ["Body"], OMISSIONS["odt"], 0, 1, out),
         expected, expected.encode("utf-8"), [], [],
     ), "zero-width repeats must do no decimal conversion or work proportional to the repeat"
@@ -756,7 +758,7 @@ def test_odf_rejected_growth_does_not_retain_over_budget_counter_state(
     assert counters == [], "each operation must create its own fresh expansion counter"
 
     # WHEN cumulative slot or character admission refuses the later source block
-    result = run(path)
+    result = rendering_result(run(path))
 
     # THEN the counter retains only previously admitted state
     expected = receipt(path, "odt", reason) | {"not_carried": OMISSIONS["odt"]}
@@ -784,15 +786,15 @@ def test_odf_consumed_members_share_one_zip_xml_budget_per_operation(tmp_path, m
     assert budgets == [], "there must be no inherited budget before public conversion starts"
 
     # WHEN two independent public operations consume mimetype, manifest and content
-    first = run(path, out)
-    second = run(path, out)
+    first = rendering_result(run(path, out), out)
+    second = rendering_result(run(path, out), out)
 
     # THEN selected member bytes accumulate in one fresh ODF-labelled budget per operation
     body = BODY_START + "kept\n"
     expected = expected_document(path, "odt", body, ["Body"], OMISSIONS["odt"], 0, 1)
     line = success(path, "odt", ["Body"], OMISSIONS["odt"], 0, 1, out)
     assert (first, second, [(budget.format_name, budget.consumed_bytes) for budget in budgets],
-            out.read_bytes()) == (
+            rendering_bytes(out.read_bytes())) == (
         (0, line, expected), (0, line, expected), [("ODF", selected_bytes), ("ODF", selected_bytes)],
         expected.encode("utf-8"),
     ), "manifest and content XML must share the same operation budget without cross-run leakage"
@@ -823,8 +825,8 @@ def test_odf_archive_is_closed_after_success_or_required_xml_refusal(tmp_path, m
 
     # THEN the operation releases its archive on both ordinary exit paths
     assert (code, [(archive.filename, archive.fp is None) for archive in archives]) == (
-        expected_code, [(str(path), True)],
-    ), "ODF archive ownership must close the file after both rendering and XML refusal"
+        expected_code, [(None, True), (str(path), True)],
+    ), "inspection and readable ODF archives must close after rendering and XML refusal"
 
 
 @pytest.mark.parametrize("blocks,body,labels,text_regions", [
@@ -854,11 +856,11 @@ def test_odt_explicit_body_heading_retains_empty_chapter_identity(
         "both expected chapters must be explicitly declared headings in the source")
 
     # WHEN public conversion creates chapters from the explicit heading sequence
-    result = run(path, out)
+    result = rendering_result(run(path, out), out)
 
     # THEN an explicit Body label has the same empty-chapter identity as every other heading
     expected = expected_document(path, "odt", body, labels, OMISSIONS["odt"], 0, text_regions)
-    assert (result, out.read_bytes()) == (
+    assert (result, rendering_bytes(out.read_bytes())) == (
         (0, success(path, "odt", labels, OMISSIONS["odt"], 0, text_regions, out), expected),
         expected.encode("utf-8"),
     ), "literal Body headings must preserve their declared units, including empty trailing chapters"

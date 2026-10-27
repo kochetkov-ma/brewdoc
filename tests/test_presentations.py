@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import brewdoc
+from inspection_contract import rendering_bytes, rendering_result
 from brewdoc import common
 from brewdoc.cli import main
 from brewdoc.pptx import render_presentation
@@ -45,9 +46,9 @@ def test_empty_presentation_keeps_exact_zero_unit_document_and_success_receipt(t
     assert out.exists() is False, "the zero-slide output must start absent"
     # WHEN the adapter and service render the declared empty presentation
     rendered = render_presentation(path)
-    result = brewdoc.run(path, out)
+    result = rendering_result(brewdoc.run(path, out), out)
     # THEN zero slides remain distinct from one empty slide and still succeed
-    assert (rendered, result, out.read_bytes()) == (
+    assert (rendered, result, rendering_bytes(out.read_bytes())) == (
         (expected, zero_tally()), (0, receipt, expected), expected.encode("ascii"),
     ), "empty presentations must preserve complete zero-unit schema, receipt and file bytes"
 
@@ -370,7 +371,8 @@ def test_api_cli_receipt_out_and_workbook_option_contracts_are_exact(tmp_path, c
     expected_markdown, expected_tally = render_presentation(path)
 
     # WHEN API, CLI stdout, --out and workbook-only selection paths are exercised
-    code, receipt, markdown = brewdoc.run(path)
+    full_result = brewdoc.run(path)
+    code, receipt, markdown = rendering_result(full_result)
     cli_code = main([str(path)])
     cli_output = capsys.readouterr().out
     out = tmp_path / "rendered.md"
@@ -385,7 +387,7 @@ def test_api_cli_receipt_out_and_workbook_option_contracts_are_exact(tmp_path, c
     )
     assert (code, markdown, expected_tally) == (0, expected_markdown,
                                                 zero_tally(slides=1, text_regions=1)), (
-        "the service must return the exact adapter Markdown and tally behavior"
+        "the service readable prefix must retain exact adapter Markdown and tally behavior"
     )
     assert receipt == {
         "artifacts": [], "broken_ligature_words": 0, "columns_split": 0,
@@ -401,10 +403,10 @@ def test_api_cli_receipt_out_and_workbook_option_contracts_are_exact(tmp_path, c
         "unit_keys": ["slide/000001"], "unit_kind": "slide", "units": 1,
     }, "the additive presentation receipt must match the existing receipt schema exactly"
     assert (cli_code, cli_output) == (
-        0, json.dumps(receipt, ensure_ascii=True, sort_keys=True) + "\n" + markdown,
+        0, json.dumps(full_result[1], ensure_ascii=True, sort_keys=True) + "\n" + full_result[2],
     ), "CLI stdout must contain the exact API receipt followed by Markdown"
     assert (out_code, json.loads(out_output), out.read_text("ascii")) == (
-        0, {**receipt, "out": str(out)}, markdown,
+        0, {**full_result[1], "out": str(out)}, full_result[2],
     ), "--out must write exact Markdown and report its path in the receipt"
     assert (refused[0], refused[1]["file_ok"], refused[1]["route"],
             refused[1]["unit_kind"], refused[1]["units"], refused[1]["out"],
@@ -523,7 +525,7 @@ def test_required_opc_and_slide_boundaries_refuse_exactly(tmp_path, mutate, reas
     out = tmp_path / "broken.md"
 
     # WHEN the public service reads the broken package
-    code, receipt, markdown = brewdoc.run(path, out=out)
+    code, receipt, markdown = rendering_result(brewdoc.run(path, out=out), out)
 
     # THEN it refuses at the named boundary with no units, Markdown or output
     assert (code, receipt["file_ok"], receipt["route"], receipt["unit_kind"],
@@ -578,7 +580,7 @@ def test_referenced_optional_parts_refuse_at_their_actual_boundary(
     out = tmp_path / "optional-broken.md"
 
     # WHEN the public service follows that optional relationship
-    code, receipt, markdown = brewdoc.run(path, out=out)
+    code, receipt, markdown = rendering_result(brewdoc.run(path, out=out), out)
 
     # THEN the referenced malformed boundary refuses the document without partial output
     assert (code, receipt["file_ok"], receipt["route"], receipt["unit_kind"],
@@ -616,7 +618,7 @@ def test_picture_relationship_defects_refuse_without_partial_output(tmp_path, re
     out = tmp_path / "picture-broken.md"
 
     # WHEN the public service resolves the picture relationship
-    code, receipt, markdown = brewdoc.run(path, out=out)
+    code, receipt, markdown = rendering_result(brewdoc.run(path, out=out), out)
 
     # THEN the presentation refuses at that relationship boundary
     assert (code, receipt["file_ok"], receipt["route"], receipt["unit_kind"],
@@ -639,8 +641,8 @@ def test_non_zip_and_duplicate_required_parts_are_refused(tmp_path):
     # WHEN both invalid inputs are rendered
     plain_out = tmp_path / "plain.md"
     duplicate_out = tmp_path / "duplicate.md"
-    plain_result = brewdoc.run(plain, out=plain_out)
-    duplicate_result = brewdoc.run(duplicate, out=duplicate_out)
+    plain_result = rendering_result(brewdoc.run(plain, out=plain_out), plain_out)
+    duplicate_result = rendering_result(brewdoc.run(duplicate, out=duplicate_out), duplicate_out)
 
     # THEN each refusal names the archive or exact ambiguous member and emits no Markdown
     assert (plain_result[0], plain_result[1]["file_ok"], plain_result[1]["route"],
@@ -680,13 +682,13 @@ def test_real_pptx_fixtures_render_twice_and_match_out(
     # WHEN the fixture is rendered twice and once through the service --out path
     first = render_presentation(source)
     second = render_presentation(source)
-    code, receipt, returned_markdown = brewdoc.run(source, out=out)
+    code, receipt, returned_markdown = rendering_result(brewdoc.run(source, out=out), out)
 
     # THEN the adapter is deterministic and exact feature counts survive the output transaction
     assert first == second, "a real presentation must render byte-identically on repeated reads"
     markdown, tally = first
     assert (code, receipt["file_ok"], receipt["units"], returned_markdown,
-            out.read_text("ascii"), tally["slides"], tally["tables"],
+            rendering_bytes(out.read_bytes()).decode("ascii"), tally["slides"], tally["tables"],
             markdown.count("Image: "), markdown.count("Speaker notes:")) == (
         0, True, slides, markdown, markdown, slides, tables, images, notes_count,
     ), "real fixtures must preserve slide count, feature evidence and exact --out Markdown"

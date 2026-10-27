@@ -16,7 +16,8 @@ import brewdoc
 from brewdoc import common
 from brewdoc.sheets import _sheet_grid
 from test_contract import SCHEMA_TWO
-from test_spreadsheets import DROPPED, SHEET_RECEIPT, VBA_KEY, formula_ref, tally
+from test_spreadsheets import (DROPPED, SHEET_RECEIPT, VBA_KEY, formula_ref, readable_markdown,
+                               rendering_receipt, rendering_result, tally)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -47,10 +48,12 @@ SYNTHETIC_ROWS = (
     '<row r="5"><c r="B5"><v>7</v></c></row>')
 SYNTHETIC_BODY = (
     '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "東京"\n\n'
-    '|  |  |  |  |  |  |  |\n| --- | --- | --- | --- | --- | --- | --- |\n'
-    '| café 東京 Привет | A B | left\\|right | first second |  |  |  |\n'
-    '|  | 2024-02-29 | 2024-02-29T23:45:00 | 01:02:03.124000 | 1 day, 0:00:02 | -0.0 | 5.0 |\n'
-    '|  |  |  |  |  |  |  |\n|  | 7.0 |  |  |  |  |  |\n')
+    'Source range: A2:G5\n\n| Row | A | B | C | D | E | F | G |\n'
+    '| --- | --- | --- | --- | --- | --- | --- | --- |\n'
+    '| 2 | A2: café 東京 Привет | B2: A B | C2: left\\|right | D2: first second |  |  |  |\n'
+    '| 3 |  | B3: 2024-02-29 | C3: 2024-02-29T23:45:00 | D3: 01:02:03.124000 | '
+    'E3: 1 day, 0:00:02 | F3: -0.0 | G3: 5.0 |\n'
+    '| 4 |  |  |  |  |  |  |  |\n| 5 |  | B5: 7.0 |  |  |  |  |  |\n')
 
 
 def workbook_document(path, body, contents, *, source_units=1, ordinal=1,
@@ -133,11 +136,12 @@ def test_public_ods_datetime_keeps_the_actual_time_and_microsecond_time_cells():
          [time(10, 10, 10), 17.0], [time(10, 10, 10, 123456), 18.0]],
     ), "the licensed source must expose a real datetime rather than an inferred display format"
     body = ('<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Sheet1"\n\n'
-            '| 2021-01-01 | 15.0 |\n| --- | --- |\n| 2021-01-01T10:10:10 | 16.0 |\n'
-            '| 10:10:10 | 17.0 |\n| 10:10:10.123456 | 18.0 |\n')
+            'Source range: A1:B4\n\n| Row | A | B |\n| --- | --- | --- |\n'
+            '| 1 | A1: 2021-01-01 | B1: 15.0 |\n| 2 | A2: 2021-01-01T10:10:10 | B2: 16.0 |\n'
+            '| 3 | A3: 10:10:10 | B3: 17.0 |\n| 4 | A4: 10:10:10.123456 | B4: 18.0 |\n')
     expected = workbook_document(path, body, '- [Sheet 1: "Sheet1"](#brewdoc-sheet-000001)')
     # WHEN public render and service APIs project the source values
-    actual = brewdoc.render_book(path), brewdoc.run(path)
+    actual = brewdoc.render_book(path), rendering_result(brewdoc.run(path))
     # THEN complete output preserves the date/time distinction with unchanged receipt and tally
     assert actual == ((expected, tally(1, 1)), (0, sheet_receipt(path), expected)), (
         "ODS datetime must retain full ISO time without changing date, time, counts or metadata")
@@ -160,14 +164,16 @@ def test_public_unicode_cells_keep_all_source_symbols_and_full_source_ordinals(
         digest, [["&"], ["<"], [">"], ["aaa ' aaa"], ['"'], ["☺"], ["֍"], ["àâéêèçöïî«»"]],
     ), "the fixture must expose exact Unicode symbols before conversion"
     body = ('<a id="brewdoc-sheet-000006"></a>\n## Sheet 6: "spc_chrs"\n\n'
-            '| & |\n| --- |\n| &lt; |\n| > |\n| aaa \' aaa |\n| " |\n| ☺ |\n| ֍ |\n| àâéêèçöïî«» |\n')
+            'Source range: A1:A8\n\n| Row | A |\n| --- | --- |\n'
+            '| 1 | A1: & |\n| 2 | A2: &lt; |\n| 3 | A3: > |\n| 4 | A4: aaa \' aaa |\n'
+            '| 5 | A5: " |\n| 6 | A6: ☺ |\n| 7 | A7: ֍ |\n| 8 | A8: àâéêèçöïî«» |\n')
     expected = workbook_document(path, body, '- [Sheet 6: "spc_chrs"](#brewdoc-sheet-000006)',
                                  source_units=6, ordinal=6, vba=vba, vba_count=vba_count, artifacts=artifact_table)
     receipt = sheet_receipt(path, unit_keys=["sheet/000006"], selected_sheets=["spc_chrs"],
                             artifacts=[item.to_dict() for item in references])
     # WHEN only the Unicode sheet is selected using the public APIs
     actual = (brewdoc.list_book_artifacts(path, sheets=("spc_chrs",)),
-              brewdoc.render_book(path, sheets=("spc_chrs",)), brewdoc.run(path, sheets=("spc_chrs",)))
+              brewdoc.render_book(path, sheets=("spc_chrs",)), rendering_result(brewdoc.run(path, sheets=("spc_chrs",))))
     # THEN source ordinal, complete artifacts, Unicode content and all loss counters remain exact
     assert actual == (references, (expected, tally(1, 1)), (0, receipt, expected)), (
         "ordinary Unicode must survive without replacement while source ordinals and VBA inventory remain exact")
@@ -229,7 +235,7 @@ def test_synthetic_public_outputs_keep_full_temporal_grid_unicode_labels_and_cac
     result = brewdoc.run(path, out, sheets=("東京",), artifact_outputs={"formula/sheet/000001": formula_out})
     artifact = brewdoc.read_book_artifact(path, "formula/sheet/000001")
     # THEN complete UTF-8 Markdown, receipts, cached values and escaped JSON artifacts agree
-    assert (rendered, result, out.read_bytes(), formula_out.read_bytes(), artifact) == (
+    assert (rendered, rendering_result(result, out), readable_markdown(out.read_text()).encode("utf-8"), formula_out.read_bytes(), artifact) == (
         (markdown, {**tally(1, 1), "dropped": {**DROPPED, "nbsp": 1}}),
         (0, written_receipt, markdown), markdown.encode("utf-8"), payload, payload,
     ), "Unicode publication must preserve full grid, single pipe escaping, ordinals and ASCII-escaped formula bytes"
@@ -245,8 +251,9 @@ def test_ascii_configured_cli_publishes_exact_utf8_workbook_bytes(tmp_path):
     process = subprocess.run([sys.executable, "-m", "brewdoc.cli", str(path)], env=environment,
                              capture_output=True, timeout=10, check=False)
     # THEN receipt JSON stays escaped while Markdown uses exact UTF-8 without BOM
-    expected = (json.dumps(receipt, ensure_ascii=True, sort_keys=True) + "\n").encode("ascii") + markdown.encode("utf-8")
-    assert (process.returncode, process.stdout, process.stderr) == (0, expected, b""), (
+    line, body = process.stdout.split(b"\n", 1)
+    actual = (rendering_receipt(json.loads(line)), readable_markdown(body.decode("utf-8")))
+    assert (process.returncode, actual, process.stderr) == (0, (receipt, markdown), b""), (
         "ASCII stream configuration must not corrupt or refuse workbook Unicode Markdown")
 
 
@@ -256,13 +263,14 @@ def test_ascii_date_only_workbook_keeps_complete_prior_output(tmp_path):
     with CalamineWorkbook.from_path(str(path)) as book:
         rows = book.get_sheet_by_name("Data").to_python(skip_empty_area=False)
     assert rows == [[date(2024, 2, 29)]], "the control must expose a date rather than midnight datetime"
-    body = '<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Data"\n\n| 2024-02-29 |\n| --- |\n'
+    body = ('<a id="brewdoc-sheet-000001"></a>\n## Sheet 1: "Data"\n\nSource range: A1:A1\n\n'
+            '| Row | A |\n| --- | --- |\n| 1 | A1: 2024-02-29 |\n')
     markdown = workbook_document(path, body, '- [Sheet 1: "Data"](#brewdoc-sheet-000001)', formula="available", formula_count=0)
     out = tmp_path / "book.md"
     # WHEN a date-only ASCII workbook is rendered and written by public APIs
-    actual = brewdoc.render_book(path), brewdoc.run(path, out)
+    actual = brewdoc.render_book(path), rendering_result(brewdoc.run(path, out), out)
     # THEN every prior ASCII output byte, receipt field and tally remains unchanged
-    assert (actual, out.read_bytes()) == (((markdown, tally(1, 1)),
+    assert (actual, readable_markdown(out.read_text()).encode("ascii")) == (((markdown, tally(1, 1)),
                                          (0, sheet_receipt(path, out=str(out)), markdown)), markdown.encode("ascii")), (
         "the workbook fidelity change must preserve complete ASCII/date-only behavior")
 

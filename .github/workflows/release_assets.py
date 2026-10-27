@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import threading
 import time
@@ -181,17 +182,26 @@ def reuse_ci(checkout: Path, output: Path, tag: str, source_sha: str) -> dict:
         download_ci_artifact(row, output / name)
     if read_json(output / "ci-dist/ci-package/producer-inputs.json") != source_inputs(checkout, source_sha):
         raise ValueError("CI producer input or tool hashes differ")
+    bundle = output / "ci-dist"
+    packages = helper("verify_install")
+    producer = read_json(bundle / "ci-package/manifest.json")
+    packages.verify_manifest(bundle, producer)
+    inspection = package_inspection(checkout, bundle, producer, version=version, source_sha=source_sha)
     binaries = read_json(output / "ci-native-assets/binaries.json")
     npm = helper("build_npm").verify_release(output / "ci-npm-release")
     if binaries.get("verification_scope") != "smoke" or npm.get("verification_scope") != "smoke":
         raise ValueError("CI reuse requires explicit smoke profiles")
     for target in TARGETS:
         native = binaries["targets"][target]
-        native_report(read_json(output / f"ci-native-assets/verification/{target}.json"), native, source_sha, version, target)
+        native_report(read_json(output / f"ci-native-assets/verification/{target}.json"), native, source_sha, version, target,
+                      inspection=inspection)
+    admit_npm_inspection(output / "ci-npm-release", npm, binaries, version=version,
+                         source_sha=source_sha, inspection=inspection)
     for target in NPM_TARGETS:
         native = binaries["targets"][target]
         report = read_json(output / f"ci-npm-consumer-{target}/ci-npm-probe-{target}.json")
-        npm_report(report, target, {"version": version, "source_sha": source_sha}, native, npm, "local")
+        npm_report(report, target, {"version": version, "source_sha": source_sha}, native, npm, "local",
+                   inspection=inspection)
     refreshed = api(f"actions/runs/{run['id']}")
     admit_producer(refreshed, source_sha)
     if refreshed["run_attempt"] != run["run_attempt"]:
@@ -203,6 +213,8 @@ def reuse_ci(checkout: Path, output: Path, tag: str, source_sha: str) -> dict:
     record = {"schema": 1, "source_sha": source_sha, "version": version, "run_id": run["id"],
               "run_attempt": run["run_attempt"], "artifacts": {name: {key: row[key] for key in
                   ("id", "digest", "size_in_bytes")} for name, row in artifacts.items()}}
+    if inspection is not None:
+        record["inspection"] = inspection
     write_json(output / "producer.json", record)
     return record
 
@@ -281,6 +293,7 @@ def prepare(checkout: Path, bundle: Path, native: Path, output: Path, body: Path
     source_sha = command(["git", "-C", str(checkout), "rev-parse", "HEAD"]).decode().strip()
     if (producer["version"], producer["checkout_sha"]) != (version, source_sha):
         raise ValueError("Package source or version differs from checkout")
+    inspection = package_inspection(checkout, bundle, producer, version=version, source_sha=source_sha)
     if not re.fullmatch(r"[0-9a-f]{40}", source_sha) or not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Release version or source identity is invalid")
     if {name: packages.digest(checkout / name) for name in producer["source"]} != producer["source"]:
@@ -295,6 +308,7 @@ def prepare(checkout: Path, bundle: Path, native: Path, output: Path, body: Path
     builder = helper("build_standalone")
     for target in TARGETS:
         record = binaries["targets"][target]
+        admit_release_inspection(record, version=version, source_sha=source_sha, inspection=inspection)
         builder.validate_manifest(record)
         if (record["target"], record["version"], record["source_sha"], record["wheel_sha256"], record["lock_sha256"]) != (
                 target, version, source_sha, packages.digest(wheel), packages.digest(checkout / "uv.lock")):
@@ -306,16 +320,19 @@ def prepare(checkout: Path, bundle: Path, native: Path, output: Path, body: Path
             builder.extract_archive(archive, Path(temporary) / "bundle", record["inventory"])
         paths.append(archive)
     expected_native = {path.name for path in paths[2:]} | {"SHA256SUMS"}
+    if inspection is not None and not (native / "verification").is_dir():
+        raise ValueError("Native inspection verification reports are missing")
     if (native / "verification").is_dir():
         expected_native.add("verification")
         for target in TARGETS:
             native_report(read_json(native / f"verification/{target}.json"), binaries["targets"][target],
-                          source_sha, version, target)
+                          source_sha, version, target, inspection=inspection)
     if {path.name for path in native.iterdir()} != expected_native:
         raise ValueError("Native aggregate has unexpected files")
     npm_record = helper("build_npm").verify_release(npm)
     if (npm_record["version"], npm_record["source_sha"]) != (version, source_sha):
         raise ValueError("npm identity differs from package source")
+    admit_npm_inspection(npm, npm_record, binaries, version=version, source_sha=source_sha, inspection=inspection)
     npm_paths = [npm / "npm-manifest.json", *(npm / row["filename"] for row in npm_record["packages"])]
     if {path.name for path in npm.iterdir()} != {path.name for path in npm_paths}:
         raise ValueError("npm aggregate has unexpected files")
@@ -327,15 +344,19 @@ def prepare(checkout: Path, bundle: Path, native: Path, output: Path, body: Path
     body.read_text(encoding="utf-8")
     manifest = {"schema": 1, "repository": REPOSITORY, "version": version, "tag": "v" + version,
                 "source_sha": source_sha, "assets": assets, "body": staged_body, "npm": True}
+    if inspection is not None:
+        manifest["inspection"] = inspection
     if producer_record is not None:
         manifest["producer"] = read_json(producer_record)
+        if manifest["producer"].get("inspection") != inspection:
+            raise ValueError("CI producer inspection descriptor differs from the package")
     output.mkdir(parents=True, exist_ok=False)
     for path in paths:
         shutil.copyfile(path, output / path.name)
     shutil.copyfile(body, output / "staged-body.md")
     write_json(output / "release-manifest.json", manifest)
     (output / "SHA256SUMS").write_text(checksums(assets), encoding="ascii")
-    admit(output, manifest["tag"], source_sha)
+    admit(output, manifest["tag"], source_sha, inspection=inspection)
     return manifest
 
 
@@ -344,7 +365,66 @@ def checksums(assets: dict) -> str:
     return "".join(f"{row['sha256']}  {name}\n" for name, row in sorted(assets.items()))
 
 
-def admit(folder: Path, tag: str, source_sha: str) -> dict:
+def package_inspection(checkout: Path, bundle: Path, producer: dict, *, version: str, source_sha: str) -> dict | None:
+    """Derive publisher expectations only from independently admitted package bytes."""
+    packages = helper("verify_install")
+    if (producer["version"], producer["checkout_sha"]) != (version, source_sha):
+        raise ValueError("Inspection package differs from the external release identity")
+    if "inspection" not in producer and not packages.inspection_required(version):
+        return None
+    packet = packages.load_inspection_packet(bundle, producer)
+    if packet is None:
+        if packages.inspection_required(version):
+            raise ValueError("Required package inspection descriptor is missing")
+        return None
+    packages.check_module_sources(checkout, bundle, packages.sealed_module_sources(producer))
+    return packages.inspection_descriptor(packet, version=version, source_sha=source_sha,
+                                          module_sources_sha256=producer["module_sources_sha256"])
+
+
+def release_inspection(manifest: dict, *, inspection: dict | None = None) -> dict | None:
+    """Read the independent descriptor retained in admitted release controls."""
+    descriptor = manifest.get("inspection")
+    if (("inspection" in manifest and not isinstance(descriptor, dict))
+            or helper("verify_install").inspection_required(manifest["version"]) and descriptor is None):
+        raise ValueError("Required release inspection descriptor is missing or malformed")
+    if inspection is not None and descriptor != inspection:
+        raise ValueError("Release inspection descriptor differs from its admitted package")
+    return descriptor
+
+
+def admit_release_inspection(native: dict, *, version: str, source_sha: str,
+                             inspection: dict | None) -> dict | None:
+    """Bind native evidence to external release controls, including the version gate."""
+    packages = helper("verify_install")
+    if packages.inspection_required(version) and inspection is None:
+        raise ValueError("Required independent package inspection descriptor is missing")
+    return packages.admit_inspection(native, version=version, source_sha=source_sha, inspection=inspection)
+
+
+def admit_npm_inspection(folder: Path, npm: dict, binaries: dict, *, version: str,
+                         source_sha: str, inspection: dict | None) -> None:
+    """Compare npm's sealed embedded native evidence with package expectations."""
+    for row in npm["packages"]:
+        if row.get("target") not in NPM_TARGETS:
+            continue
+        helper("build_npm").verify_tarball(folder / row["filename"], row, inspection=inspection)
+        with tarfile.open(folder / row["filename"], "r:gz") as archive:
+            native = json.load(archive.extractfile("package/native-manifest.json"))
+        admit_release_inspection(native, version=version, source_sha=source_sha, inspection=inspection)
+        if native != binaries["targets"][row["target"]]:
+            raise ValueError("npm inspection native manifest differs from the admitted target")
+
+
+def check_report_inspection(report: dict, packet: dict | None) -> None:
+    """Keep absent historical results distinct from present malformed evidence."""
+    if packet is not None:
+        helper("verify_install").check_inspection_result(report.get("inspection"), packet)
+    elif "inspection" in report:
+        raise ValueError("Unexpected inspection result without an admitted packet")
+
+
+def admit(folder: Path, tag: str, source_sha: str, *, inspection: dict | None = None) -> dict:
     """Require the sealed complete set before every remote operation."""
     manifest = read_json(folder / "release-manifest.json")
     if manifest.get("npm") is not True:
@@ -358,10 +438,12 @@ def admit(folder: Path, tag: str, source_sha: str) -> dict:
             1, manifest["version"], source_sha, set(TARGETS)):
         raise ValueError("Sealed native aggregate identity differs")
     version = manifest["version"]
+    inspection = release_inspection(manifest, inspection=inspection)
     names = {f"brewdoc-{version}-py3-none-any.whl", f"brewdoc-{version}.tar.gz", "binaries.json"}
     builder = helper("build_standalone")
     for target in TARGETS:
         record = binaries["targets"][target]
+        admit_release_inspection(record, version=version, source_sha=source_sha, inspection=inspection)
         builder.validate_manifest(record)
         archive = record["archive"]
         if (record["target"], record["version"], record["source_sha"], record["wheel_sha256"]) != (
@@ -373,6 +455,7 @@ def admit(folder: Path, tag: str, source_sha: str) -> dict:
     npm = helper("build_npm").verify_release(folder)
     if (npm["version"], npm["source_sha"]) != (version, source_sha):
         raise ValueError("Sealed npm identity differs")
+    admit_npm_inspection(folder, npm, binaries, version=version, source_sha=source_sha, inspection=inspection)
     for row in npm["packages"][:-1]:
         if row["native_archive"] != binaries["targets"][row["target"]]["archive"]:
             raise ValueError("Sealed npm native archive differs")
@@ -654,7 +737,7 @@ def pypi_public(folder: Path, manifest: dict) -> None:
 
 
 def native_evidence(directory: Path, target: str, manifest: dict, native: dict,
-                    release: dict, assets: dict) -> None:
+                    release: dict, assets: dict, *, inspection: dict | None = None) -> None:
     """Bind the native owner's consumer report to an actual public asset id."""
     paths = list(directory.glob("*.download.json"))
     if len(paths) != 1:
@@ -671,12 +754,15 @@ def native_evidence(directory: Path, target: str, manifest: dict, native: dict,
     if timestamp.tzinfo is None or timestamp > dt.datetime.now(dt.timezone.utc):
         raise ValueError("Native download timestamp is invalid")
     report = read_json(directory / "verification.json")
-    native_report(report, native, manifest["source_sha"], manifest["version"], target)
+    native_report(report, native, manifest["source_sha"], manifest["version"], target, inspection=inspection)
 
 
-def native_report(report: dict, native: dict, source_sha: str, version: str, target: str) -> None:
+def native_report(report: dict, native: dict, source_sha: str, version: str, target: str,
+                  *, inspection: dict | None = None) -> None:
     """Require the exact native profile, synthetic outputs and platform prerequisites."""
     builder = helper("build_standalone")
+    packet = admit_release_inspection(native, version=version, source_sha=source_sha, inspection=inspection)
+    check_report_inspection(report, packet)
     builder.validate_manifest(native)
     scope = builder.verification_scope(native)
     if builder.verification_scope(report) != scope:
@@ -703,16 +789,20 @@ def native_report(report: dict, native: dict, source_sha: str, version: str, tar
         raise ValueError("Native public JS worker evidence differs")
 
 
-def npm_evidence(directory: Path, target: str, manifest: dict, native: dict, npm: dict) -> None:
+def npm_evidence(directory: Path, target: str, manifest: dict, native: dict, npm: dict,
+                 *, inspection: dict | None = None) -> None:
     """Bind normal registry installs and npx reports to the exact admitted packages."""
     report = read_json(directory / "npm-public.json")
-    npm_report(report, target, manifest, native, npm, "public")
+    npm_report(report, target, manifest, native, npm, "public", inspection=inspection)
 
 
-def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dict, mode: str) -> None:
+def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dict, mode: str,
+               *, inspection: dict | None = None) -> None:
     """Require the exact npm coverage profile and its actual cancellation evidence."""
     if target not in NPM_TARGETS:
         raise ValueError("npm target is unsupported")
+    packet = admit_release_inspection(native, version=manifest["version"], source_sha=manifest["source_sha"],
+                                      inspection=inspection)
     builder = helper("build_npm")
     scope = builder.verification_scope(npm)
     if builder.verification_scope(native) != scope or builder.verification_scope(report) != scope:
@@ -727,6 +817,7 @@ def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dic
     wanted = {"self_check": 38, "selected_package": package, "atomic_refusal": True,
               "fixtures": [{"path": row["path"], "markdown_sha256": row["markdown_sha256"]} for row in native["oracle"]]}
     for name, consumer in report["consumers"].items():
+        check_report_inspection(consumer, packet)
         if scope == "smoke":
             epub = next(row for row in native["probes"] if row["probe"] == "epub2")
             smoke = {"self_check": 38, "selected_package": package, "fixtures": [],
@@ -750,20 +841,23 @@ def npm_report(report: dict, target: str, manifest: dict, native: dict, npm: dic
         raise ValueError("npm public cancellation evidence differs")
 
 
-def admit_public(folder: Path, manifest: dict, evidence: Path) -> dict:
+def admit_public(folder: Path, manifest: dict, evidence: Path, *, inspection: dict | None = None) -> dict:
     """Produce guide facts only after public bytes and all native consumers are bound."""
     release, assets = verify_public(folder, manifest)
+    inspection = release_inspection(manifest, inspection=inspection)
     if {path.name for path in evidence.iterdir() if path.is_dir()} != set(TARGETS):
         raise ValueError("Public acceptance requires exactly three native report directories")
     binaries = read_json(folder / "binaries.json")
     npm = read_json(folder / "npm-manifest.json")
     for target in TARGETS:
         native = binaries["targets"][target]
-        native_evidence(evidence / target, target, manifest, native, release, assets)
+        native_evidence(evidence / target, target, manifest, native, release, assets, inspection=inspection)
     for target in NPM_TARGETS:
         native = binaries["targets"][target]
-        npm_evidence(evidence / target, target, manifest, native, npm)
+        npm_evidence(evidence / target, target, manifest, native, npm, inspection=inspection)
     pypi_public(folder, manifest)
+    if inspection is not None:
+        pypi_inspection(evidence, manifest, inspection=inspection)
     if helper("build_npm").verification_scope(npm) == "smoke":
         expected_registry = {"schema": 1, "verdict": "PASS", "version": manifest["version"],
                              "source_sha": manifest["source_sha"], "verification_scope": "smoke",
@@ -775,17 +869,39 @@ def admit_public(folder: Path, manifest: dict, evidence: Path) -> dict:
     consumers = {target: {"native": "PASS"} for target in TARGETS}
     for target in NPM_TARGETS:
         consumers[target].update({"npm": "PASS", "npx": "PASS"})
-    return {"schema": 1, "version": manifest["version"], "source_sha": manifest["source_sha"],
+    result = {"schema": 1, "version": manifest["version"], "source_sha": manifest["source_sha"],
             "pypi": {"published": True}, "github": {"assets": {record["archive"]["filename"]: {
                 key: record["archive"][key] for key in ("bytes", "sha256")} for record in binaries["targets"].values()}},
             "npm": {"packages": {row["metadata"]["name"]: {"version": manifest["version"], "integrity": row["integrity"]}
                                   for row in npm["packages"]}},
             "consumers": consumers}
+    if inspection is not None:
+        result["inspection"] = inspection
+        result["pypi_consumers"] = {route: "PASS" for route in ("wheel", "sdist")}
+    return result
 
 
-def finalize(folder: Path, manifest: dict, evidence: Path, body: Path) -> None:
+def pypi_inspection(evidence: Path, manifest: dict, *, inspection: dict) -> None:
+    """Require distinct installed wheel and sdist reports against package expectations."""
+    expected_paths = {f"pypi-{route}.json" for route in ("wheel", "sdist")}
+    if {path.name for path in evidence.glob("pypi-*.json")} != expected_paths:
+        raise ValueError("Public PyPI inspection requires exactly wheel and sdist reports")
+    for route in ("wheel", "sdist"):
+        path = evidence / f"pypi-{route}.json"
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Public PyPI inspection report is missing or linked")
+        expected = {"schema": 1, "verdict": "PASS", "route": route, "version": manifest["version"],
+                    "source_sha": manifest["source_sha"],
+                    "distribution": {"name": "brewdoc", "version": manifest["version"]},
+                    "inspection": inspection["result"]}
+        if read_json(path) != expected:
+            raise ValueError("Public PyPI inspection installed report differs")
+
+
+def finalize(folder: Path, manifest: dict, evidence: Path, body: Path, *, inspection: dict | None = None) -> None:
     """Update public notes only with the deterministic guide from fresh accepted evidence."""
-    availability = admit_public(folder, manifest, evidence)
+    inspection = release_inspection(manifest, inspection=inspection)
+    availability = admit_public(folder, manifest, evidence, inspection=inspection)
     identity(body)
     supplied = body.read_text(encoding="utf-8")
     with tempfile.TemporaryDirectory(prefix="brewdoc-release-guide-") as temporary:
@@ -875,9 +991,11 @@ def main(argv: list[str] | None = None) -> int:
     elif arguments.operation == "download-target":
         download_target(arguments.input, manifest, arguments.target, arguments.output)
     elif arguments.operation == "admit-public":
-        write_json(arguments.output, admit_public(arguments.input, manifest, arguments.evidence))
+        write_json(arguments.output, admit_public(arguments.input, manifest, arguments.evidence,
+                                                 inspection=release_inspection(manifest)))
     else:
-        finalize(arguments.input, manifest, arguments.evidence, arguments.body)
+        finalize(arguments.input, manifest, arguments.evidence, arguments.body,
+                 inspection=release_inspection(manifest))
     return 0
 
 

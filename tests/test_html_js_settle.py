@@ -12,6 +12,7 @@ import time
 import pytest
 
 from brewdoc import htmljs, htmlurl
+from inspection_contract import rendering_result
 from brewdoc.common import BrewdocError
 from brewdoc.htmljs import OMISSIONS, render
 from test_html_timeout import CHAPTER, URL, _html_response, _replace_worker
@@ -188,7 +189,7 @@ def test_failed_sub_request_transport_keeps_the_capture(lookup, connect, monkeyp
     # WHEN JavaScript capture runs with the failing ancillary request.
     result = htmlurl._run_url(URL, render_js=True, timeout=10)
     # THEN the page converts and the receipt names the redacted failed resource.
-    assert result == expected, 'a TLS, DNS or connect failure of one sub-request must not refuse the whole capture'
+    assert rendering_result(result) == expected, 'a TLS, DNS or connect failure of one sub-request must not refuse the whole capture'
 
 
 def test_sub_request_policy_refusal_stays_hard_and_names_the_resource(monkeypatch):
@@ -277,7 +278,7 @@ def test_invalid_sub_request_url_keeps_the_url_capture(monkeypatch, tmp_path, ta
     # WHEN JavaScript capture runs through the URL boundary.
     result = htmlurl._run_url(URL, render_js=True, timeout=10)
     # THEN the page converts with its fallback and the receipt records one unnamed ancillary failure.
-    assert (result, kinds) == (expected, ['html']), \
+    assert (rendering_result(result), kinds) == (expected, ['html']), \
         'an invalid sub-request URL must not refuse the capture at javascript; main-document refusals stay hard'
 
 
@@ -317,7 +318,7 @@ def test_invalid_document_base_keeps_the_js_url_capture(monkeypatch, tmp_path, b
     # WHEN JavaScript capture runs through the URL boundary.
     result = htmlurl._run_url(URL, render_js=True, timeout=10)
     # THEN the capture settles and links resolve against the document URL.
-    assert result == expected, 'an invalid <base href> must be ignored in JS capture, not refuse it at javascript'
+    assert rendering_result(result) == expected, 'an invalid <base href> must be ignored in JS capture, not refuse it at javascript'
 
 
 def test_animation_frames_run_in_one_pass_share_the_frame_timestamp():
@@ -398,7 +399,7 @@ def test_legacy_javascript_mime_script_runs_through_the_url_boundary(monkeypatch
     # WHEN JavaScript capture runs through the URL boundary.
     result = htmlurl._run_url(URL, render_js=True, timeout=10)
     # THEN the script is accepted, runs and the capture settles without errors.
-    assert (result, requested) == (expected, [URL, 'https://fixture.test/legacy.js']), \
+    assert (rendering_result(result), requested) == (expected, [URL, 'https://fixture.test/legacy.js']), \
         'a WHATWG JavaScript MIME essence must be accepted for an external script like a browser'
 
 
@@ -548,7 +549,7 @@ def test_url_receipt_names_the_initial_html_fallback_cause(monkeypatch, tmp_path
     # WHEN JavaScript capture runs through the URL boundary.
     result = htmlurl._run_url(URL, render_js=True, timeout=10)
     # THEN the original article converts and the receipt names one cause for both error and snapshot kind.
-    assert result == expected, \
+    assert rendering_result(result) == expected, \
         'a heap, DOM-check or timer fallback must publish acquired HTML with its own cause, not refuse at javascript'
 
 
@@ -613,7 +614,7 @@ def test_slow_initial_scripts_end_the_url_capture_at_the_soft_window_inside_the_
     result = htmlurl._run_url(URL, render_js=True, timeout=timeout)
     elapsed = time.monotonic() - started
     # THEN capture stops at the soft window from the current DOM; total wall time stays within the deadline bound.
-    assert (result, requested, elapsed) == (
+    assert (rendering_result(result), requested, elapsed) == (
         expected, [URL, SCRIPTS[0]], pytest.approx(0.0, abs=timeout + RECOVERY),
     ), 'slow initial scripts must stop at the soft window instead of running into the --timeout deadline'
 
