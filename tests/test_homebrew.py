@@ -22,23 +22,26 @@ require "json"
 class Brewdoc < Formula
   desc "Deterministic document-to-Markdown conversion"
   homepage "https://github.com/kochetkov-ma/brewdoc"
+  if OS.mac?
+    url "https://github.com/kochetkov-ma/brewdoc/releases/download/v__VERSION__/brewdoc-__VERSION__-macos-arm64.tar.gz"
+    sha256 "__MACOS_SHA__"
+  else
+    url "https://github.com/kochetkov-ma/brewdoc/releases/download/v__VERSION__/brewdoc-__VERSION__-linux-x64.tar.gz"
+    sha256 "__LINUX_SHA__"
+  end
   version "__VERSION__"
   license "MIT"
 
   on_macos do
     depends_on arch: :arm64
     depends_on macos: :sequoia
-    preserve_rpath
-    url "https://github.com/kochetkov-ma/brewdoc/releases/download/v__VERSION__/brewdoc-__VERSION__-macos-arm64.tar.gz"
-    sha256 "__MACOS_SHA__"
   end
 
   on_linux do
     depends_on arch: :x86_64
-    url "https://github.com/kochetkov-ma/brewdoc/releases/download/v__VERSION__/brewdoc-__VERSION__-linux-x64.tar.gz"
-    sha256 "__LINUX_SHA__"
   end
 
+  preserve_rpath
   skip_clean "libexec"
 
   def install
@@ -49,12 +52,12 @@ class Brewdoc < Formula
     if OS.linux?
       glibc = Utils.safe_popen_read("/usr/bin/getconf", "GNU_LIBC_VERSION").strip
       parsed = /\\Aglibc (\\d+)\\.(\\d+)\\z/.match(glibc)
-      odie "Brewdoc requires system glibc 2.35 or newer" unless parsed && (parsed.captures.map(&:to_i) <=> [2, 35]) >= 0
+      glibc_ok = parsed && (parsed.captures.map(&:to_i) <=> [2, 35]) >= 0
+      odie "Brewdoc requires system glibc 2.35 or newer" unless glibc_ok
     end
-    unless File.executable?("brewdoc") && File.directory?("_internal") &&
-           File.directory?("licenses") && File.file?("version.json")
-      odie "Unexpected Brewdoc archive layout"
-    end
+    layout_ok = File.executable?("brewdoc") && File.directory?("_internal") &&
+                File.directory?("licenses") && File.file?("version.json")
+    odie "Unexpected Brewdoc archive layout" unless layout_ok
     libexec.install Dir.children(".") - [".brew_home"]
     libexec.chmod 0755
     bin.install_symlink libexec/"brewdoc"
