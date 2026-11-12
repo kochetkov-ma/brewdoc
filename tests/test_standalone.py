@@ -455,6 +455,26 @@ def test_native_zip_member_probe_requires_the_real_cli_refusal_and_preserves_out
     ), 'CLI refusal preserves the complete rendering receipt, exact inspection bytes and destination'
 
 
+def test_native_zip_member_probe_pre_inspection_form_sends_no_artifact_request(tmp_path, monkeypatch):
+    # GIVEN a pre-0.8.0 consumer that answers the plain refusal receipt
+    source, output, expected = BUILDER.zip_xml_refusal_case(tmp_path)
+    stdout = (json.dumps(expected, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
+    commands = []
+
+    def run(arguments, **kwargs):
+        """Record the exact consumer command and answer as an old release does."""
+        commands.append(arguments)
+        return subprocess.CompletedProcess(arguments, 1, stdout, b'')
+
+    monkeypatch.setattr(BUILDER.subprocess, 'run', run)
+    # WHEN the bootstrap form of the probe runs
+    actual = BUILDER.zip_xml_refusal_probe(['brewdoc'], tmp_path, {}, inspection=False)
+    # THEN the command carries no inspection artifact and the exact plain receipt is admitted
+    assert (actual, commands, output.read_bytes()) == (
+        expected, [['brewdoc', str(source), '--out', str(output)]], b'preserve existing output\n',
+    ), 'the bootstrap form asks only what an old release supports and keeps the exact receipt check'
+
+
 @pytest.mark.parametrize('code,receipt_change,suffix,stderr,output_bytes', [
     (0, {}, b'', b'', b'preserve existing output\n'),
     (1, {'reason': 'different refusal'}, b'', b'', b'preserve existing output\n'),

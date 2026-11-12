@@ -100,7 +100,12 @@ def published_formula(sha: str, binaries: dict) -> dict:
             "source_sha": binaries["source_sha"]}
 
 
-def installed_probe(binary: Path, manifest: dict, work: Path) -> dict:
+def supports_inspection(version: str) -> bool:
+    """Inspection artifacts exist from 0.8.0; the real 0.4.1 bootstrap keeps the plain refusal form."""
+    return tuple(int(part) for part in version.split(".")) >= (0, 8, 0)
+
+
+def installed_probe(binary: Path, manifest: dict, work: Path, *, inspection: bool = True) -> dict:
     """Exercise existing sealed probes and process boundaries through the installed executable."""
     work.mkdir()
     environment = native.consumer_environment(work)
@@ -131,7 +136,7 @@ def installed_probe(binary: Path, manifest: dict, work: Path) -> dict:
                 key: row["artifact"][key] for key in ("bytes", "sha256")}:
             raise ValueError("Installed Homebrew workbook artifact differs")
         probes.append(row["probe"])
-    refused = native.zip_xml_refusal_probe([str(binary)], work, environment)
+    refused = native.zip_xml_refusal_probe([str(binary)], work, environment, inspection=inspection)
     children = native.child_checks(binary, work, environment, True)
     return {"self_check": 38, "probes": probes, "zip_xml_refusal": refused, "children": children}
 
@@ -216,7 +221,9 @@ def verify(args: argparse.Namespace) -> None:
                 raise ValueError("Homebrew linked executable differs")
             brew("test", FORMULA)
             reports[phase] = {"identity": expected, "keg": str(keg),
-                              "consumer": installed_probe(linked, manifest, work / phase)}
+                              "consumer": installed_probe(
+                                  linked, manifest, work / phase,
+                                  inspection=supports_inspection(aggregate["version"]))}
             assets.write_json(args.output / (phase + "-consumer.json"), reports[phase])
         brew("unlink", FORMULA)
         if linked.exists() or linked.is_symlink():

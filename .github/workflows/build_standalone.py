@@ -100,9 +100,19 @@ def zip_xml_refusal_case(work: Path) -> tuple[Path, Path, dict]:
     return source, output, receipt
 
 
-def zip_xml_refusal_probe(arguments: list[str], work: Path, environment: dict) -> dict:
+def zip_xml_refusal_probe(arguments: list[str], work: Path, environment: dict, *,
+                          inspection: bool = True) -> dict:
     """Require the real CLI to refuse excess ZIP members without changing output."""
     source, output, expected = zip_xml_refusal_case(work)
+    if not inspection:
+        # Releases before 0.8.0 have no inspection artifact: exact plain refusal receipt only
+        result = subprocess.run([*arguments, str(source), '--out', str(output)], cwd=work,
+                                env=environment, capture_output=True, timeout=10)
+        stdout = (json.dumps(expected, ensure_ascii=True, sort_keys=True) + os.linesep).encode('ascii')
+        if (result.returncode, result.stdout, result.stderr, output.read_bytes()) != (
+                1, stdout, b'', b'preserve existing output\n'):
+            raise ValueError('ZIP/XML member refusal changed its receipt or existing output')
+        return expected
     report_path = work / 'zip-member-inspection.json'
     result = subprocess.run([*arguments, str(source), '--out', str(output),
                              '--artifact', 'inspection/report=' + str(report_path)], cwd=work,

@@ -512,8 +512,9 @@ def test_published_formula_refuses_wrong_file_or_foreign_bytes(release, homebrew
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Homebrew executable entrypoints require Unix")
+@pytest.mark.parametrize("inspection", [True, False], ids=["current-release", "pre-inspection-bootstrap"])
 def test_installed_probe_uses_the_passed_executable_for_sealed_stdout_and_file_outputs(
-        tmp_path, homebrew, monkeypatch):
+        tmp_path, homebrew, monkeypatch, inspection):
     # GIVEN a task-local installed entrypoint and a sealed source-engine HTML probe
     import brewdoc
 
@@ -536,9 +537,9 @@ def test_installed_probe_uses_the_passed_executable_for_sealed_stdout_and_file_o
         commands.append(command)
         return original_command(command, **keywords)
 
-    def refusal(command, work, environment):
+    def refusal(command, work, environment, *, inspection):
         """Record the existing refusal boundary without claiming native proof."""
-        boundaries.append(("refusal", command))
+        boundaries.append(("refusal", command, inspection))
         return {"unit_boundary": "refusal"}
 
     def children(executable, work, environment, javascript):
@@ -552,15 +553,25 @@ def test_installed_probe_uses_the_passed_executable_for_sealed_stdout_and_file_o
     monkeypatch.setattr(homebrew.native, "child_checks", children)
     work = tmp_path / "consumer-work"
     # WHEN stdout and --out probes run through the consumer
-    actual = homebrew.installed_probe(binary, {"verification_scope": "smoke", "probes": [row]}, work)
+    actual = homebrew.installed_probe(binary, {"verification_scope": "smoke", "probes": [row]}, work,
+                                      inspection=inspection)
     # THEN every real command and subordinate check uses the passed installed executable
     assert (actual, commands, boundaries, (work / "html.md").read_bytes()) == (
         {"self_check": 38, "probes": ["html"], "zip_xml_refusal": {"unit_boundary": "refusal"},
          "children": {"unit_boundary": "children"}},
         [[str(binary), "--self-check"], [str(binary), str(work / "probe.html")],
          [str(binary), str(work / "probe.html"), "--out", str(work / "html.md")]],
-        [("refusal", [str(binary)]), ("children", binary, True)], markdown.encode(),
+        [("refusal", [str(binary)], inspection), ("children", binary, True)], markdown.encode(),
     ), "installed probes must reuse the installed path and exact sealed output without extracting another archive"
+
+
+@pytest.mark.parametrize("version,expected", [("0.4.1", False), ("0.7.1", False), ("0.8.0", True), ("0.10.0", True)])
+def test_inspection_refusal_form_is_selected_by_the_installed_release_version(homebrew, version, expected):
+    # GIVEN an installed release version from admitted native facts
+    # WHEN the consumer selects the refusal probe form
+    actual = homebrew.supports_inspection(version)
+    # THEN only releases shipping the inspection artifact get the inspection form
+    assert actual is expected, "the bootstrap keeps its own refusal form and the current release keeps inspection"
 
 
 def test_failed_install_stops_upgrade_retains_command_evidence_and_cleans_temporary_work(
