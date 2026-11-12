@@ -622,8 +622,9 @@ def test_failed_install_stops_upgrade_retains_command_evidence_and_cleans_tempor
     def brew_command(command, **keywords):
         """Return a failed install at the process boundary without executing Homebrew."""
         commands.append(command)
-        assert (keywords["env"]["HOMEBREW_NO_AUTO_UPDATE"], "GH_TOKEN" in keywords["env"]) == ("1", False), (
-            "brew must keep immutable tap state and receive no GitHub token")
+        assert (keywords["env"]["HOMEBREW_NO_AUTO_UPDATE"], keywords["env"]["HOMEBREW_NO_GITHUB_API"],
+                "GH_TOKEN" in keywords["env"]) == ("1", "1", False), (
+            "brew must keep immutable tap state, skip its token-less GitHub API lookup and receive no GitHub token")
         return subprocess.CompletedProcess(command, *replies[tuple(command[1:])])
 
     def task_temporary(**keywords):

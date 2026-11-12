@@ -168,7 +168,8 @@ def verify(args: argparse.Namespace) -> None:
     environment = {key: value for key, value in os.environ.items() if key not in {
         "GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL",
         "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}}
-    environment.update({"HOMEBREW_NO_AUTO_UPDATE": "1",
+    # Token-less brew looks up credentials via `git credential-osxkeychain`; on Linux that write races to EPIPE
+    environment.update({"HOMEBREW_NO_AUTO_UPDATE": "1", "HOMEBREW_NO_GITHUB_API": "1",
                         "HOMEBREW_NO_INSTALL_CLEANUP": "1", "HOMEBREW_NO_ANALYTICS": "1"})
     commands = []
 
