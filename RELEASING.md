@@ -125,7 +125,7 @@ uv run --locked --extra render-js pytest -q
 node --test npm/test/launcher.test.cjs
 ```
 
-Use development Python 3.12 and exact maintained tool pins. Verify final wheel and
+Use development Python 3.12.14 (`.python-version`) and exact maintained tool pins. Verify final wheel and
 sdist installations outside the source checkout; source tests do not prove installability.
 CI runs small API/CLI/install/native/npm smoke checks plus four actual Windows
 source DNS lifecycle cases. Full Python/corpus/Node suites remain local. Native
